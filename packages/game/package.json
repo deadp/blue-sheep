@@ -1,0 +1,16 @@
+{
+  "name": "@blue-sheep/game",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@blue-sheep/genetics": "*",
+    "phaser": "^3.90.0",
+    "@blue-sheep/inference": "*"
+  }
+}

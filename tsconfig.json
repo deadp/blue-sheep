@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/genetics"
+    },
+    {
+      "path": "packages/inference"
+    },
+    {
+      "path": "packages/game"
+    }
+  ]
+}

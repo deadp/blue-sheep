@@ -1,0 +1,18 @@
+{
+  "name": "blue-sheep",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "npm run dev -w @blue-sheep/game",
+    "build": "npm run build -w @blue-sheep/game",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  }
+}
