@@ -3,7 +3,8 @@
 // visits that sheep; closing the card (or opening another panel) unmounts it and releases the sheep;
 // body[data-panel] keeps tracking the open panel. The sheepdog is in the world exactly when the "dog"
 // improvement is owned. With motion on it also saves frame sequences (life-sheep-*.png, life-world-*.png,
-// life-report-*.png) and notes draw calls and frame rate, for a human or agent to look at.
+// life-report-*.png) and notes draw calls and frame rate, for a human or agent to look at. Voices: a lamb, a ewe
+// and a ram bleat in three different voices, lamb > ewe > ram in pitch; shy is softer and smoother than bold.
 import { isMain, runSteps } from "./lib/harness.mjs";
 import { ProbeError } from "./lib/browser.mjs";
 
@@ -82,6 +83,70 @@ export const life = {
       ctx.artifact(await g.screenshot("life-dog"));
       g.assertNoErrors("with the dog");
       ctx.note("sheepdog appears in the world when the dog improvement is owned");
+      await g.close();
+    }
+
+    // ---- 2b. voices: every sheep says hello in its own voice
+    // Rules: opening a card or clicking the live portrait makes that sheep bleat; lambs are higher than ewes,
+    // ewes higher than rams; a shy sheep is softer and smoother than a bold one; with voices off, nothing plays.
+    {
+      const g = await ctx.newPage();
+      // seed 2 at act 3 has lambs, ewes, rams and both a shy and a bold adult
+      await g.boot("?seed=2&fresh=1&nomotion=1&act=3");
+      const st = await g.state();
+      /** @type {Record<string, any>} */
+      const voices = await g.page.evaluate((ids) => Object.fromEntries(ids.map((id) => [id, /** @type {any} */ (window).__game.debug.voiceOf(id)])), st.flock);
+      const pick = (/** @type {(v: any) => boolean} */ f) => st.flock.find((/** @type {string} */ id) => f(voices[id]));
+      const lamb = pick((v) => v.age === "lamb");
+      const ewe = pick((v) => v.age !== "lamb" && v.sex === "ewe");
+      const ram = pick((v) => v.age !== "lamb" && v.sex === "ram");
+      if (!lamb || !ewe || !ram) throw new ProbeError(`act-3 flock should have a lamb, a ewe and a ram: ${JSON.stringify({ lamb, ewe, ram })}`);
+      const last = () => g.page.evaluate(() => /** @type {any} */ (window).__game.debug.lastSound());
+      /** Open the card (it bleats hello), then click the live portrait (it bleats again). */
+      const hello = async (/** @type {string} */ id) => {
+        await g.act({ type: "open", panel: "sheep", id });
+        await g.waitPanel("sheep");
+        const opened = await last();
+        if (opened?.id !== id) throw new ProbeError(`opening ${id}'s card should make it bleat, last sound was ${opened?.id}`);
+        await g.page.waitForTimeout(400); // past the debounce
+        await g.page.click("#overlay canvas[data-live-portrait]");
+        const clicked = await last();
+        if (clicked?.id !== id) throw new ProbeError(`clicking ${id}'s portrait should make it bleat, last sound was ${clicked?.id}`);
+        return clicked;
+      };
+      const [L, E, R] = [await hello(lamb), await hello(ewe), await hello(ram)];
+      const key = (/** @type {any} */ v) => JSON.stringify([v.pitch, v.formants, v.duration, v.vibratoRate]);
+      if (new Set([key(L), key(E), key(R)]).size !== 3) throw new ProbeError("lamb, ewe and ram should have three different voices");
+      if (!(L.pitch > E.pitch && E.pitch > R.pitch)) throw new ProbeError(`pitch should go lamb > ewe > ram: ${L.pitch} / ${E.pitch} / ${R.pitch}`);
+      if (!(L.duration < R.duration)) throw new ProbeError(`a lamb's bleat should be shorter than a ram's: ${L.duration} vs ${R.duration}`);
+      for (const v of [L, E, R]) if (key(v) !== key(voices[v.id])) throw new ProbeError(`${v.id} should always sound the same (stable voice)`);
+      ctx.note(`voices: lamb ${L.pitch} Hz/${L.duration}s, ewe ${E.pitch} Hz/${E.duration}s, ram ${R.pitch} Hz/${R.duration}s (played: ${L.played}${L.reason ? `, ${L.reason}` : ""})`);
+      // temperaments: look through the flock and the market (market sheep have cards too)
+      const pool = [...st.flock, ...st.market.filter((/** @type {string} */ id) => !st.flock.includes(id))];
+      Object.assign(voices, await g.page.evaluate((ids) => Object.fromEntries(ids.map((id) => [id, /** @type {any} */ (window).__game.debug.voiceOf(id)])), pool));
+      const byTemper = (/** @type {string} */ p) => pool.find((/** @type {string} */ id) => voices[id].personality === p && voices[id].age !== "lamb");
+      const shy = byTemper("shy");
+      const bold = byTemper("bold");
+      if (!shy || !bold) throw new ProbeError(`need a shy and a bold adult in seed 2's act-3 flock or market to compare voices (shy ${shy}, bold ${bold})`);
+      {
+        const S = await hello(shy), B = await hello(bold);
+        if (!(S.loudness < B.loudness && S.roughness < B.roughness)) throw new ProbeError(`a shy sheep should bleat softer and smoother than a bold one: ${JSON.stringify({ shy: [S.loudness, S.roughness], bold: [B.loudness, B.roughness] })}`);
+        if (!(S.length < B.length)) throw new ProbeError(`a shy bleat should be shorter than a bold one: ${S.length} vs ${B.length}`);
+        ctx.note(`voices: shy ${shy} loudness ${S.loudness} rough ${S.roughness} (${S.steps.length} bleat) vs bold ${bold} loudness ${B.loudness} rough ${B.roughness} (${B.steps.length} bleats)`);
+      }
+      // Voices off (settings toggle): a click is still recorded, but plays nothing.
+      await g.act({ type: "open", panel: "settings" });
+      await g.waitPanel("settings");
+      await g.page.click("#overlay [data-toggle=sound]");
+      const off = await g.page.evaluate(() => localStorage.getItem("blue-sheep-sound"));
+      if (off !== "0") throw new ProbeError(`the sound toggle should save "0" in localStorage, got ${off}`);
+      await g.page.waitForTimeout(400);
+      await hello(ewe);
+      const muted = await last();
+      if (muted.played || muted.reason !== "muted") throw new ProbeError(`with voices off nothing should play: ${JSON.stringify({ played: muted.played, reason: muted.reason })}`);
+      await g.page.evaluate(() => localStorage.removeItem("blue-sheep-sound"));
+      g.assertNoErrors("with sheep voices");
+      ctx.note("voices: card + portrait clicks bleat; lamb > ewe > ram; stable per sheep; the settings toggle mutes");
       await g.close();
     }
 

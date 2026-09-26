@@ -53,6 +53,8 @@ export interface WorldHandlers {
   onSheep(id: string): void;
   onHotspot(h: Hotspot): void;
   onHover?(target: HoverTarget): void;
+  /** The live portrait was clicked (the sheep hops and bleats); the controller plays its voice. */
+  onPortraitClick?(id: string): void;
 }
 
 export interface WorldOptions {

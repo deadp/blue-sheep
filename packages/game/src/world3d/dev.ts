@@ -107,3 +107,29 @@ setInterval(() => {
   if (!info.textContent?.startsWith("click")) info.textContent = `sheep ${st.sheep} · draw calls ${st.calls} · tris ${st.triangles} · portrait warm ${tWarm.toFixed(1)} ms`;
 }, 1000);
 requestAnimationFrame(() => requestAnimationFrame(() => { document.body.dataset.ready = "1"; }));
+
+// ?gallery=1: big static portraits of every look (and lambs), plus a live portrait, for judging the sheep up close.
+if (flag("gallery", false)) {
+  const g = document.createElement("div");
+  g.id = "gallery";
+  g.style.cssText = "position:absolute;inset:0;z-index:20;background:#f4efe4;display:flex;flex-wrap:wrap;gap:8px;padding:8px;align-content:flex-start;overflow:auto";
+  const px = Number(q.get("px") ?? 180);
+  const lambs: WorldSheep[] = colours.map((c, i) => S(`gl${i}`, `Lamb ${c}`, {
+    adult: false, colour: c, sex: i % 2 ? "ram" : "ewe", horns: i === 3 ? "horned" : "polled", pattern: i === 2 ? "spotted" : "solid", size: 46, fleeceWeight: 3.8, crimp: 5,
+  }));
+  for (const s of [...base.slice(0, 11), ...lambs]) {
+    const fig = document.createElement("figure");
+    fig.style.cssText = "margin:0;text-align:center;font-size:11px";
+    const img = document.createElement("img");
+    img.src = world.portrait(s, px);
+    img.style.cssText = `width:${px}px;height:${px}px;border-radius:14px;display:block`;
+    fig.append(img, Object.assign(document.createElement("figcaption"), { textContent: `${s.name} ${s.adult ? s.sex : "lamb"} ${s.colour}` }));
+    g.appendChild(fig);
+  }
+  const live = document.createElement("div");
+  live.style.cssText = "width:360px;height:220px;border-radius:14px;background:#bfdcec;position:relative";
+  g.appendChild(live);
+  document.body.appendChild(g);
+  const who = base.find((s) => s.id === (q.get("live") ?? "s2")) ?? base[0]!;
+  world.mountPortrait(live, { ...who, personality: "curious" });
+}

@@ -495,6 +495,11 @@ ul.plain { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-dire
 .setting .confirm { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .toggle { min-width: 64px; background: #efe6d6; }
 .toggle.on { background: var(--accent); color: #fff; }
+.sound-row { align-items: center; gap: 10px; }
+.volume { display: flex; align-items: center; gap: 6px; }
+.volume.off { opacity: 0.45; }
+.volume input[type=range] { width: 120px; accent-color: var(--accent); cursor: pointer; }
+.volume input[type=range] + .meta { margin-left: -2px; }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
 .stat { background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; }
 .stat b { font-size: 1.6rem; color: var(--blue-deep); }

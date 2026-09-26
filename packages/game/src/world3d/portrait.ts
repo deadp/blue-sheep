@@ -59,7 +59,7 @@ export class LivePortrait {
   private frames = 0;
   private readonly ray = new THREE.Raycaster();
 
-  constructor(private readonly reduced: boolean) {
+  constructor(private readonly reduced: boolean, private readonly onClick: (id: string) => void = () => {}) {
     this.scene.add(new THREE.HemisphereLight("#fffaf0", "#b8a890", 1.55));
     const key = new THREE.DirectionalLight("#fff1dc", 2.2);
     key.position.set(4, 6, 5);
@@ -113,7 +113,7 @@ export class LivePortrait {
     }
     this.teardown();
     const geos = buildSheepGeos(ws);
-    const faceMat = new THREE.MeshLambertMaterial({ color: geos.parts.face, flatShading: true });
+    const faceMat = new THREE.MeshLambertMaterial({ color: geos.parts.face, flatShading: true, vertexColors: true });
     const full = buildFullRig(geos, ws, this.mats, faceMat);
     full.rig.body.castShadow = false;
     this.scene.add(full.rig.root);
@@ -132,7 +132,7 @@ export class LivePortrait {
     const cv = r.domElement;
     cv.onpointermove = (ev) => this.onPointer(ev);
     cv.onpointerleave = () => { if (this.live) { this.live.pointer = null; if (this.reduced) this.draw(); } };
-    cv.onclick = () => this.bleat();
+    cv.onclick = () => { this.bleat(); if (this.live) this.onClick(this.live.id); };
     if (this.reduced) {
       this.draw();
     } else {

@@ -272,11 +272,11 @@ export class WorldView {
     const ent = this.ents.get(sheep.id);
     const owned = !(ent && ent.key === sheepKey(sheep));
     const geos = owned ? buildSheepGeos(sheep) : ent!.geos;
-    const faceMat = new THREE.MeshLambertMaterial({ color: geos.parts.face, flatShading: true });
+    const faceMat = new THREE.MeshLambertMaterial({ color: geos.parts.face, flatShading: true, vertexColors: true });
     const full = buildFullRig(geos, sheep, this.sheepMats, faceMat);
     const rig = full.rig;
     const pose = restPose();
-    pose.headYaw = -0.4;
+    pose.headYaw = -0.85;
     pose.headPitch = 0.05;
     pose.headRoll = 0.1;
     full.pose(pose);
@@ -461,7 +461,7 @@ export class WorldView {
    */
   mountPortrait(el: HTMLElement, sheep: WorldSheep): () => void {
     if (this.disposed) return () => {};
-    if (!this.live) this.live = new LivePortrait(this.reduced);
+    if (!this.live) this.live = new LivePortrait(this.reduced, (id) => this.handlers.onPortraitClick?.(id));
     return this.live.mount(el, { ...sheep, personality: personalityOf(sheep) });
   }
 

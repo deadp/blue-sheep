@@ -8,7 +8,7 @@ passing unit tests do not prove the game runs. Spec: `docs/CONTRACTS.md` §7.
 
 | Command | What it does |
 |---|---|
-| `npm run probe` | build, then smoke → play → panels → life → tutorial → video; summary table; exit 1 on any failure |
+| `npm run probe` | build, then smoke → play → panels → life → voices → tutorial → video; summary table; exit 1 on any failure |
 | `npm run probe:quick` | build, then smoke only |
 | `node packages/game/probe/run.mjs play panels` | build, then just the named steps |
 | `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, life, tutorial, video) |
@@ -44,6 +44,12 @@ screenshots of old code.
   (`__game.debug.world()`). With motion on it saves 6-frame sequences 300 ms
   apart (`life-world-*`, `life-close-*` zoomed in, `life-sheep-*`,
   `life-sheep-bleat`, `life-night`, `life-report-*`) and notes fps and draw calls.
+  Voices: opening a card and clicking the portrait of a lamb, a ewe and a ram gives three different
+  voices (`__game.debug.lastSound()`), pitch lamb > ewe > ram, stable per sheep; shy is softer, smoother
+  and shorter than bold; the settings toggle mutes.
+- **voices.mjs**: we can't listen headless, so it renders lamb/ewe/ram × shy/calm/curious/bold bleats
+  offline (`__game.debug.renderVoice`), measures length, peak/RMS and pitch (YIN), asserts the ordering,
+  and writes `out/voices/*.wav` (plus `series-*.wav`, the 1–3 bleat series as played) and `stats.txt`.
 - **tutorial.mjs**: boots `?tutorial=1&fresh=1&nomotion=1` and plays all ten
   tutorial steps with real clicks. World sheep are clicked where the tutorial's
   arrow points, with `open` as a fallback that the summary reports. It asserts

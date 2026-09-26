@@ -12,6 +12,8 @@ const VOCAB = new Set([
   "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial",
   // not actions: the mentor card's step markers for probes and styles
   "step", "step-id",
+  // settings' volume slider (an input, handled on input/change)
+  "volume",
   // not actions: the controller's mount point for the sheep card's live portrait
   "live-portrait-slot",
 ]);
@@ -246,10 +248,15 @@ describe("panel content", () => {
     expect(h).toContain("lambs born");
   });
 
-  it("settings has motion, export, import and a confirmed new game", () => {
+  it("settings has motion, sound, export, import and a confirmed new game", () => {
     const s = fx("fresh").state;
     const h = renderPanel(s, view({ panel: "settings" }));
     expect(h).toContain('data-toggle="motion"');
+    expect(h).toContain('data-toggle="sound"');
+    expect(h).toMatch(/<input type="range"[^>]*data-volume/);
+    const off = renderPanel(s, view({ panel: "settings", sound: { on: false, volume: 0.4 } }));
+    expect(off).toContain('aria-checked="false"');
+    expect(off).toMatch(/value="40" data-volume[^>]*disabled/);
     expect(h).toContain("data-export");
     expect(h).toContain("data-import");
     expect(h).not.toContain("data-newgame");

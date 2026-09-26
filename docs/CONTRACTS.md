@@ -104,6 +104,7 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
 packages/game/src/core/      Stream A: state, sim, acts, orders, fair, events, vet, market, economy, knowledge
 packages/game/src/world3d/   Stream B: Three.js diorama (WorldView)
 packages/game/src/ui/        Stream C: HTML panels (pure functions of state) + CSS
+packages/game/src/audio/     Stream D: sheep voices (pure voice mapping + WebAudio bleat synth), no core imports
 packages/game/src/app.ts     Stream D: controller (wires core + world + ui), deep links, window.__game
 packages/game/src/main.ts    Stream D
 packages/game/probe/         Stream P: Playwright probes, screenshot artifacts
@@ -215,6 +216,7 @@ export interface WorldHandlers {
   onSheep(id: string): void;
   onHotspot(h: Hotspot): void;
   onHover?(target: { kind: "sheep"; id: string } | { kind: "hotspot"; id: Hotspot } | null): void;
+  onPortraitClick?(id: string): void; // the live portrait was clicked (it hops); the controller plays the voice
 }
 export class WorldView {
   constructor(container: HTMLElement, handlers: WorldHandlers, opts?: { seed?: number; reducedMotion?: boolean });
@@ -244,6 +246,13 @@ come to the front, curious ones walk over to the sheep being visited. Everyone g
 nuzzles, lambs skip after their dam, and the flock lies down at night. Legs, ears and eyes are
 instanced flock-wide (three draw calls). Reduced motion: static poses, instant camera, static bubble.
 `debugStats()` (not contract) reports draw calls, the dog, the visited sheep, the bubble and the portrait.
+
+Sheep look (`sheepMesh.ts`): chibi proportions. A round body made of overlapping wool puffs around a
+soft core (crimp → more, smaller, lumpier puffs; fleece weight → bigger puffs; size → body scale; spots
+colour whole puffs), a big head (×1.68 adults, ×2.1 lambs) with a wool bonnet and top tuft, a lighter
+round muzzle, rosy cheeks, big eyes (white, dark iris, highlight dot; one vertex-coloured instanced
+geometry in the world, a movable iris in the live portrait), floppy ears, short stubby legs with little
+hooves, a two-puff tail, small round horn curls (bigger on rams).
 
 Visual direction: orthographic isometric camera, flat-shaded low-poly, pastel
 palette, soft shadows, sheep idle animations (breathing, head bob, grazing,
@@ -277,6 +286,8 @@ data-rename="id"          prompts for a name
 data-newgame="seed?"      start over
 data-tab="…"              panel-local tab switch (view state kept by controller)
 data-tutorial="start|ack|skip"  new tutorial game / the mentor's "Got it" / skip the tutorial
+data-toggle="motion|sound"      settings switches (reduced motion, sheep voices)
+data-volume               settings' volume slider (<input type=range>, 0–100; input/change, no re-render)
 ```
 
 Tutorial UI (`ui/tutorial.ts`): `mentorHtml(state, view)` is a card docked bottom-left (`#mentor`, above
@@ -329,6 +340,17 @@ discovery/concept cards.
   Also sets `document.body.dataset.ready = "1"` when the first frame has
   rendered and `document.body.dataset.panel = <open panel name or "">`.
   `window.__game.debug.world()` (not contract) returns `WorldView.debugStats()` for probes.
+  Also (not contract): `debug.lastSound()` (the last bleat's voice params, `steps`, `played`, `reason`
+  = `muted | locked | no-audio | busy`), `debug.voiceOf(id)` and `async debug.renderVoice(id | VoiceInput,
+  "one" | "random")` (offline render: `{ voice, steps, sampleRate, samples }`).
+- Voices (`src/audio/`): `voiceFor({id, sex, adult, ageSeasons, size, personality})` is pure and stable per
+  sheep (lamb > ewe > ram in pitch, bigger = a little lower, per-id variation; shy soft/breathy/falling
+  "meh", calm steady "baaa", curious rising and often double, bold loud/rough/long, sometimes "BAA-A-A").
+  The controller plays a sheep's voice when its card opens (world click, list, tutorial meetings), when
+  the live portrait or the already-visited sheep is clicked, and a soft chorus of up to four new lambs
+  when the season report opens. The AudioContext is created only inside a user gesture; at most four
+  bleats overlap and one sheep can't repeat within 350 ms. Settings has **Sheep voices** on/off and a
+  volume slider (`localStorage` `blue-sheep-sound`, `blue-sheep-volume`; not game state).
 - Sheep card life: after every render, if the sheep card is open the controller mounts the live
   portrait into `[data-live-portrait-slot]` and calls `world.attend(id, {offsetPx})`; otherwise it
   stops the portrait and calls `world.attend(null)`.
@@ -354,7 +376,13 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    sheep; switching cards moves it; close/Escape unmount it; the forecast never has one. The sheepdog
    is in the world exactly when the dog improvement is owned. With motion on it saves frame sequences
    (`life-world-*`, `life-close-*`, `life-sheep-*`, `life-report-*`, `life-night`) and notes fps and
-   draw calls.
+   draw calls. Voices: a lamb, a ewe and a ram (card open, then a real click on the portrait) have three
+   different voices with pitch lamb > ewe > ram and stay stable; a shy sheep is softer, smoother and
+   shorter than a bold one; with the settings toggle off a click plays nothing (`reason: "muted"`).
+6b. Voices (`voices.mjs`): renders lamb/ewe/ram × shy/calm/curious/bold offline in the real build,
+   measures length, peak/RMS level and pitch (YIN), asserts measured pitch lamb > ewe > ram per temperament
+   and near the designed pitch, lambs shorter than rams, shy ≥ 3 dB quieter than bold, and writes
+   `out/voices/*.wav` plus `stats.txt` for a human to listen to.
 7. Tutorial (`tutorial.mjs`): boots `?tutorial=1&fresh=1&nomotion=1` and plays all ten steps with real
    clicks (world sheep are clicked where the arrow points; `open` is only a fallback). It asserts that each
    step advances on its action, that the mentor card never covers a ringed target, the arrow's tip or the

@@ -26,6 +26,8 @@ export interface View {
   lambArt?: (look: { colour: string; pattern: string; horns: string }) => string;
   /** Settings: current reduced-motion flag (optional). */
   reducedMotion?: boolean;
+  /** Settings: sound on/off and volume 0–1 (optional; saved in localStorage by the controller). */
+  sound?: { on: boolean; volume: number };
   /** Title: whether a saved game exists to continue (optional; defaults to "state has been played"). */
   hasSave?: boolean;
 }

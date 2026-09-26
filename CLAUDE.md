@@ -14,7 +14,7 @@ Blue Sheep is a cozy, turn-based sheep-breeding game built on realistic genetics
 - `npm test`: vitest, covering genetics statistics, inference and sim determinism.
 - `npm run typecheck`: `tsc -b` across all packages.
 - `npm run build`: production build into `packages/game/dist`.
-- `npm run probe`: builds, then runs smoke → play (12 seasons) → panels → life (live portrait, sheep visits, sheepdog) → tutorial (all ten steps by real clicks, `tut-01..10.png`) → 10 s video in headless Chrome. Artifacts go to `packages/game/probe/out/`.
+- `npm run probe`: builds, then runs smoke → play (12 seasons) → panels → life (live portrait, sheep visits, sheepdog, voices) → voices (offline-rendered bleats, stats and WAVs in `out/voices/`) → tutorial (all ten steps by real clicks, `tut-01..10.png`) → 10 s video in headless Chrome. Artifacts go to `packages/game/probe/out/`.
 - `npm run probe:quick`: builds, then runs smoke only. Run it after every change that touches the game.
 - `npm run probe:shot -- "?seed=7&panel=vet" vet`: builds and screenshots one deep link to `probe/out/vet.png`.
 - `npm run serve`: builds and serves the production game on `0.0.0.0:4173` for a human.
@@ -31,6 +31,7 @@ packages/inference/         pure TS: posteriors, lamb outcome distributions, inf
 packages/game/src/core/     state, sim, acts, orders, fair, events, vet, market, economy, knowledge
 packages/game/src/world3d/  Three.js isometric diorama (WorldView); imports nothing from core/
 packages/game/src/ui/       HTML panels: pure functions `xxxHtml(state, view): string`
+packages/game/src/audio/    sheep voices: pure voice mapping (voice.ts) + WebAudio bleat synth (engine.ts)
 packages/game/src/app.ts    controller: wires core + world + ui, deep links, window.__game
 packages/game/probe/        Playwright probes and screenshot artifacts
 packages/game/scripts/      oracle and balance sims

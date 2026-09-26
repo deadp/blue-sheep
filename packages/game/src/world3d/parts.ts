@@ -27,19 +27,19 @@ export class FlockParts {
   private grow(n: number): void {
     if (this.cap) this.disposeMeshes();
     this.cap = n;
-    const make = (geo: THREE.BufferGeometry, mat: THREE.Material, per: number, cast: boolean) => {
+    const make = (geo: THREE.BufferGeometry, mat: THREE.Material, per: number, cast: boolean, tint = true) => {
       const m = new THREE.InstancedMesh(geo, mat, n * per);
       m.frustumCulled = false;
       m.castShadow = this.shadows && cast;
       m.count = 0;
       // allocate the colour buffer up front
-      m.setColorAt(0, new THREE.Color("#ffffff"));
+      if (tint) m.setColorAt(0, new THREE.Color("#ffffff"));
       this.scene.add(m);
       return m;
     };
     this.legs = make(this.mats.legGeo, this.mats.part, 4, true);
     this.ears = make(this.mats.earGeo, this.mats.part, 2, false);
-    this.eyes = make(this.mats.eyeGeo, this.mats.eyeWhite, 2, false);
+    this.eyes = make(this.mats.eyeGeo, this.mats.eye, 2, false, false);
   }
 
   /** Recompute every instance from the rigs' world matrices. Call after the rigs are posed. */

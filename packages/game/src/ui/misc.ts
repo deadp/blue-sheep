@@ -58,6 +58,7 @@ export function settingsHtml(_state: GameState, view: View): string {
   return `<h2>Settings</h2>
     <div class="setting"><div><b>Reduced motion</b><div class="meta">Calmer camera and fewer sparkles.</div></div>
       <button class="toggle ${view.reducedMotion ? "on" : ""}" data-toggle="motion" role="switch" aria-checked="${view.reducedMotion ? "true" : "false"}">${view.reducedMotion ? "On" : "Off"}</button></div>
+    ${soundSettingHtml(view)}
     <div class="setting"><div><b>Save file</b><div class="meta">Your farm saves itself. Keep a copy, or load one.</div></div>
       <div class="row"><button class="secondary" data-export="1">Export save</button><button class="secondary" data-import="1">Import save</button></div></div>
     <div class="setting"><div><b>Replay the tutorial</b><div class="meta">A new two-sheep farm with Old Tom showing you round.</div></div>
@@ -69,6 +70,14 @@ export function settingsHtml(_state: GameState, view: View): string {
         ? `<div class="confirm"><span>Really leave this farm?</span><div class="row"><button class="danger" data-newgame="">Yes, new farm</button><button class="secondary" data-tab="">Keep this one</button></div></div>`
         : `<button class="secondary" data-tab="confirm-new">New game…</button>`}</div>
     <div class="row"><button class="primary" data-close>Done</button></div>`;
+}
+
+function soundSettingHtml(view: View): string {
+  const on = view.sound?.on ?? true;
+  const vol = Math.round((view.sound?.volume ?? 0.7) * 100);
+  return `<div class="setting"><div><b>Sheep voices</b><div class="meta">Every sheep has its own bleat: lambs squeak, rams rumble, shy ones whisper.</div></div>
+      <div class="row sound-row"><button class="toggle ${on ? "on" : ""}" data-toggle="sound" role="switch" aria-checked="${on ? "true" : "false"}">${on ? "On" : "Off"}</button>
+      <label class="volume ${on ? "" : "off"}"><span class="meta">quiet</span><input type="range" min="0" max="100" step="5" value="${vol}" data-volume aria-label="Volume" ${on ? "" : "disabled"}><span class="meta">loud</span></label></div></div>`;
 }
 
 function tookWords(seasons: number): string {

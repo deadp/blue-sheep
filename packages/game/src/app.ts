@@ -16,6 +16,7 @@ import {
   type ActionData, type PanelName, type TutorialTarget, type View,
 } from "./ui/index.js";
 import { fastForward } from "./debug.js";
+import { Voices, bleatSeries, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
 
 export const SAVE_KEY = "blue-sheep-save-v2";
 const MOTION_KEY = "blue-sheep-reduced-motion";
@@ -73,6 +74,8 @@ export class App {
   private tutFrame = 0;
   /** Target + window size last scrolled into view (so the player can still scroll freely afterwards). */
   private tutScrollKey = "";
+  /** Sheep voices (WebAudio). Settings live in localStorage, not in the game state. */
+  private readonly voices = new Voices();
 
   constructor() {
     const q = new URLSearchParams(location.search);
@@ -83,6 +86,7 @@ export class App {
     this.view = defaultView((id) => this.portraitOf(id));
     this.view.reducedMotion = this.reduced;
     this.view.lambArt = (l) => this.lambArt(l);
+    this.view.sound = { on: this.voices.on, volume: this.voices.volume };
 
     // ---- which game?
     let panel: PanelName | null = null;
@@ -115,6 +119,12 @@ export class App {
     this.overlay = new Overlay((d) => this.onData(d), "#overlay");
     this.overlay.onClose = () => this.onOverlayClosed();
     delegateActions(this.hudEl, (d) => this.onData(d));
+    for (const ev of ["input", "change"] as const) {
+      this.overlay.el.addEventListener(ev, (e) => {
+        const t = e.target as HTMLInputElement;
+        if (t?.matches?.("input[data-volume]")) this.onVolume(t, ev === "change");
+      });
+    }
     this.mentorEl = document.body.appendChild(Object.assign(document.createElement("div"), { id: "mentor" }));
     this.mentorEl.hidden = true;
     delegateActions(this.mentorEl, (d) => this.onData(d));
@@ -138,12 +148,42 @@ export class App {
     this.world = new WorldView(this.worldEl, {
       onSheep: (id) => this.guard(() => this.onSheepClick(id)),
       onHotspot: (h) => this.guard(() => this.onHotspot(h)),
+      onPortraitClick: (id) => this.bleat(id, true),
     }, { seed: this.state.seed, reducedMotion: this.reduced });
     this.world.setSnapshot(this.snapshot());
   }
 
+  // ------------------------------------------------------------------ voices
+
+  /** The stable voice of a sheep: age, sex, size and temperament (all visible traits), plus its id. */
+  private voiceOf(id: string): Voice | null {
+    const s = this.state.sheep[id];
+    if (!s) return null;
+    return voiceFor({
+      id: s.id, sex: s.sex, adult: isAdult(s, this.state.season), ageSeasons: this.state.season - s.born,
+      size: Number(s.phenotype["size"] ?? 60), personality: personalityOf(s),
+    });
+  }
+
+  /** A sheep says hello (card opened, clicked in the field or in its portrait). */
+  private bleat(id: string, force = false): void {
+    const v = this.voiceOf(id);
+    if (v) this.voices.bleat(v, { force });
+  }
+
+  /** The report's new lambs: a soft staggered chorus, a few at most. */
+  private lambChorus(ids: string[]): void {
+    const lambs = ids.map((id) => this.voiceOf(id)).filter((v): v is Voice => !!v).slice(0, 4);
+    lambs.forEach((v, i) => {
+      const steps = bleatSeries(v).slice(0, 2);
+      this.voices.bleat(v, { steps, delay: 0.25 + i * 0.38 + Math.random() * 0.12, gain: 0.55, force: true });
+    });
+  }
+
   private onSheepClick(id: string): void {
     if (this.sleeping) return;
+    // clicking the sheep whose card is already open: it just says something again
+    if (this.view.panel === "sheep" && this.view.sheepId === id) this.bleat(id);
     this.openPanel("sheep", id);
     this.render();
   }
@@ -400,6 +440,7 @@ export class App {
     const want = s ? s.id : null;
     if (want !== this.attendedId) {
       this.attendedId = want;
+      if (want) this.bleat(want);
       const panel = this.overlay.el.querySelector<HTMLElement>(".panel");
       const wide = window.innerWidth > 760;
       const offsetPx = want && panel && wide ? (panel.getBoundingClientRect().width + 24) / 2 : 0;
@@ -497,6 +538,7 @@ export class App {
         if (name !== null) this.mutate(() => renameSheep(this.state, d["rename"]!, name));
       }
       else if (d["toggle"] === "motion") this.setReducedMotion(!this.reduced);
+      else if (d["toggle"] === "sound") { this.voices.setOn(!this.voices.on); this.view.sound = { on: this.voices.on, volume: this.voices.volume }; this.previewSound(); }
       else if (d["export"]) this.exportSave();
       else if (d["import"]) { this.importSave(); return; }
       else if ("tab" in d) this.view.tab = d["tab"] || null;
@@ -556,6 +598,7 @@ export class App {
       this.view.panel = "report";
       this.view.tab = null;
       this.render();
+      this.lambChorus(report.lambs.map((l) => l.id).filter((id) => this.state.flock.includes(id)));
       const blues = report.lambs.filter((l) => l.phenotype["colour"] === "blue" && this.state.flock.includes(l.id));
       const found = new Set(report.discoveries.map((d) => d.sheep));
       for (const id of new Set([...blues.map((b) => b.id), ...found])) if (this.state.flock.includes(id)) this.world.celebrate(id);
@@ -590,6 +633,18 @@ export class App {
     try { localStorage.setItem(MOTION_KEY, on ? "1" : "0"); } catch { /* ignore */ }
     this.world.dispose();
     this.makeWorld();
+  }
+
+  /** Settings' volume slider: live while dragging, a sample bleat when let go. No re-render (it would reset the drag). */
+  private onVolume(el: HTMLInputElement, done: boolean): void {
+    this.voices.setVolume(Number(el.value) / 100);
+    this.view.sound = { on: this.voices.on, volume: this.voices.volume };
+    if (done) this.previewSound();
+  }
+
+  private previewSound(): void {
+    const s = this.state.flock.map((id) => this.state.sheep[id]!).find((x) => x) ?? null;
+    if (s && this.voices.on) this.bleat(s.id, true);
   }
 
   // ------------------------------------------------------------------ saving
@@ -663,7 +718,21 @@ export class App {
       /** The tutorial's current step ({ step, id, done }), or null for a game without one. */
       tutorial: () => { const t = tutorialInfo(this.state); return t ? { ...t } : null; },
       /** Not part of the contract: render stats (draw calls, live portrait, the dog) for probes. */
-      debug: { world: () => this.world.debugStats() },
+      debug: {
+        world: () => this.world.debugStats(),
+        /** The voice params of the last bleat (played or not: `played`/`reason` say which). */
+        lastSound: () => this.voices.lastSound(),
+        /** The stable voice of a sheep, without playing it. */
+        voiceOf: (id: string) => this.voiceOf(id),
+        /** Render a sheep's bleat (or any made-up voice) offline (no speakers or gesture needed): mono samples for probes. */
+        renderVoice: async (who: string | VoiceInput, series: "one" | "random" = "one") => {
+          const v = typeof who === "string" ? this.voiceOf(who) : voiceFor(who);
+          if (!v) return null;
+          const steps = series === "one" ? [{ at: 0, dur: 1, pitch: 1, gain: 1, glide: v.glide }] : bleatSeries(v);
+          const data = await renderOffline(v, steps, 22050);
+          return data ? { voice: v, steps, sampleRate: 22050, samples: Array.from(data) } : null;
+        },
+      },
       forecast: {
         cross: (ewe: string, ram: string) => forecastCross(this.state, ewe, ram),
         order: (id: string) => forecastOrder(this.state, id),
