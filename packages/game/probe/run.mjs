@@ -1,4 +1,4 @@
-// Probe entry point. `node probe/run.mjs [step...]` — no args = smoke, play, panels, life, video.
+// Probe entry point. `node probe/run.mjs [step...]` — no args = smoke, play, panels, life, tutorial, video.
 // Builds once (unless PROBE_NO_BUILD=1), serves on a fresh port, prints a summary, exits non-zero on failure.
 import { runSteps } from "./lib/harness.mjs";
 import { smoke } from "./smoke.mjs";
@@ -6,8 +6,9 @@ import { play } from "./play.mjs";
 import { panels } from "./panels.mjs";
 import { video } from "./video.mjs";
 import { life } from "./life.mjs";
+import { tutorial } from "./tutorial.mjs";
 
-const ALL = { smoke, play, panels, life, video };
+const ALL = { smoke, play, panels, life, tutorial, video };
 const names = process.argv.slice(2);
 const unknown = names.filter((n) => !(n in ALL));
 if (unknown.length) {

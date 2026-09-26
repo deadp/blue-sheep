@@ -370,6 +370,27 @@ export class WorldView {
   }
 
   /**
+   * Where a sheep (just above its head) or a hotspot is on screen, in client pixels, or null if there is no
+   * such thing. `inView` is false when it is outside the world's canvas. Used to point at things (tutorial).
+   */
+  screenPoint(id: string | Hotspot): { x: number; y: number; inView: boolean } | null {
+    if (this.disposed) return null;
+    const v = new THREE.Vector3();
+    const e = this.ents.get(id);
+    if (e) {
+      const d = e.geos.dims;
+      v.set(e.x, (d.top + 0.1) * d.rootScale + e.pose.bob * d.rootScale, e.z);
+    } else if ((HOTSPOTS as readonly string[]).includes(id)) {
+      const a = HOTSPOT_DEF[id as Hotspot].anchor;
+      v.set(a[0], a[1], a[2]);
+    } else return null;
+    v.project(this.camera);
+    const r = this.container.getBoundingClientRect();
+    const x = r.left + ((v.x + 1) / 2) * r.width, y = r.top + ((1 - v.y) / 2) * r.height;
+    return { x, y, inView: Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1 };
+  }
+
+  /**
    * Visit a sheep (its card is open): the camera glides in beside it, it stops, turns to face you,
    * flicks its ears, hops or tilts its head and says hello. `null` lets it go back to grazing and
    * returns the camera to where it was.

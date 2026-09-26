@@ -14,7 +14,7 @@ Blue Sheep is a cozy, turn-based sheep-breeding game built on realistic genetics
 - `npm test`: vitest, covering genetics statistics, inference and sim determinism.
 - `npm run typecheck`: `tsc -b` across all packages.
 - `npm run build`: production build into `packages/game/dist`.
-- `npm run probe`: builds, then runs smoke → play (12 seasons) → panels → 10 s video in headless Chrome. Artifacts go to `packages/game/probe/out/`.
+- `npm run probe`: builds, then runs smoke → play (12 seasons) → panels → life (live portrait, sheep visits, sheepdog) → tutorial (all ten steps by real clicks, `tut-01..10.png`) → 10 s video in headless Chrome. Artifacts go to `packages/game/probe/out/`.
 - `npm run probe:quick`: builds, then runs smoke only. Run it after every change that touches the game.
 - `npm run probe:shot -- "?seed=7&panel=vet" vet`: builds and screenshots one deep link to `probe/out/vet.png`.
 - `npm run serve`: builds and serves the production game on `0.0.0.0:4173` for a human.
@@ -62,8 +62,8 @@ For new behaviour, add a probe assertion derived from a game rule, e.g. "a hired
 
 ## Deep links and the probe hook (details: CONTRACTS.md §6)
 
-- URL params: `?seed=N` (new game with that seed), `?fresh=1` (clear the save), `?nomotion=1`, `?act=N` (fast-forward to act N with a fixture flock), `?panel=<name>` (open a panel on boot).
-- `window.__game = { state(), act(action), snapshot(), version }`. Actions look like `{type:"plan",ewe,ram}`, `{type:"sleep"}`, `{type:"open",panel}` and so on.
+- URL params: `?seed=N` (new game with that seed), `?tutorial=1` (new game in the tutorial), `?fresh=1` (clear the save), `?nomotion=1`, `?act=N` (fast-forward to act N with a fixture flock), `?panel=<name>` (open a panel on boot).
+- `window.__game = { state(), act(action), snapshot(), tutorial(), version }`. Actions look like `{type:"plan",ewe,ram}`, `{type:"sleep"}`, `{type:"open",panel}` and so on.
 - `body[data-ready="1"]` is set after the first frame. `body[data-panel]` holds the open panel name, or `""` when none is open.
 - When you add a panel or an action, update CONTRACTS.md, the controller and `probe/panels.mjs` (`PANELS`) together.
 

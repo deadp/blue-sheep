@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { GOALS, acceptOrder, canBreed, factsFor, forecastOrder, isAdult, seasonLabel, type GameState } from "../core/index.js";
-import { CONCEPTS, ODDS_SCALE, PANEL_NAMES, hudHtml, renderPanel, forecastPanelHtml, type View, type PanelName } from "./index.js";
+import { CONCEPTS, ODDS_SCALE, PANEL_NAMES, hudHtml, mentorHtml, renderPanel, forecastPanelHtml, tutorialStepMet, tutorialTarget, type View, type PanelName } from "./index.js";
+import { TUTORIAL_STEPS, advanceSeason, advanceTutorial, buySheep, cheapestMarketEwe, newTutorialGame, planMating, tutorialStep } from "../core/index.js";
 import { personalityLine } from "../core/index.js";
 import { fixtures, type Fixture } from "./fixtures.js";
 
@@ -8,7 +9,9 @@ const PORTRAIT = "data:image/png;base64,AAAA";
 const GENOTYPE = /[A-Za-z]\/[A-Za-z]/;
 const VOCAB = new Set([
   "close", "open", "sheep", "findmate", "mate", "goal", "plan", "buy", "sell", "hire", "test", "accept", "decline",
-  "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade",
+  "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial",
+  // not actions: the mentor card's step markers for probes and styles
+  "step", "step-id",
   // not actions: the controller's mount point for the sheep card's live portrait
   "live-portrait-slot",
 ]);
@@ -370,5 +373,91 @@ describe("presentation", () => {
       expect(b).toContain(`Story progress: act ${s.act + 1} of 5`);
       expect(hudHtml(s, view())).toContain('class="act-track mini"');
     }
+  });
+});
+
+describe("tutorial", () => {
+  it("the title offers the tutorial first, and a skip", () => {
+    const f = fx("fresh");
+    const h = renderPanel(f.state, view({ panel: "title", hasSave: false }));
+    expect(h.indexOf('data-tutorial="start"')).toBeGreaterThan(-1);
+    expect(h.indexOf('data-tutorial="start"')).toBeLessThan(h.indexOf("Skip tutorial"));
+    expect(h).toMatch(/class="primary big" data-tutorial="start"/);
+  });
+
+  it("settings can replay the tutorial after a confirm", () => {
+    const s = fx("act2").state;
+    expect(renderPanel(s, view({ panel: "settings" }))).toContain('data-tab="confirm-tutorial"');
+    expect(renderPanel(s, view({ panel: "settings", tab: "confirm-tutorial" }))).toContain('data-tutorial="start"');
+  });
+
+  it("the mentor speaks at every step within the rules, points at something and completes on the real action", () => {
+    const g = newTutorialGame(7);
+    const t = g.tutorial!;
+    const seen: string[] = [];
+    const check = (v: View) => {
+      const h = mentorHtml(g, v);
+      checkCommon(h, g, `mentor/${tutorialStep(g)}`);
+      checkCommon(hudHtml(g, v), g, `hud/${tutorialStep(g)}`);
+      seen.push(tutorialStep(g)!);
+      return h;
+    };
+    // 1: the ewe in the field
+    let v = view();
+    check(v);
+    expect(tutorialTarget(g, v)).toEqual({ kind: "sheep", id: t.ewe });
+    expect(tutorialStepMet(g, v)).toBe(false);
+    v = view({ panel: "sheep", sheepId: t.ewe });
+    expect(tutorialStepMet(g, v)).toBe(true);
+    advanceTutorial(g, "ewe");
+    // 2: the ram, with the ewe's card explained
+    expect(check(v)).toContain("What you know");
+    expect(tutorialTarget(g, v)).toEqual({ kind: "sheep", id: t.ram });
+    v = view({ panel: "sheep", sheepId: t.ram });
+    expect(tutorialStepMet(g, v)).toBe(true);
+    advanceTutorial(g, "ram");
+    // 3: find a mate
+    check(v);
+    expect(tutorialTarget(g, v)).toEqual({ kind: "html", selectors: ["#overlay [data-findmate]"] });
+    v = view({ panel: "forecast", sheepId: t.ram });
+    advanceTutorial(g, "forecast");
+    // 4: plan — one chance in ten
+    expect(check(v)).toContain("one chance in ten");
+    expect(renderPanel(g, v)).toContain(`data-plan="${t.ewe}:${t.ram}"`);
+    planMating(g, t.ewe, t.ram);
+    expect(tutorialStepMet(g, v)).toBe(true);
+    advanceTutorial(g, "plan");
+    // 5: sleep
+    check(v);
+    const r = advanceSeason(g);
+    v = view({ panel: "report", report: r });
+    expect(tutorialStepMet(g, v)).toBe(true);
+    advanceTutorial(g, "sleep");
+    // 6: the reveal
+    const lamb = r.lambs[0]!;
+    expect(check(v)).toContain(`${lamb.name}</b> is <b>${String(lamb.phenotype["colour"])}`);
+    expect(renderPanel(g, v)).toContain('class="dcard');
+    v = view();
+    advanceTutorial(g, "reveal");
+    // 7: lambs grow up
+    expect(check(v)).toContain("two seasons");
+    expect(tutorialTarget(g, v)).toMatchObject({ kind: "sheep", id: lamb.id });
+    advanceTutorial(g, "grow");
+    // 8: the market
+    v = view({ panel: "market" });
+    expect(check(v)).toContain("nothing known");
+    buySheep(g, cheapestMarketEwe(g)!.id);
+    expect(tutorialStepMet(g, v)).toBe(true);
+    advanceTutorial(g, "market");
+    // 9: the goal, in plain words
+    const goal = check(v);
+    expect(goal).toContain("dilute");
+    expect(goal).toContain('data-tutorial="ack"');
+    advanceTutorial(g, "goal");
+    // 10: the flock arrives
+    expect(check(v)).toContain("Granny Moss");
+    advanceTutorial(g, "done");
+    expect(mentorHtml(g, v)).toBe("");
+    expect(seen).toEqual(TUTORIAL_STEPS.map((d) => d.id));
   });
 });

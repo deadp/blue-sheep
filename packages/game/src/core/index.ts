@@ -34,3 +34,7 @@ export {
   type Personality, type Flavour,
 } from "./personality.js";
 export { EWE_NAMES, RAM_NAMES, VILLAGERS } from "./names.js";
+export {
+  TUTORIAL_STEPS, MENTOR, NEIGHBOUR, newTutorialGame, advanceTutorial, skipTutorial, tutorialInfo, tutorialActive, tutorialStep,
+  cheapestMarketEwe, isTutorialFirstMating, colourOf, type TutorialStepId, type TutorialStepDef, type TutorialInfo,
+} from "./tutorial.js";

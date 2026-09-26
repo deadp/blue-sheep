@@ -6,12 +6,14 @@ import {
   acceptOrder, advanceSeason, buySheep, buyUpgrade, hasUpgrade, upgradeDef, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
   seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf,
+  advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   type GameState, type Goal, type Sheep,
 } from "./core/index.js";
 import { WorldView, type Hotspot, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
 import {
   Overlay, PANEL_NAMES, defaultView, delegateActions, hudHtml, panelOptions, renderPanel, toast,
-  type ActionData, type PanelName, type View,
+  mentorHtml, tutorialStepMet, tutorialTarget,
+  type ActionData, type PanelName, type TutorialTarget, type View,
 } from "./ui/index.js";
 import { fastForward } from "./debug.js";
 
@@ -36,7 +38,9 @@ export type Action =
   | { type: "rename"; id: string; name: string }
   | { type: "newGame"; seed?: number }
   | { type: "open"; panel: PanelName; id?: string }
-  | { type: "close" };
+  | { type: "close" }
+  /** start: a new tutorial game; ack: the mentor's "Got it"; skip: end the tutorial now (the flock arrives). */
+  | { type: "tutorial"; op: "start" | "ack" | "skip"; seed?: number };
 
 type Marker = NonNullable<WorldSheep["marker"]> | null;
 const COLOURS = new Set(["white", "black", "brown", "blue", "fawn"]);
@@ -61,6 +65,14 @@ export class App {
   private portraitStop: (() => void) | null = null;
   /** The sheep the world camera is visiting (sheep card open). */
   private attendedId: string | null = null;
+  // ---- tutorial: the mentor card, the arrow, what it points at
+  private readonly mentorEl: HTMLElement;
+  private readonly arrowEl: HTMLElement;
+  private tutTarget: TutorialTarget = null;
+  private tutStepSeen = -1;
+  private tutFrame = 0;
+  /** Target + window size last scrolled into view (so the player can still scroll freely afterwards). */
+  private tutScrollKey = "";
 
   constructor() {
     const q = new URLSearchParams(location.search);
@@ -81,6 +93,9 @@ export class App {
       this.state = ff.state;
       this.view.report = ff.report;
       this.persist = false;
+    } else if (q.get("tutorial") === "1") {
+      this.state = newTutorialGame(seed ?? randomSeed());
+      this.persist = false;
     } else if (seed !== null) {
       this.state = newGame(seed);
       this.persist = false;
@@ -100,6 +115,13 @@ export class App {
     this.overlay = new Overlay((d) => this.onData(d), "#overlay");
     this.overlay.onClose = () => this.onOverlayClosed();
     delegateActions(this.hudEl, (d) => this.onData(d));
+    this.mentorEl = document.body.appendChild(Object.assign(document.createElement("div"), { id: "mentor" }));
+    this.mentorEl.hidden = true;
+    delegateActions(this.mentorEl, (d) => this.onData(d));
+    this.arrowEl = document.body.appendChild(Object.assign(document.createElement("div"), { id: "tut-arrow" }));
+    this.arrowEl.setAttribute("aria-hidden", "true");
+    this.arrowEl.innerHTML = `<svg viewBox="0 0 40 48" width="40" height="48"><path d="M13 2h14v22h11L20 46 2 24h11z" /></svg>`;
+    this.arrowEl.hidden = true;
     this.makeWorld();
 
     if (panel) this.openPanel(panel, undefined);
@@ -181,8 +203,9 @@ export class App {
     const planned = new Set<string>([...Object.keys(s.plans), ...Object.values(s.plans)]);
     const selected = this.view.panel === "sheep" || this.view.panel === "forecast" ? this.view.sheepId : null;
     const p2 = this.paddock2Open();
+    const pointAt = this.tutTarget?.kind === "sheep" ? this.tutTarget.id : null;
     const marker = (x: Sheep): Marker => {
-      if (x.id === selected) return "selected";
+      if (x.id === selected || x.id === pointAt) return "selected";
       if (planned.has(x.id)) return "planned";
       if (x.ill) return "ill";
       if (x.born === s.season && x.origin === "bred") return "new";
@@ -221,6 +244,7 @@ export class App {
   // ------------------------------------------------------------------ rendering
 
   private render(): void {
+    this.tutorialAdvance();
     this.hudEl.innerHTML = hudHtml(this.state, this.view);
     if (this.view.panel) {
       this.overlay.show(renderPanel(this.state, this.view), panelOptions(this.view.panel));
@@ -232,6 +256,130 @@ export class App {
     document.body.dataset.panel = this.view.panel ?? "";
     this.world.setSnapshot(this.snapshot());
     this.syncSheepLife();
+    this.renderTutorial();
+  }
+
+  // ------------------------------------------------------------------ tutorial
+
+  /** If the player has just done what the tutorial step asked, move on (possibly several steps). */
+  private tutorialAdvance(): void {
+    if (this.sleeping || !tutorialActive(this.state)) return;
+    let moved = false;
+    for (let i = 0; i < TUTORIAL_STEPS.length && tutorialStepMet(this.state, this.view); i++) {
+      const id = tutorialStep(this.state);
+      if (!id || !advanceTutorial(this.state, id)) break;
+      moved = true;
+    }
+    if (moved) { this.persist = true; this.save(); }
+  }
+
+  /** The mentor card, the ring on the thing to click and the arrow pointing at it. */
+  private renderTutorial(): void {
+    const on = tutorialActive(this.state);
+    const info = tutorialInfo(this.state);
+    const target = on ? tutorialTarget(this.state, this.view) : null;
+    const changedTarget = JSON.stringify(target) !== JSON.stringify(this.tutTarget);
+    this.tutTarget = target;
+    if (changedTarget) this.world.setSnapshot(this.snapshot()); // the pointed-at sheep gets a ring
+    document.body.classList.toggle("tut-on", on);
+    const hudTarget = target?.kind === "html" && target.selectors[0]!.startsWith("#hud");
+    document.body.classList.toggle("tut-hud-top", on && hudTarget && !!this.view.panel);
+    const html = on ? mentorHtml(this.state, this.view) : "";
+    if (this.mentorEl.innerHTML !== html) this.mentorEl.innerHTML = html;
+    this.mentorEl.hidden = !on;
+    document.body.dataset.tutorial = on && info ? String(info.step) : "";
+    // A new step that points at a sheep in the field: bring it into view (unless a card is being visited).
+    const step = on && info ? info.step : -1;
+    if (step !== this.tutStepSeen) {
+      this.tutStepSeen = step;
+      // (With another sheep's card open the camera is visiting that one: glide over to the new target.)
+      if (target?.kind === "sheep" && !(this.view.panel === "sheep" && this.view.sheepId === target.id)) this.world.focus(target.id);
+    }
+    this.applyRings();
+    if (on && !this.tutFrame) this.tutFrame = requestAnimationFrame(this.tutorialFrame);
+    if (!on) this.arrowEl.hidden = true;
+  }
+
+  private applyRings(): void {
+    const t = this.tutTarget;
+    const sels = !t ? [] : t.kind === "html" ? t.selectors : t.rings ?? [];
+    const want = new Set<Element>();
+    for (const sel of sels) document.querySelectorAll(sel).forEach((el) => want.add(el));
+    document.querySelectorAll(".tut-ring").forEach((el) => { if (!want.has(el)) el.classList.remove("tut-ring"); });
+    for (const el of want) el.classList.add("tut-ring");
+  }
+
+  /** Every frame while the tutorial runs: keep the arrow on its (possibly wandering) target. */
+  private readonly tutorialFrame = (): void => {
+    this.tutFrame = 0;
+    if (!tutorialActive(this.state)) { this.arrowEl.hidden = true; return; }
+    this.applyRings();
+    const t = this.tutTarget;
+    // The arrow's tip sits on the target; it comes from above (down), below (up) or the left (right).
+    let pt: { x: number; y: number; dir: "down" | "up" | "right" } | null = null;
+    if (t?.kind === "sheep" && !this.sleeping) {
+      const p = this.world.screenPoint(t.id);
+      if (p) pt = { x: p.x, y: p.y - 4, dir: "down" };
+    } else if (t?.kind === "html") {
+      const el = document.querySelector<HTMLElement>(t.selectors[0]!);
+      const key = `${t.selectors[0]}|${window.innerWidth}x${window.innerHeight}|${this.view.panel ?? ""}`;
+      if (el && key !== this.tutScrollKey) {
+        this.tutScrollKey = key;
+        if (el.closest("#overlay")) el.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+      const r = el?.getBoundingClientRect();
+      if (r && r.width > 0 && r.height > 0) {
+        // Buttons inside a panel get the arrow from the left, so it doesn't sit on the text above them
+        // (a price, a heading) unless the mentor card is in the way.
+        const m = this.mentorEl.getBoundingClientRect();
+        const leftFree = r.left - 60 > (this.mentorEl.hidden || r.top > m.bottom || r.bottom < m.top ? 0 : m.right);
+        if (el!.closest("#overlay") && el!.tagName === "BUTTON" && leftFree) pt = { x: r.left - 6, y: r.top + r.height / 2, dir: "right" };
+        else if (r.top < 110) pt = { x: r.left + r.width / 2, y: r.bottom + 4, dir: "up" };
+        else pt = { x: r.left + r.width / 2, y: r.top - 4, dir: "down" };
+      }
+    }
+    if (pt) {
+      const W = window.innerWidth, H = window.innerHeight;
+      const x = Math.max(24, Math.min(W - 24, pt.x));
+      const y = pt.dir === "up" ? Math.min(H - 56, pt.y) : pt.dir === "down" ? Math.max(52, Math.min(H - 4, pt.y)) : pt.y;
+      this.arrowEl.style.left = `${Math.round(x)}px`;
+      this.arrowEl.style.top = `${Math.round(y)}px`;
+      this.arrowEl.dataset.dir = pt.dir;
+      this.arrowEl.hidden = false;
+    } else {
+      this.arrowEl.hidden = true;
+    }
+    this.tutFrame = requestAnimationFrame(this.tutorialFrame);
+  };
+
+  /** The handover: close any panel so the new arrivals are seen popping into the field, with a sparkle each. */
+  private welcomeFlock(before: Set<string>): void {
+    const arrived = this.state.flock.filter((id) => !before.has(id));
+    if (!arrived.length) return;
+    this.view.panel = null;
+    this.view.tab = null;
+    this.render();
+    this.world.focus(arrived[0]!);
+    for (const id of arrived) this.world.celebrate(id);
+  }
+
+  private tutorialOp(op: "start" | "ack" | "skip", seed?: number): void {
+    if (op === "start") { this.startNewGame(seed, true); return; }
+    if (op === "skip") {
+      const before = new Set(this.state.flock);
+      skipTutorial(this.state);
+      this.welcomeFlock(before);
+      toast("The rest of the old farm's flock has arrived. Happy farming!");
+    } else {
+      const id = tutorialStep(this.state);
+      const def = TUTORIAL_STEPS.find((d) => d.id === id);
+      if (!id || !def?.ack) throw new Error("Do what Old Tom asks to carry on.");
+      const before = new Set(this.state.flock);
+      advanceTutorial(this.state, id);
+      if (tutorialStep(this.state) === "done") this.welcomeFlock(before);
+    }
+    this.persist = true;
+    this.save();
   }
 
   /**
@@ -319,6 +467,15 @@ export class App {
     if (this.sleeping) return;
     try {
       if ("newgame" in d) { this.startNewGame(d["newgame"] ? Number(d["newgame"]) : undefined); return; }
+      if (d["tutorial"]) {
+        const op = d["tutorial"] as "start" | "ack" | "skip";
+        const inp = op === "start" ? this.overlay.el.querySelector<HTMLInputElement>("input[name=seed]") : null;
+        const typed = inp && inp.value.trim() ? Number(inp.value.trim()) : undefined;
+        // From the title of an unplayed farm, keep its seed; otherwise a new one (or the one typed in).
+        const seed = typed ?? (this.view.panel === "title" && !this.view.hasSave ? this.state.seed : undefined);
+        this.tutorialOp(op, seed);
+        if (op === "start") return;
+      }
       if (d["open"]) this.openPanel(d["open"] as PanelName, d["sheepId"], d["tab"] ?? null);
       else if (d["sheep"]) this.openPanel("sheep", d["sheep"]);
       else if (d["findmate"]) this.openPanel("forecast", d["findmate"]);
@@ -372,6 +529,7 @@ export class App {
       case "upgrade": this.mutate(() => buyUpgrade(this.state, a.id)); break;
       case "rename": this.mutate(() => renameSheep(this.state, a.id, a.name)); break;
       case "newGame": this.startNewGame(a.seed); return;
+      case "tutorial": this.tutorialOp(a.op, a.seed); if (a.op === "start") return; break;
       case "open": this.openPanel(a.panel, a.id); break;
       case "close": this.view.panel = null; break;
       case "sleep": await this.sleep(); return;
@@ -404,11 +562,13 @@ export class App {
     } finally {
       this.sleeping = false;
     }
+    if (tutorialActive(this.state)) this.render();
   }
 
-  private startNewGame(seed?: number): void {
+  private startNewGame(seed?: number, tutorial = false): void {
     const s = seed !== undefined && Number.isFinite(seed) ? Math.floor(seed) : randomSeed();
-    this.state = newGame(s);
+    this.state = tutorial ? newTutorialGame(s) : newGame(s);
+    this.tutStepSeen = -1;
     this.view.report = null;
     this.view.sheepId = null;
     this.view.mateId = null;
@@ -420,7 +580,7 @@ export class App {
     this.world.dispose();
     this.makeWorld();
     this.render();
-    toast(`A new farm (seed ${s}). The old flock is waiting in the paddock.`);
+    if (!tutorial) toast(`A new farm (seed ${s}). The old flock is waiting in the paddock.`);
   }
 
   private setReducedMotion(on: boolean): void {
@@ -500,6 +660,8 @@ export class App {
       act: (a: Action) => this.act(a),
       snapshot: () => this.snapshot(),
       version: VERSION,
+      /** The tutorial's current step ({ step, id, done }), or null for a game without one. */
+      tutorial: () => { const t = tutorialInfo(this.state); return t ? { ...t } : null; },
       /** Not part of the contract: render stats (draw calls, live portrait, the dog) for probes. */
       debug: { world: () => this.world.debugStats() },
       forecast: {

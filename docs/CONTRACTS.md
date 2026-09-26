@@ -79,6 +79,24 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
 - **Ageing**: adults at 2 seasons, ewes breed until age 20, death at 24.
 - **Litter rule**: a valid planned mating always produces ≥1 lamb unless the
   ewe is ill; twins possible. (The "no lamb" bug must not return.)
+- **Tutorial** (`core/tutorial.ts`, `ui/tutorial.ts`): new games from the title start in it unless the
+  player skips. `newTutorialGame(seed)` is `newGame(seed)` with its starter flock held back
+  (`state.tutorial.held`) and one white ewe and one white ram instead. Both carry hidden colour and are
+  black underneath; the ewe also carries one dilute copy and the ram none, so no tutorial lamb is blue. Their
+  genomes come from a separate RNG (`seed ^ 0x7a11`), so the main RNG, market and money equal
+  `newGame(seed)`'s. Only while the tutorial runs, the pair's first mating gives a single lamb, and meiosis
+  is rerolled with the game RNG until that lamb is coloured (not white, not blue). That makes the first
+  reveal a sure surprise, and it proves both parents carry hidden colour (two discovery cards). Ten steps, one idea each:
+  ewe → ram → forecast → plan → sleep → reveal → grow → market → goal → done. Each advances on the real
+  action (`tutorialStepMet(state, view)` after every controller render), except `goal` and `done`, which
+  have a "Got it" button. Entering `market` tops up coins if the cheapest ewe is unaffordable
+  (`tutorial.gift`). Entering `done` hands over the held flock: the very sheep of `newGame(seed)`, same ids,
+  genomes and ages (birth seasons shift by the seasons the tutorial took). **Acts are not held.** The
+  tutorial *is* act 0: its mating produces the first lamb, so the sleep in step 5 enters act 1 ("Hidden
+  colours") exactly as a normal game does, and the handover then happens in act 1. From there acts,
+  balance and oracle numbers follow the normal rules (the farm just has four extra sheep). `skipTutorial`
+  hands over at once. `state.tutorial` is `null` for games without it (skipped at the title, `?seed=`,
+  `?act=`, old saves).
 
 ## 2. Paths and ownership
 
@@ -126,6 +144,13 @@ export function hireVisitingRam(state): void;
 export function renameSheep(state, id, name): void;
 export function buyUpgrade(state, id): void;                // farm improvement (see §1)
 
+// tutorial (see §1)
+export function newTutorialGame(seed: number): GameState;
+export function advanceTutorial(state, stepId): boolean;     // no-op unless stepId is the current step
+export function skipTutorial(state): void;
+export function tutorialInfo(state): { step: number; id: TutorialStepId; done: boolean } | null;
+export const TUTORIAL_STEPS: { id; title; ack }[];            // 10 steps, 1-based in state
+
 // forecasts (knowledge-limited; all pure)
 export function forecastCross(state, eweId, ramId): CrossForecast;   // existing shape + keep
 export function candidates(state, forId): Sheep[];
@@ -152,6 +177,7 @@ State fields added in v2 (names are fixed so UI and probes can rely on them):
 `visitingRam: { id, fee, season } | null`, `hiredRam: string|null`,
 `events: EventRecord[]`, `pendingEvent: ...|null`, `unlocks: string[]`
 (values: `"numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards"`),
+`tutorial: { step, done, ewe, ram, held: Sheep[], gift } | null` (absent in older saves → `null`),
 `ending: { shown: boolean; season: number } | null`, `stats` (lambs born,
 blues born, coins earned, discoveries, fairs won).
 
@@ -196,6 +222,8 @@ export class WorldView {
   portrait(sheep: WorldSheep, px?: number): string; // PNG data URL of that sheep on a pastel background
   celebrate(id: string): void;         // sparkles/confetti above a sheep
   focus(id: string | Hotspot): void;   // glide camera
+  screenPoint(id: string | Hotspot): { x: number; y: number; inView: boolean } | null;
+    // client px just above a sheep's head (or a hotspot's anchor); the tutorial's arrow points there
   attend(id: string | null, opts?: { offsetPx?: number; say?: string }): void;
     // visit a sheep (its card is open): camera glides in beside it (shifted left by offsetPx for a
     // right-hand card), it stops, turns to the camera, flicks its ears, hops or tilts its head and
@@ -248,7 +276,17 @@ data-sleep="1"
 data-rename="id"          prompts for a name
 data-newgame="seed?"      start over
 data-tab="…"              panel-local tab switch (view state kept by controller)
+data-tutorial="start|ack|skip"  new tutorial game / the mentor's "Got it" / skip the tutorial
 ```
+
+Tutorial UI (`ui/tutorial.ts`): `mentorHtml(state, view)` is a card docked bottom-left (`#mentor`, above
+the overlay). While it is shown, centred panels are pushed right to make room for it. It shows Old Tom
+(👴, from `VILLAGERS`) with one short idea per step, and Granny Moss (👵) at the handover.
+`tutorialTarget` names what to point at: a world sheep (it gets the "selected" ground ring and a bobbing
+arrow at `screenPoint`) or HTML selectors (a pulsing `.tut-ring`, and the arrow on the first one, from the
+left for panel buttons). The HUD's goal pill tracks the tutorial until the goal step. The title offers
+**Start with the tutorial** (primary) and **Skip tutorial**, and settings has **Replay the tutorial…**
+(behind a confirm).
 
 Presentation rules: one odds meter everywhere (`oddsMeter`/`pips`: ten segments, the odds in words,
 a "long shot · likely · sure" scale, % only with numbers) and the same look for learning
@@ -279,12 +317,15 @@ discovery/concept cards.
   shows title. Builds `WorldView`, renders HUD, subscribes clicks.
 - **Deep links** (needed by probes and screenshots):
   `?seed=N` new game with seed (ignores save, does not overwrite it until the
-  player acts), `?panel=<name>` open a panel on boot, `?act=N` new game
+  player acts), `?tutorial=1` a new tutorial game (with `?seed=N` if given; not saved until the player
+  acts; `?tutorial=0` or no param keeps the normal start), `?panel=<name>` open a panel on boot, `?act=N` new game
   fast-forwarded to act N with a fixture flock (debug), `?nomotion=1` disable
   animation, `?fresh=1` clear save.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
-  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"newGame", seed} | {type:"open", panel} | {type:"close"}`.
+  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"newGame", seed} | {type:"open", panel} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?}`.
+  `window.__game.tutorial()` returns `{ step, id, done }` or `null` (no tutorial). `body[data-tutorial]`
+  holds the running step number, or `""`.
   Also sets `document.body.dataset.ready = "1"` when the first frame has
   rendered and `document.body.dataset.panel = <open panel name or "">`.
   `window.__game.debug.world()` (not contract) returns `WorldView.debugStats()` for probes.
@@ -314,7 +355,14 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    is in the world exactly when the dog improvement is owned. With motion on it saves frame sequences
    (`life-world-*`, `life-close-*`, `life-sheep-*`, `life-report-*`, `life-night`) and notes fps and
    draw calls.
-7. Records a 10 s webm of the idle world.
+7. Tutorial (`tutorial.mjs`): boots `?tutorial=1&fresh=1&nomotion=1` and plays all ten steps with real
+   clicks (world sheep are clicked where the arrow points; `open` is only a fallback). It asserts that each
+   step advances on its action, that the mentor card never covers a ringed target, the arrow's tip or the
+   panel's primary button, that the first lamb is coloured and earns a discovery card, that the market step
+   buys a ewe, and that the end flock is `?seed=<same>`'s starter flock plus the four tutorial sheep. It
+   also checks skipping and that `?seed` alone has no tutorial. Screenshots `tut-01`…`tut-10`,
+   `tut-04-1024`, `tut-end`.
+8. Records a 10 s webm of the idle world.
 
 Exit code non-zero on any failure; prints a one-screen summary. Artifacts in
 `packages/game/probe/out/` (gitignored).

@@ -8,10 +8,10 @@ passing unit tests do not prove the game runs. Spec: `docs/CONTRACTS.md` §7.
 
 | Command | What it does |
 |---|---|
-| `npm run probe` | build, then smoke → play → panels → life → video; summary table; exit 1 on any failure |
+| `npm run probe` | build, then smoke → play → panels → life → tutorial → video; summary table; exit 1 on any failure |
 | `npm run probe:quick` | build, then smoke only |
 | `node packages/game/probe/run.mjs play panels` | build, then just the named steps |
-| `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, video) |
+| `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, life, tutorial, video) |
 | `npm run probe:shot -- "?seed=7&panel=vet" vet` | build and screenshot any deep link to `out/vet.png` (`--no-ready` for builds without the controller) |
 | `npm run serve` | build and serve on `0.0.0.0:4173` for a human; prints the LAN URL |
 
@@ -44,6 +44,16 @@ screenshots of old code.
   (`__game.debug.world()`). With motion on it saves 6-frame sequences 300 ms
   apart (`life-world-*`, `life-close-*` zoomed in, `life-sheep-*`,
   `life-sheep-bleat`, `life-night`, `life-report-*`) and notes fps and draw calls.
+- **tutorial.mjs**: boots `?tutorial=1&fresh=1&nomotion=1` and plays all ten
+  tutorial steps with real clicks. World sheep are clicked where the tutorial's
+  arrow points, with `open` as a fallback that the summary reports. It asserts
+  that each step advances on its action and that the mentor card never covers
+  a ringed target, the arrow's tip or the panel's primary button. It also
+  asserts that the first lamb is coloured and earns a discovery card, that a
+  ewe is bought at the market, and that the final flock is the `?seed=<same>`
+  starter flock plus the tutorial's ewe, ram, lamb and bought ewe. Skipping is
+  checked too. Screenshots: `tut-01..tut-10.png`, `tut-04-1024.png` and
+  `tut-end.png`.
 - **video.mjs**: records 10 s of the idle world with motion on to `idle.webm`.
   Watch it for flicker and jitter.
 

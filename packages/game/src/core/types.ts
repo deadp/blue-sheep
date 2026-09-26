@@ -174,6 +174,22 @@ export interface Stats {
 
 export interface ActStart { season: number; ordersFilled: number; fairsWon: number }
 
+/**
+ * The tutorial (core/tutorial.ts). `null` for games started without it (skipped, deep links, old saves).
+ * Steps are 1-based (TUTORIAL_STEPS); `done` once the player has finished or skipped it.
+ */
+export interface TutorialState {
+  step: number;
+  done: boolean;
+  /** The tutorial's white ewe and ram (both carry hidden colour). */
+  ewe: string;
+  ram: string;
+  /** The normal starter flock of newGame(seed), minded by a neighbour until the handover. */
+  held: Sheep[];
+  /** Coins the mentor chipped in at the market step (0 if none were needed). */
+  gift: number;
+}
+
 export interface GameState {
   version: 2;
   seed: number;
@@ -214,6 +230,8 @@ export interface GameState {
   upgrades?: UpgradeId[];
   /** Legacy v1 notebook/achievements, kept for old saves. */
   achievements: string[];
+  /** Tutorial progress; null when there is no tutorial (absent in older saves: loaded as null). */
+  tutorial: TutorialState | null;
 }
 
 // ---- Forecasts ------------------------------------------------------------

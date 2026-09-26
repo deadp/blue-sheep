@@ -1,6 +1,6 @@
 /** Title, help, settings, ending and the HUD. */
 import {
-  canBreed, currentAct, growingLambs, lambRoom, seasonLabel, seasonOfYear, type GameState,
+  TUTORIAL_STEPS, canBreed, currentAct, growingLambs, lambRoom, seasonLabel, seasonOfYear, tutorialInfo, tutorialStep, type GameState,
 } from "../core/index.js";
 import { esc, has, prop, stars } from "./util.js";
 import type { View } from "./view.js";
@@ -23,10 +23,13 @@ export function titleHtml(state: GameState, view: View): string {
     <h1>Blue Sheep</h1>
     <p class="flavour">${esc(FLAVOUR[state.seed % FLAVOUR.length])}</p>
     <div class="title-actions">
-      ${played ? `<button class="primary big" data-close>Continue · ${esc(seasonLabel(state.season))}</button>` : `<button class="primary big" data-close>Start farming</button>`}
+      ${played
+        ? `<button class="primary big" data-close>Continue · ${esc(seasonLabel(state.season))}</button>`
+        : `<button class="primary big" data-tutorial="start">Start with the tutorial</button>
+           <button class="secondary" data-close>Skip tutorial</button>`}
       <div class="newgame"><label>Seed <input name="seed" inputmode="numeric" placeholder="random" size="8"></label>
         <button class="secondary" data-newgame="">New farm</button></div>
-      <button class="link" data-open="help">How to play</button>
+      <div class="row center">${played ? `<button class="link" data-tutorial="start">Play the tutorial</button>` : ""}<button class="link" data-open="help">How to play</button></div>
     </div>
   </div>`;
 }
@@ -57,6 +60,10 @@ export function settingsHtml(_state: GameState, view: View): string {
       <button class="toggle ${view.reducedMotion ? "on" : ""}" data-toggle="motion" role="switch" aria-checked="${view.reducedMotion ? "true" : "false"}">${view.reducedMotion ? "On" : "Off"}</button></div>
     <div class="setting"><div><b>Save file</b><div class="meta">Your farm saves itself. Keep a copy, or load one.</div></div>
       <div class="row"><button class="secondary" data-export="1">Export save</button><button class="secondary" data-import="1">Import save</button></div></div>
+    <div class="setting"><div><b>Replay the tutorial</b><div class="meta">A new two-sheep farm with Old Tom showing you round.</div></div>
+      ${view.tab === "confirm-tutorial"
+        ? `<div class="confirm"><span>Leave this farm for the tutorial?</span><div class="row"><button class="danger" data-tutorial="start">Yes, replay it</button><button class="secondary" data-tab="">Keep this one</button></div></div>`
+        : `<button class="secondary" data-tab="confirm-tutorial">Replay the tutorial…</button>`}</div>
     <div class="setting"><div><b>Start over</b><div class="meta">A fresh farm with a new flock.</div></div>
       ${confirm
         ? `<div class="confirm"><span>Really leave this farm?</span><div class="row"><button class="danger" data-newgame="">Yes, new farm</button><button class="secondary" data-tab="">Keep this one</button></div></div>`
@@ -124,8 +131,19 @@ function hudHint(state: GameState, view: View): string {
 
 const SEASON_ICON = ["🌱", "☀️", "🍂", "❄️"];
 
-export function hudHtml(state: GameState, view: View): string {
+/** While the tutorial runs (until its goal step) the goal pill tracks the tutorial instead of the act. */
+function goalPill(state: GameState): string {
   const a = currentAct(state);
+  const tut = tutorialInfo(state);
+  const id = tutorialStep(state);
+  if (tut && id && id !== "goal" && id !== "done") {
+    const def = TUTORIAL_STEPS[tut.step - 1]!;
+    return `<button class="pill goal tut" data-open="help" title="The tutorial"><span class="g-top"><span class="g-act">Tutorial · step ${tut.step} of ${TUTORIAL_STEPS.length}</span></span><span class="g-text">${esc(def.title)}</span><span class="bar"><span style="${prop("p", (tut.step - 1) / TUTORIAL_STEPS.length)}"></span></span></button>`;
+  }
+  return `<button class="pill goal" data-open="board" title="${esc(a.progressText)}"><span class="g-top">${actTrack(state, true)}<span class="g-act">${a.endless ? "Endless" : `Act ${a.act + 1}`} · ${esc(a.title)}</span></span><span class="g-text">${esc(a.goalText)}</span><span class="bar"><span style="${prop("p", a.progress)}"></span></span></button>`;
+}
+
+export function hudHtml(state: GameState, view: View): string {
   const nPlans = Object.keys(state.plans).length;
   const openOrders = state.orders.filter((o) => o.status === "open").length;
   const btn = (panel: string, label: string, icon: string, badge = 0, sec = false) =>
@@ -138,7 +156,7 @@ export function hudHtml(state: GameState, view: View): string {
       <span class="pill" title="Flock size">🐑 ${state.flock.length}<span class="dim">/${state.flockCap}</span></span>
       ${has(state, "orders") ? `<span class="pill">${stars(state.reputation)}</span>` : ""}
       </div>
-      <button class="pill goal" data-open="board" title="${esc(a.progressText)}"><span class="g-top">${actTrack(state, true)}<span class="g-act">${a.endless ? "Endless" : `Act ${a.act + 1}`} · ${esc(a.title)}</span></span><span class="g-text">${esc(a.goalText)}</span><span class="bar"><span style="${prop("p", a.progress)}"></span></span></button>
+      ${goalPill(state)}
     </div>
     <div class="hud-btns">
       ${btn("board", "Board", "📋")}
@@ -152,5 +170,5 @@ export function hudHtml(state: GameState, view: View): string {
       <button class="hud-sleep" data-sleep="1" title="Sleep to end the season">Sleep 🌙${nPlans ? `<span class="badge">${nPlans}</span>` : ""}</button>
     </div>
   </div>
-  <div class="hud-hint">${hudHint(state, view)}</div>`;
+  ${tutorialStep(state) ? "" : `<div class="hud-hint">${hudHint(state, view)}</div>`}`;
 }

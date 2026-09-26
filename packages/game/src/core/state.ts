@@ -189,6 +189,7 @@ export function newGame(seed: number): GameState {
     stats: { lambsBorn: 0, bluesBorn: 0, coinsEarned: 0, discoveries: 0, fairsWon: 0, ordersFilled: 0, ordersFailed: 0 },
     upgrades: [],
     achievements: [],
+    tutorial: null,
   };
   // Starting flock: 4 ewes + 1 ram, all adults. Resample until blue is reachable:
   // at least two hidden `d` alleles and one black (a/a B/_) sheep.
@@ -240,6 +241,8 @@ export function deserialize(json: string): GameState {
     const st = raw as unknown as GameState;
     // Saves from before farm improvements have no `upgrades`: treat as none bought.
     if (!Array.isArray(st.upgrades)) st.upgrades = [];
+    // Saves from before the tutorial have none.
+    if (st.tutorial === undefined) st.tutorial = null;
     return st;
   }
   if (raw["version"] === 1) return migrateV1(raw);
@@ -305,6 +308,7 @@ export function migrateV1(v1: Record<string, unknown>): GameState {
     },
     upgrades: [],
     achievements,
+    tutorial: null,
   };
   if (state.flock.length === 0) throw new Error("This old save has no sheep left to farm.");
   addLog(state, "Your farm has been carried over to the new version.");

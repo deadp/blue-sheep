@@ -16,6 +16,7 @@ import {
 import type { CrossForecast, GameState, SeasonReport, Sheep } from "./types.js";
 import { feedPerHead, hasUpgrade } from "./upgrades.js";
 import { departVisitingRam, offerVisitingRam } from "./visitor.js";
+import { isTutorialFirstMating, tutorialLambGenome } from "./tutorial.js";
 
 /** Chance of twins for a mating whose lambs would have inbreeding f. */
 export function twinChance(f: number): number {
@@ -65,10 +66,13 @@ export function advanceSeason(state: GameState): SeasonReport {
     if (!state.flock.includes(ewe.id)) continue;
     if (isIll(ewe, t)) { say(`${ewe.name} was too poorly to lamb this season.`); continue; }
     const f = ped.offspringInbreeding(ewe.id, ram.id);
-    const litter = rng.chance(twinChance(f)) ? 2 : 1;
+    // The tutorial's first mating gives one lamb that shows a hidden colour (see core/tutorial.ts).
+    const tutorialLamb = isTutorialFirstMating(state, ewe.id, ram.id);
+    const litter = tutorialLamb ? 1 : rng.chance(twinChance(f)) ? 2 : 1;
     const born: Sheep[] = [];
     for (let i = 0; i < litter; i++) {
-      const genome = mate(genomeOf(ewe), genomeOf(ram), species.map, rng);
+      const draw = () => mate(genomeOf(ewe), genomeOf(ram), species.map, rng);
+      const genome = tutorialLamb ? tutorialLambGenome(draw) : draw();
       const lamb = addSheep(state, rng, {
         sex: rng.chance(0.5) ? "ewe" : "ram", born: t + 1, dam: ewe.id, sire: ram.id, genome, inbreeding: f, origin: "bred",
       });

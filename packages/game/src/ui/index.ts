@@ -21,6 +21,7 @@ export { marketHtml, vetHtml, fairHtml } from "./farm.js";
 export { codexHtml, CONCEPTS } from "./codex.js";
 export { reportHtml } from "./report.js";
 export { actTrack, ACT_ICONS } from "./track.js";
+export { mentorHtml, tutorialTarget, tutorialStepMet, tutorialLamb, type TutorialTarget } from "./tutorial.js";
 export { oddsMeter, learnMeter, ODDS_SCALE, LEARN_SCALE } from "./util.js";
 
 const RENDER: Record<PanelName, (s: GameState, v: View) => string> = {

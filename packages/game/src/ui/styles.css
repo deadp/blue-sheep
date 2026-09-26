@@ -517,6 +517,43 @@ ul.plain { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-dire
 #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); opacity: 0; z-index: 40; background: var(--ink); color: #fffaf0; padding: 9px 18px; border-radius: 999px; font-weight: 700; box-shadow: 3px 3px 0 #0003; transition: opacity 0.2s, transform 0.2s; pointer-events: none; max-width: 80vw; text-align: center; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+/* ---------- Tutorial: mentor card, ring, arrow ---------- */
+#mentor { position: fixed; left: 14px; bottom: 14px; width: 318px; max-height: calc(100vh - 150px); overflow: auto; z-index: 30; background: var(--card); border: 3px solid var(--ink); border-radius: var(--radius); box-shadow: 5px 5px 0 #3b333055; padding: 10px 14px 12px; font-size: 0.93rem; animation: pop 0.2s ease-out; }
+#mentor[hidden] { display: none; }
+#mentor .m-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+#mentor .m-step { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+#mentor .m-skip { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+#mentor .m-talk { display: flex; gap: 10px; align-items: flex-start; }
+#mentor .m-talk + .m-talk { margin-top: 8px; padding-top: 8px; border-top: 2px dashed var(--line); }
+#mentor .m-face { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--ink); background: radial-gradient(circle at 50% 40%, #fff6d8, #f4dca6); display: grid; place-items: center; font-size: 1.7rem; line-height: 1; }
+#mentor .m-who { font-weight: 800; font-size: 0.85rem; color: var(--accent-dark); }
+#mentor p { margin: 3px 0; line-height: 1.38; }
+#mentor .row { justify-content: flex-end; margin-top: 8px; }
+/* the panels make room for the mentor on the left */
+body.tut-on #overlay:not(.side) { padding-left: 392px; }
+body.tut-on #overlay:not(.side) .panel { max-width: 100%; }
+/* the HUD lifts above an open panel when the next thing to press is up there */
+body.tut-hud-top #hud { z-index: 25; }
+.tut-ring { position: relative; outline: 3px solid var(--sun) !important; outline-offset: 3px; box-shadow: 0 0 0 7px #f2d54b66, 2px 2px 0 var(--ink) !important; animation: tutPulse 1.2s ease-in-out infinite; }
+div.tut-ring, .dcards.tut-ring { border-radius: 12px; }
+@keyframes tutPulse { 50% { box-shadow: 0 0 0 12px #f2d54b22, 2px 2px 0 var(--ink); outline-offset: 5px; } }
+#tut-arrow { position: fixed; z-index: 31; width: 40px; height: 48px; margin-left: -20px; margin-top: -48px; pointer-events: none; filter: drop-shadow(2px 2px 0 #3b333066); animation: tutBob 0.9s ease-in-out infinite; }
+#tut-arrow[hidden] { display: none; }
+#tut-arrow[data-dir=up] { margin-top: 0; transform: rotate(180deg); animation-name: tutBobUp; }
+#tut-arrow[data-dir=right] { margin-left: -44px; margin-top: -24px; transform: rotate(-90deg); transform-origin: 20px 24px; animation-name: tutBobRight; }
+#tut-arrow path { fill: var(--sun); stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+@keyframes tutBob { 50% { translate: 0 -8px; } }
+@keyframes tutBobUp { 50% { translate: 0 8px; } }
+@keyframes tutBobRight { 50% { translate: -8px 0; } }
+@media (max-width: 1200px) {
+  #mentor { width: 262px; font-size: 0.88rem; }
+  body.tut-on #overlay:not(.side) { padding-left: 290px; }
+}
+@media (max-width: 1000px) {
+  #mentor { left: 8px; right: 8px; width: auto; max-height: 38vh; }
+  body.tut-on #overlay:not(.side) { padding-left: 16px; padding-bottom: calc(38vh + 20px); }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .reveal { grid-template-columns: 1fr 24px 1fr; }
