@@ -5,7 +5,8 @@ import { ProbeError } from "./lib/browser.mjs";
 /**
  * Panel name (the value of ?panel= and of body[data-panel]) and the act to fast-forward to so the
  * panel has content (?act=N). Keep in sync with CONTRACTS.md §5.
- * @type {{ name: string, act?: number }[]}
+ * `shot` + `scrollTo` (a CSS selector) take an extra screenshot of a lower part of the panel.
+ * @type {{ name: string, act?: number, shot?: string, scrollTo?: string }[]}
  */
 export const PANELS = [
   { name: "title" },
@@ -14,6 +15,7 @@ export const PANELS = [
   { name: "forecast" },
   { name: "board" },
   { name: "market" },
+  { name: "market", act: 3, shot: "market-upgrades", scrollTo: "#overlay .mcard.upgrade" },
   { name: "settings" },
   { name: "report" },
   { name: "orders", act: 1 },
@@ -37,13 +39,19 @@ export const panels = {
         await g.boot(query);
         await g.waitPanel(p.name);
         await g.page.waitForTimeout(150); // let panel images (portraits) decode
-        ctx.artifact(await g.screenshot(`panel-${p.name}`));
+        if (p.scrollTo) {
+          const sel = p.scrollTo;
+          const found = await g.page.evaluate((q) => { const el = document.querySelector(q); el?.scrollIntoView({ block: "start" }); return !!el; }, sel);
+          if (!found) throw new ProbeError(`${sel} not found`);
+          await g.page.waitForTimeout(100);
+        }
+        ctx.artifact(await g.screenshot(`panel-${p.shot ?? p.name}`));
         g.assertNoErrors(`on ${query}`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (/controller not ready/.test(msg)) throw e;
-        failures.push(`${p.name}: ${msg.split("\n")[0]}`);
-        ctx.artifact(await g.screenshot(`panel-${p.name}-FAILED`).catch(() => ""));
+        failures.push(`${p.shot ?? p.name}: ${msg.split("\n")[0]}`);
+        ctx.artifact(await g.screenshot(`panel-${p.shot ?? p.name}-FAILED`).catch(() => ""));
       } finally {
         await g.close();
       }

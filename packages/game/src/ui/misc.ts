@@ -1,6 +1,6 @@
 /** Title, help, settings, ending and the HUD. */
 import {
-  canBreed, currentAct, lambRoom, seasonLabel, seasonOfYear, type GameState,
+  canBreed, currentAct, growingLambs, lambRoom, seasonLabel, seasonOfYear, type GameState,
 } from "../core/index.js";
 import { esc, has, prop, stars } from "./util.js";
 import type { View } from "./view.js";
@@ -85,19 +85,40 @@ export function endingHtml(state: GameState, _view: View): string {
 
 // ---- HUD --------------------------------------------------------------------
 
-function hint(state: GameState, view: View): string {
+/** "Your lambs are still growing — they can breed from Year 2, Spring." (null when there are no lambs). */
+export function growingText(state: GameState, sex?: "ewe" | "ram"): string | null {
+  const g = growingLambs(state, sex);
+  if (!g.count || g.readySeason === null) return null;
+  const who = sex ? `Your ${sex} lamb${g.count === 1 ? " is" : "s are"}` : `Your lamb${g.count === 1 ? " is" : "s are"}`;
+  const subject = g.count > 1 ? "the first" : sex === "ewe" ? "she" : sex === "ram" ? "he" : "it";
+  return `${who} still growing — ${subject} can breed from ${seasonLabel(g.readySeason)}.`;
+}
+
+function hint(state: GameState, view: View): { text: string; market?: string } {
   const n = Object.keys(state.plans).length;
-  if (view.panel === "forecast") return "Compare mates, then plan. The lambs come when you sleep.";
-  if (state.season === 0 && n === 0) return "Click a sheep to see what you know about it, then find it a mate.";
-  if (n > 0) return `${n} mating${n === 1 ? "" : "s"} planned — sleep in the house when you're ready.`;
-  if (lambRoom(state) < 1) return "Your fields are full. Sell a sheep at the market to make room for lambs.";
+  if (view.panel === "forecast") return { text: "Compare mates, then plan. The lambs come when you sleep." };
+  if (state.season === 0 && n === 0) return { text: "Click a sheep to see what you know about it, then find it a mate." };
+  if (n > 0) return { text: `${n} mating${n === 1 ? "" : "s"} planned — sleep in the house when you're ready.` };
+  if (lambRoom(state) < 1) {
+    const g = growingText(state);
+    return { text: `Your fields are full, so no lambs can be planned.${g ? ` ${g}` : ""}`, market: "Sell a sheep to make room" };
+  }
   const ready = state.flock.map((id) => state.sheep[id]!).filter((x) => canBreed(x, state.season));
   const hired = state.hiredRam ? 1 : 0;
-  if (!ready.some((x) => x.sex === "ram") && !hired) return "No ram is ready to breed. Buy one at the market, or wait for a ram lamb to grow up.";
-  if (!ready.some((x) => x.sex === "ewe")) return "No ewe is ready to breed. Buy one at the market, or wait for a ewe lamb to grow up.";
+  for (const sex of ["ram", "ewe"] as const) {
+    if (sex === "ram" && hired) continue;
+    if (ready.some((x) => x.sex === sex)) continue;
+    const g = growingText(state, sex);
+    return { text: `No ${sex} is ready to breed this season.${g ? ` ${g}` : ""}`, market: `Buy a grown ${sex}` };
+  }
   const open = state.orders.filter((o) => o.status === "open").length;
-  if (open && has(state, "orders")) return `${open} letter${open === 1 ? "" : "s"} waiting in the mailbox.`;
-  return "Click a sheep to see what you know about it.";
+  if (open && has(state, "orders")) return { text: `${open} letter${open === 1 ? "" : "s"} waiting in the mailbox.` };
+  return { text: "Click a sheep to see what you know about it." };
+}
+
+function hudHint(state: GameState, view: View): string {
+  const h = hint(state, view);
+  return `${esc(h.text)}${h.market ? ` <button class="link" data-open="market">${esc(h.market)} at the market</button>` : ""}`;
 }
 
 const SEASON_ICON = ["🌱", "☀️", "🍂", "❄️"];
@@ -130,5 +151,5 @@ export function hudHtml(state: GameState, view: View): string {
       <button class="hud-sleep" data-sleep="1" title="Sleep to end the season">Sleep 🌙${nPlans ? `<span class="badge">${nPlans}</span>` : ""}</button>
     </div>
   </div>
-  <div class="hud-hint">${esc(hint(state, view))}</div>`;
+  <div class="hud-hint">${hudHint(state, view)}</div>`;
 }

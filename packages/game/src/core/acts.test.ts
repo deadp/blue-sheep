@@ -60,12 +60,16 @@ describe("acts", () => {
     expect(checkActAdvance(g)).toBeNull(); // act 4 is the last
   });
 
-  it("orders filled before act 2 do not count toward it", () => {
+  it("orders filled in act 1 count toward act 2's goal, and the HUD shows them at once", () => {
     const g = newGame(13);
     enterAct(g, 1);
-    g.stats.ordersFilled = 5;
+    g.stats.ordersFilled = 5; // at most two carry over: one must be filled in act 2 itself
     enterAct(g, 2);
-    expect(currentAct(g).progress).toBe(0);
+    expect(currentAct(g).progress).toBeCloseTo(2 / 3);
+    expect(currentAct(g).progressText).toMatch(/^Two of three/);
+    expect(checkActAdvance(g)).toBeNull();
+    g.stats.ordersFilled = 6;
+    expect(checkActAdvance(g)?.act).toBe(3);
   });
 
   it("registry goal triggers the ending once, then endless mode", () => {

@@ -1,8 +1,8 @@
 /** The shed board: planning matings. */
 import { RAM_CAPACITY } from "./config.js";
 import { addLog, ageOf, canBreed, isAdult, isIll } from "./state.js";
-import { EWE_BREED_MAX_AGE } from "./config.js";
-import type { GameState, Pairing } from "./types.js";
+import { ADULT_AGE, EWE_BREED_MAX_AGE } from "./config.js";
+import type { GameState, Pairing, Sex } from "./types.js";
 
 export { RAM_CAPACITY };
 
@@ -67,6 +67,16 @@ export function unplanMating(state: GameState, eweId: string): void {
   const ewe = state.sheep[eweId], ram = state.sheep[state.plans[eweId]!];
   delete state.plans[eweId];
   if (ewe && ram) addLog(state, `Cancelled ${ewe.name} × ${ram.name}.`);
+}
+
+/**
+ * Lambs in the flock that are too young to breed (optionally of one sex), and the first season one of them
+ * can breed. Lambs take ADULT_AGE seasons to grow up.
+ */
+export function growingLambs(state: GameState, sex?: Sex): { count: number; readySeason: number | null } {
+  const lambs = state.flock.map((id) => state.sheep[id]!).filter((s) => !isAdult(s, state.season) && (!sex || s.sex === sex));
+  if (!lambs.length) return { count: 0, readySeason: null };
+  return { count: lambs.length, readySeason: Math.min(...lambs.map((s) => s.born + ADULT_AGE)) };
 }
 
 /** How many sheep over the cap the flock is (0 normally; the sim sells the excess at sleep). */

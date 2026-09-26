@@ -1,5 +1,5 @@
 /** Every balance number in one place, so the oracle scripts can tune them. */
-import type { ActNumber, FairCategory, Unlock } from "./types.js";
+import type { ActNumber, FairCategory, Unlock, UpgradeId } from "./types.js";
 
 export const SEASONS = ["Spring", "Summer", "Autumn", "Winter"] as const;
 export const ADULT_AGE = 2; // seasons
@@ -8,7 +8,10 @@ export const MAX_AGE = 24; // death at this age
 export const RAM_CAPACITY = 4; // ewes one ram can serve per season
 
 export const START_MONEY = 50;
-export const FEED_COST = 2; // per sheep per season
+export const FEED_COST = 2; // per sheep per season in year 1
+/** Hay gets dearer from year 2: +FEED_GROWTH coins a head per year after the first, up to FEED_MAX. */
+export const FEED_GROWTH = 0.5;
+export const FEED_MAX = 6;
 export const MARKET_SIZE = 3;
 
 /** Wool price per kg by colour; blue is the prize. */
@@ -18,11 +21,43 @@ export const COLOUR_VALUE: Record<string, number> = { white: 0, black: 6, brown:
 export const SHEEP_BASE_PRICE = 12;
 /** Lambs (not yet adult) sell for this fraction of an adult's value. */
 export const LAMB_PRICE_FACTOR = 0.5;
+/** The trader pays this share of a sheep's market worth in year 1, a little less each year after, down to the minimum… */
+export const SELL_FACTOR = 1;
+export const SELL_DECAY = 0.08;
+export const SELL_FACTOR_MIN = 0.5;
+/** …and asks this multiple of it. */
 export const BUY_MARKUP = 1.8;
 
 export const VET_FEE = 12;
 export const VISITOR_FEE = 25;
 export const TEST_LOCI = ["A", "B", "D", "S", "P"] as const;
+
+// Farm improvements: one-time purchases at the market.
+export interface UpgradeDef {
+  id: UpgradeId;
+  name: string;
+  icon: string;
+  price: number;
+  /** Earliest act (core index) it can be bought in. */
+  minAct: number;
+  /** Must own this one first. */
+  requires: UpgradeId | null;
+  /** Flock cap added on purchase. */
+  cap: number;
+  /** One plain sentence: what it does. */
+  blurb: string;
+  /** Said when it is bought. */
+  done: string;
+}
+export const UPGRADES: UpgradeDef[] = [
+  { id: "paddock", name: "Open the far paddock", icon: "🌿", price: 120, minAct: 0, requires: null, cap: 4, blurb: "Mend the fence on the second paddock: room for four more sheep.", done: "The far paddock is open — room for four more sheep." },
+  { id: "dog", name: "A sheepdog", icon: "🐕", price: 90, minAct: 0, requires: null, cap: 0, blurb: "A good dog keeps watch at night, so a fox can never take a lamb.", done: "Meet your new sheepdog. Foxes, beware!" },
+  { id: "barn", name: "A snug barn", icon: "🛖", price: 110, minAct: 0, requires: null, cap: 0, blurb: "Draught-proof the barn, so no sheep falls ill in a hard winter.", done: "The barn is snug and ready for winter." },
+  { id: "shearing", name: "A shearing shed", icon: "✂️", price: 220, minAct: 1, requires: null, cap: 0, blurb: "Cleaner, better-sorted fleeces: all wool fetches a quarter more.", done: "The shearing shed is built. Your wool will fetch more." },
+  { id: "meadow", name: "Rent the long meadow", icon: "🌾", price: 300, minAct: 3, requires: "paddock", cap: 6, blurb: "Graze the meadow by the river: room for six more sheep.", done: "The long meadow is yours to graze — room for six more sheep." },
+];
+/** Wool price multiplier with the shearing shed. */
+export const SHEARING_BONUS = 1.25;
 
 // Orders
 export const MAX_OPEN_ORDERS = 3; // visible on the board (offered + accepted)
@@ -30,6 +65,8 @@ export const MAX_ACCEPTED_ORDERS = 2;
 export const ORDER_OFFER_SEASONS = 2; // an offer stays up this long
 export const ORDER_MIN_PFILL = 0.3; // only post orders the player could plausibly fill
 export const ORDER_FAIL_REPUTATION = 1;
+/** Rewards grow 5% per reputation point, up to this many points. */
+export const ORDER_REP_BONUS_CAP = 6;
 
 // Fair
 export const FAIR_SEASON = 2; // autumn
@@ -70,7 +107,7 @@ export const ACTS: ActDef[] = [
   },
   {
     act: 2, title: "The wool buyer", line: "I pay for fineness.",
-    goalText: "Fill three villager orders.", unlocks: ["numbers", "fair"], flockCap: 12,
+    goalText: "Fill three villager orders. Up to two you've already filled count.", unlocks: ["numbers", "fair"], flockCap: 12,
   },
   {
     act: 3, title: "Fresh blood", line: "Blood too close. Bring in fresh rams.",
@@ -87,3 +124,5 @@ export const REGISTRY_BLUES = 6;
 export const REGISTRY_MICRONS = 24;
 export const REGISTRY_MAX_INBREEDING = 0.125;
 export const ORDERS_FOR_ACT2 = 3;
+/** Orders filled before act 2 that count toward it (at most). */
+export const ORDERS_CARRIED = 2;

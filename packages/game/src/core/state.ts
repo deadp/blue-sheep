@@ -187,6 +187,7 @@ export function newGame(seed: number): GameState {
     pendingEvent: null,
     ending: null,
     stats: { lambsBorn: 0, bluesBorn: 0, coinsEarned: 0, discoveries: 0, fairsWon: 0, ordersFilled: 0, ordersFailed: 0 },
+    upgrades: [],
     achievements: [],
   };
   // Starting flock: 4 ewes + 1 ram, all adults. Resample until blue is reachable:
@@ -235,7 +236,12 @@ export function serialize(state: GameState): string {
 export function deserialize(json: string): GameState {
   const raw = JSON.parse(json) as Record<string, unknown>;
   if (!raw || typeof raw !== "object") throw new Error("That save file is not a Blue Sheep save.");
-  if (raw["version"] === 2) return raw as unknown as GameState;
+  if (raw["version"] === 2) {
+    const st = raw as unknown as GameState;
+    // Saves from before farm improvements have no `upgrades`: treat as none bought.
+    if (!Array.isArray(st.upgrades)) st.upgrades = [];
+    return st;
+  }
   if (raw["version"] === 1) return migrateV1(raw);
   throw new Error(`This save is from an unknown version (${String(raw["version"])}).`);
 }
@@ -297,6 +303,7 @@ export function migrateV1(v1: Record<string, unknown>): GameState {
       lambsBorn: lambs.length, bluesBorn: blues, coinsEarned: 0, discoveries: oldDisc.length,
       fairsWon: 0, ordersFilled: 0, ordersFailed: 0,
     },
+    upgrades: [],
     achievements,
   };
   if (state.flock.length === 0) throw new Error("This old save has no sheep left to farm.");

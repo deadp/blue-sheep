@@ -1,8 +1,9 @@
 /** Story acts: goals, progress, unlocks and the ending. */
 import {
-  ACTS, ORDERS_FOR_ACT2, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
+  ACTS, ORDERS_CARRIED, ORDERS_FOR_ACT2, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
 } from "./config.js";
 import { addLog, flockSheep, nextFairSeason, fairCategoryFor } from "./state.js";
+import { upgradeCapBonus } from "./upgrades.js";
 import type { ActInfo, ActNumber, GameState, Sheep } from "./types.js";
 import { numberWord } from "./words.js";
 
@@ -25,11 +26,20 @@ export function registryStatus(state: GameState): RegistryStatus {
   return { blues, best, meanFineness, meanInbreeding, met };
 }
 
+/**
+ * Orders counted toward act 2: up to ORDERS_CARRIED filled before it began (so act-1 orders aren't wasted),
+ * plus every order filled since. At least one has to be filled in act 2 itself.
+ */
+export function act2Orders(state: GameState): number {
+  const before = Math.min(ORDERS_CARRIED, state.actStart.ordersFilled);
+  return before + state.stats.ordersFilled - state.actStart.ordersFilled;
+}
+
 function goalMet(state: GameState, act: ActNumber): boolean {
   switch (act) {
     case 0: return state.stats.lambsBorn >= 1;
     case 1: return state.stats.bluesBorn >= 1;
-    case 2: return state.stats.ordersFilled - state.actStart.ordersFilled >= ORDERS_FOR_ACT2;
+    case 2: return act2Orders(state) >= ORDERS_FOR_ACT2;
     case 3: return state.stats.fairsWon - state.actStart.fairsWon >= 1;
     case 4: return registryStatus(state).met;
   }
@@ -40,7 +50,7 @@ function progressOf(state: GameState, act: ActNumber): { text: string; progress:
     case 0: return state.stats.lambsBorn ? { text: "Lambs born!", progress: 1 } : { text: "No lambs yet.", progress: 0 };
     case 1: return state.stats.bluesBorn ? { text: "A blue lamb!", progress: 1 } : { text: "No blue lamb yet.", progress: 0 };
     case 2: {
-      const n = Math.min(ORDERS_FOR_ACT2, state.stats.ordersFilled - state.actStart.ordersFilled);
+      const n = Math.min(ORDERS_FOR_ACT2, act2Orders(state));
       return { text: `${numberWord(n)} of ${numberWord(ORDERS_FOR_ACT2)} orders filled.`.replace(/^./, (c) => c.toUpperCase()), progress: n / ORDERS_FOR_ACT2 };
     }
     case 3: {
@@ -96,7 +106,7 @@ export function enterAct(state: GameState, act: ActNumber, baseline?: ActBaselin
   state.actStart = { season: state.season, ordersFilled: b.ordersFilled, fairsWon: b.fairsWon };
   const def = ACTS[act]!;
   for (const a of ACTS) if (a.act <= act) for (const u of a.unlocks) if (!state.unlocks.includes(u)) state.unlocks.push(u);
-  state.flockCap = Math.max(state.flockCap, def.flockCap);
+  state.flockCap = Math.max(state.flockCap, def.flockCap + upgradeCapBonus(state));
   if (def.unlocks.includes("fair")) {
     state.fair.nextSeason = nextFairSeason(state.season);
     state.fair.category = fairCategoryFor(state.fair.nextSeason);

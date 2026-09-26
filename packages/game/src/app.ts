@@ -3,7 +3,7 @@
  * saving, the sleep flow, and exposes `window.__game` for the probes (CONTRACTS.md §6 and §8).
  */
 import {
-  acceptOrder, advanceSeason, buySheep, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
+  acceptOrder, advanceSeason, buySheep, buyUpgrade, hasUpgrade, upgradeDef, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
   seasonOfYear, serialize, unplanMating, vetTest, yearOf,
   type GameState, type Goal, type Sheep,
@@ -32,6 +32,7 @@ export type Action =
   | { type: "decline"; id: string }
   | { type: "enter"; id: string | null }
   | { type: "hire" }
+  | { type: "upgrade"; id: string }
   | { type: "rename"; id: string; name: string }
   | { type: "newGame"; seed?: number }
   | { type: "open"; panel: PanelName; id?: string }
@@ -151,9 +152,9 @@ export class App {
     };
   }
 
-  /** Second paddock opens with the bigger flock (cap 16, act 3 onward). */
+  /** Second paddock opens with the bigger flock (cap 16, act 3 onward) or when the player mends its fence. */
   private paddock2Open(): boolean {
-    return this.state.flockCap >= 16 || this.state.act >= 3;
+    return this.state.flockCap >= 16 || this.state.act >= 3 || hasUpgrade(this.state, "paddock");
   }
 
   snapshot(): WorldSnapshot {
@@ -280,6 +281,7 @@ export class App {
       else if (d["buy"]) this.mutate(() => { buySheep(this.state, d["buy"]!); toast(`${this.state.sheep[d["buy"]!]?.name ?? "The sheep"} joins your flock.`); });
       else if (d["sell"]) this.mutate(() => { const name = this.state.sheep[d["sell"]!]?.name; const p = sellSheep(this.state, d["sell"]!); toast(`Sold ${name ?? "the sheep"} for ${p} coins.`); });
       else if (d["hire"]) this.mutate(() => hireVisitingRam(this.state));
+      else if (d["upgrade"]) this.mutate(() => { buyUpgrade(this.state, d["upgrade"]!); toast(upgradeDef(d["upgrade"]!).done); });
       else if (d["test"]) { const [id, l] = d["test"].split(":"); this.mutate(() => vetTest(this.state, id!, l!)); }
       else if (d["accept"]) this.mutate(() => acceptOrder(this.state, d["accept"]!));
       else if (d["decline"]) this.mutate(() => declineOrder(this.state, d["decline"]!));
@@ -320,6 +322,7 @@ export class App {
       case "decline": this.mutate(() => declineOrder(this.state, a.id)); break;
       case "enter": this.mutate(() => enterFair(this.state, a.id && a.id !== "none" ? a.id : null)); break;
       case "hire": this.mutate(() => hireVisitingRam(this.state)); break;
+      case "upgrade": this.mutate(() => buyUpgrade(this.state, a.id)); break;
       case "rename": this.mutate(() => renameSheep(this.state, a.id, a.name)); break;
       case "newGame": this.startNewGame(a.seed); return;
       case "open": this.openPanel(a.panel, a.id); break;

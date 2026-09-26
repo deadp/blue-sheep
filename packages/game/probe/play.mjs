@@ -34,6 +34,8 @@ export const play = {
     const tally = { plans: 0, accepted: 0, fairs: 0, sold: 0, lambs: 0, rejected: 0 };
     let usedForecast = false;
     let fallbackNoted = false;
+    /** Farm improvement bought through the market UI: checked to persist across every later sleep. */
+    let upgraded = /** @type {string | null} */ (null);
 
     for (let i = 0; i < SEASONS; i++) {
       st = await g.state();
@@ -73,6 +75,12 @@ export const play = {
           if (r.ok) tally.fairs++; else ctx.note(`S${season}: fair entry refused: ${r.error}`);
           st = await g.state();
         }
+      }
+
+      // Farm improvement: once one is affordable, buy it by clicking Buy in the market panel.
+      if (!upgraded) {
+        upgraded = await buyUpgradeViaMarket(g, st, season);
+        if (upgraded) { ctx.note(`S${season}: bought upgrade "${upgraded}" via the market panel`); st = await g.state(); }
       }
 
       // Matings: each adult ewe with the ram maximising P(blue), or round-robin rams without the hook.
@@ -121,6 +129,7 @@ export const play = {
           throw new ProbeError(`${where}: accepted order ${id} still open past its deadline (season ${o.deadline})`);
         }
       }
+      if (upgraded && !(st.upgrades ?? []).includes(upgraded)) throw new ProbeError(`${where}: upgrade "${upgraded}" was lost`);
       const born = (st.stats?.lambsBorn ?? 0) - lambsBefore;
       tally.lambs += born;
       if (plannedEwes.length > 0 && born < 1 && !illnessReported(st, season, plannedEwes)) {
@@ -128,10 +137,44 @@ export const play = {
       }
     }
 
+    if (!upgraded) ctx.note("no farm improvement became affordable in 12 seasons (upgrade purchase not exercised)");
     ctx.artifact(await g.screenshot("04-play-end"));
     ctx.note(`12 seasons: act ${st.act}, money ${st.money}, flock ${st.flock.length}/${capOf(st)}, lambs ${tally.lambs}, plans ${tally.plans}, sold ${tally.sold}, orders accepted ${tally.accepted}, fair entries ${tally.fairs}, refused actions ${tally.rejected}`);
   },
 };
+
+/**
+ * Rule: a farm improvement costs exactly its listed price, is recorded in state and in the save, and can't be
+ * bought twice. Opens the market, clicks the first affordable improvement's Buy button and checks all that.
+ * Returns the id bought, or null when none is affordable yet.
+ * @param {import("./lib/browser.mjs").GamePage} g @param {any} st @param {number} season
+ */
+async function buyUpgradeViaMarket(g, st, season) {
+  await g.act({ type: "open", panel: "market" });
+  await g.waitPanel("market");
+  const pick = await g.page.evaluate(() => {
+    for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll("#overlay [data-upgrade]"))) {
+      if (b.disabled) continue;
+      const price = Number((b.closest(".mcard")?.querySelector(".price")?.textContent ?? "").replace(/[^0-9]/g, ""));
+      return { id: b.dataset.upgrade ?? "", price };
+    }
+    return null;
+  });
+  if (!pick) { await g.act({ type: "close" }); return null; }
+  const before = st.money;
+  await g.page.click(`#overlay [data-upgrade="${pick.id}"]`);
+  const after = await g.state();
+  const where = `S${season}: upgrade "${pick.id}"`;
+  if (!(after.upgrades ?? []).includes(pick.id)) throw new ProbeError(`${where}: clicking Buy did not record it in state.upgrades`);
+  if (before - after.money !== pick.price) throw new ProbeError(`${where}: money went ${before} -> ${after.money}, expected -${pick.price}`);
+  const saved = await g.page.evaluate(() => JSON.parse(localStorage.getItem("blue-sheep-save-v2") ?? "{}").upgrades ?? []);
+  if (!saved.includes(pick.id)) throw new ProbeError(`${where}: not in the saved game`);
+  const again = await g.act({ type: "upgrade", id: pick.id });
+  if (again.ok) throw new ProbeError(`${where}: could be bought twice`);
+  if ((await g.state()).money !== after.money) throw new ProbeError(`${where}: refused re-buy still changed money`);
+  await g.act({ type: "close" });
+  return pick.id;
+}
 
 /**
  * Did the season that just ran report an illness or loss that excuses a missing lamb?

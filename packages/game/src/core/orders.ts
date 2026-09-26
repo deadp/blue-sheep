@@ -4,7 +4,7 @@ import { sheep as sheepDefs } from "@blue-sheep/genetics";
 import { forecastQuantitative } from "@blue-sheep/inference";
 import { plannedPairings, ramAvailable } from "./breeding.js";
 import {
-  MAX_ACCEPTED_ORDERS, MAX_OPEN_ORDERS, MAX_AGE, ORDER_FAIL_REPUTATION, ORDER_MIN_PFILL, ORDER_OFFER_SEASONS, RAM_CAPACITY,
+  MAX_ACCEPTED_ORDERS, MAX_OPEN_ORDERS, MAX_AGE, ORDER_FAIL_REPUTATION, ORDER_MIN_PFILL, ORDER_REP_BONUS_CAP, ORDER_OFFER_SEASONS, RAM_CAPACITY,
 } from "./config.js";
 import { removeFromFlock } from "./economy.js";
 import { flockStats, traitRecords } from "./forecast.js";
@@ -242,7 +242,7 @@ function proposeOrder(state: GameState, rng: Rng): Order | null {
   const { pFill } = forecastOrderFor(state, o);
   if (pFill < ORDER_MIN_PFILL) return null;
   const difficulty = 0.8 + 0.8 * (1 - pFill);
-  const repBonus = 1 + 0.05 * Math.min(10, Math.max(0, state.reputation));
+  const repBonus = 1 + 0.05 * Math.min(ORDER_REP_BONUS_CAP, Math.max(0, state.reputation));
   const base = o.kind === "wool" ? 10 + 4 * (o.kg ?? 0) : o.kind === "horns" ? 18 : COLOUR_REWARD[o.colour!] ?? 20;
   o.reward = Math.round(base * difficulty * repBonus);
   o.reputation = pFill < 0.5 ? 2 : 1;

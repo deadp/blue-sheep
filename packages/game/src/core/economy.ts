@@ -1,23 +1,36 @@
 /** Prices, wool income, buying and selling, and the money floor. */
-import { BUY_MARKUP, COLOUR_VALUE, LAMB_PRICE_FACTOR, SHEEP_BASE_PRICE, WOOL_PRICE } from "./config.js";
+import { BUY_MARKUP, COLOUR_VALUE, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE, WOOL_PRICE } from "./config.js";
 import { addLog, flockSheep, isAdult } from "./state.js";
 import type { GameState, Sheep } from "./types.js";
 
 export { WOOL_PRICE };
 
-/** What the trader pays for a sheep. Pass the current season to value lambs at their lower price. */
-export function sheepValue(s: Sheep, season?: number): number {
+/** A grown sheep's worth on the market, before the trader's cut. */
+function marketWorth(s: Sheep): number {
   const colour = String(s.phenotype["colour"]);
   const fine = Math.max(0, 26 - Number(s.phenotype["fineness"])) * 2;
   const heavy = Math.max(0, Number(s.phenotype["fleeceWeight"]) - 4) * 3;
-  const v = SHEEP_BASE_PRICE + (COLOUR_VALUE[colour] ?? 0) + fine + heavy + s.rosettes.length * 10;
+  return SHEEP_BASE_PRICE + (COLOUR_VALUE[colour] ?? 0) + fine + heavy + s.rosettes.length * 10;
+}
+
+/** Share of a sheep's worth the trader pays in a given season: sheep get cheaper as the valley fills up. */
+export function sellFactor(season: number): number {
+  return Math.max(SELL_FACTOR_MIN, SELL_FACTOR - SELL_DECAY * Math.floor(Math.max(0, season) / 4));
+}
+
+/**
+ * What the trader pays for a sheep. Pass the current season to value lambs at their lower price and apply that
+ * year's trader's cut (without a season: the year-1 price).
+ */
+export function sheepValue(s: Sheep, season?: number): number {
   const lamb = season !== undefined && !isAdult(s, season) ? LAMB_PRICE_FACTOR : 1;
-  return Math.max(5, Math.round(v * lamb));
+  const cut = season !== undefined ? sellFactor(season) : SELL_FACTOR;
+  return Math.max(4, Math.round(marketWorth(s) * cut * lamb));
 }
 
 /** What the trader asks for a sheep on the market. */
 export function buyPrice(s: Sheep): number {
-  return Math.round(sheepValue(s) * BUY_MARKUP) + (s.sex === "ram" ? 10 : 0);
+  return Math.round(marketWorth(s) * BUY_MARKUP) + (s.sex === "ram" ? 10 : 0);
 }
 
 /** @deprecated v1 name; use buyPrice. */
@@ -29,11 +42,11 @@ export function finenessMultiplier(microns: number): number {
 }
 
 /** Coins from one adult's fleece this season. */
-export function woolIncome(s: Sheep, boomColour: string | null = null): number {
+export function woolIncome(s: Sheep, boomColour: string | null = null, bonus = 1): number {
   const colour = String(s.phenotype["colour"]);
   const kg = Number(s.phenotype["fleeceWeight"]);
   const boom = boomColour !== null && colour === boomColour ? 2 : 1;
-  return Math.round(kg * (WOOL_PRICE[colour] ?? 2) * finenessMultiplier(Number(s.phenotype["fineness"])) * boom);
+  return Math.round(kg * (WOOL_PRICE[colour] ?? 2) * finenessMultiplier(Number(s.phenotype["fineness"])) * boom * bonus);
 }
 
 /** Remove a sheep from the flock and every plan / entry that mentions it. */

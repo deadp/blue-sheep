@@ -6,9 +6,12 @@ export {
   newGame, serialize, deserialize, migrateV1, nextFairSeason, fairCategoryFor, unlocksUpTo, addLog,
 } from "./state.js";
 export { advanceSeason, renameSheep, twinChance } from "./sim.js";
-export { planMating, unplanMating, plannedPairings, ramLoad, ramAvailable, lambRoom, overCap } from "./breeding.js";
+export { planMating, unplanMating, plannedPairings, ramLoad, ramAvailable, lambRoom, overCap, growingLambs } from "./breeding.js";
 export { buySheep, sellSheep, sheepValue, buyPrice, ramPrice, woolIncome, finenessMultiplier } from "./economy.js";
 export { vetTest, forecastVet, isTestLocus } from "./vet.js";
+export {
+  buyUpgrade, forecastUpgrade, upgradeBlocked, upgradeDef, hasUpgrade, upgradeCapBonus, feedPerHead,
+} from "./upgrades.js";
 export {
   acceptOrder, declineOrder, forecastOrder, forecastOrderFor, sheepMatchesOrder,
 } from "./orders.js";

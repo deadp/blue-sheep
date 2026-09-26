@@ -1,6 +1,6 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
-  GOALS, RAM_CAPACITY, canBreed, flockStats, forecastVisitor, fractionWords, isAdult, isIll, lambRoom, oddsLabel, ramLoad,
+  ADULT_AGE, GOALS, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, isAdult, isIll, lambRoom, oddsLabel, ramLoad,
   type CrossForecast, type GameState, type Goal, type Sheep,
 } from "../core/index.js";
 import type { QuantForecast } from "@blue-sheep/inference";
@@ -9,6 +9,7 @@ import {
 } from "./util.js";
 import type { View } from "./view.js";
 import { rankCached } from "./cache.js";
+import { growingText } from "./misc.js";
 
 /** Largest-remainder split of a distribution into ten icons. */
 export function tenths(dist: Record<string, number>): { key: string; p: number; n: number }[] {
@@ -131,7 +132,10 @@ export function forecastPanelHtml(state: GameState, view: View): string {
   if (!me) return `<h2>Find a mate</h2><p>There are no sheep on the farm. Visit the market.</p>`;
   const head = `<div class="panel-head">${portrait(view, me, "sm")}<div><h2>Find a mate for ${esc(me.name)} ${sexMark(me)}</h2>
     <div class="meta">Pick a goal, compare mates, then plan. Lambs arrive when you sleep.</div></div></div>`;
-  if (!isAdult(me, state.season)) return `${head}<p>${esc(me.name)} is still a lamb — ready to breed in a season or two.</p>`;
+  if (!isAdult(me, state.season)) {
+    return `${head}<p class="note-line">${esc(me.name)} is still growing — lambs take ${ADULT_AGE} seasons to grow up, so ${me.sex === "ewe" ? "she" : "he"} can breed from ${esc(seasonLabel(me.born + ADULT_AGE))}.</p>
+      <div class="row"><button class="secondary" data-open="market">Buy a grown ${me.sex} at the market</button></div>`;
+  }
   if (isIll(me, state.season)) return `${head}<p>${esc(me.name)} is poorly this season and needs rest. Try again next season.</p>`;
   if (!canBreed(me, state.season)) return `${head}<p>${esc(me.name)} has retired from lambing and enjoys the grass.</p>`;
   if (!state.flock.includes(me.id)) return `${head}<p>${esc(me.name)} isn't part of your flock.</p>`;
@@ -141,8 +145,10 @@ export function forecastPanelHtml(state: GameState, view: View): string {
   const tabs = `<div class="tabs" role="tablist">${GOALS.map((g) =>
     `<button class="tab ${g.id === goal ? "on" : ""}" role="tab" aria-selected="${g.id === goal}" data-goal="${g.id}">${esc(g.label)}</button>`).join("")}</div>`;
   if (!ranked.length) {
-    return `${head}${tabs}<p>No ${me.sex === "ewe" ? "rams" : "ewes"} are ready to breed this season. The market sometimes has one.</p>
-      <div class="row"><button data-open="market">Go to the market</button></div>`;
+    const other = me.sex === "ewe" ? "ram" : "ewe";
+    const g = growingText(state, other);
+    return `${head}${tabs}<p class="note-line">No ${other}s are ready to breed this season.${g ? ` ${esc(g)}` : ""}</p>
+      <div class="row"><button data-open="market">Buy a grown ${other} at the market</button></div>`;
   }
   const chosen = ranked.find((x) => x.sheep.id === view.mateId) ?? ranked[0]!;
   const pairOf = (c: Sheep): [string, string] => (me.sex === "ewe" ? [me.id, c.id] : [c.id, me.id]);
@@ -184,7 +190,8 @@ export function forecastPanelHtml(state: GameState, view: View): string {
     const blocked = !planned && room < 1 && state.plans[eweId] === undefined;
     commit = `<button data-plan="${esc(eweId)}:${esc(ramId)}" class="${planned ? "secondary" : "primary"}" ${blocked ? "disabled" : ""}>${planned ? "Cancel this mating" : state.plans[eweId] ? "Switch to this mating" : "Plan this mating"}</button>
       ${blocked ? `<button class="secondary small" data-open="market">Make room at the market</button>` : ""}
-      <span class="meta">${blocked ? "No room for more lambs. · " : ""}${nPlanned === 0 ? "Nothing planned yet" : `${nPlanned} mating${nPlanned === 1 ? "" : "s"} planned`} · sleep to see the lambs</span>`;
+      ${blocked ? `<div class="note-line">No room for more lambs — your fields are full.${growingText(state) ? ` ${esc(growingText(state)!)}` : ""}</div>` : ""}
+      <span class="meta">${nPlanned === 0 ? "Nothing planned yet" : `${nPlanned} mating${nPlanned === 1 ? "" : "s"} planned`} · sleep to see the lambs</span>`;
   }
   return `${head}${tabs}
   <div class="picker">

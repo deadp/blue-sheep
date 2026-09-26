@@ -3,7 +3,7 @@ import {
   FAIR_LABEL, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
 import { litterRow, litterWords } from "./forecast.js";
-import { cap, discoveryText, esc, hex, portrait, UNLOCK_WORDS, LOCUS_FRIENDLY } from "./util.js";
+import { cap, discoveryText, discoveryTitle, esc, hex, portrait, UNLOCK_WORDS } from "./util.js";
 import type { View } from "./view.js";
 
 const SURPRISE = 0.2;
@@ -54,7 +54,7 @@ export function reportHtml(state: GameState, view: View): string {
     blocks.push(`<div class="act-banner"><div class="act">Act ${a.act + 1} · ${esc(a.title)}</div><blockquote>“${esc(a.line)}”</blockquote>
       <div><b>New goal:</b> ${esc(a.goalText)}</div>
       ${a.unlocks.length ? `<div class="unlocks">${a.unlocks.map((u) => `<span class="tag ok">🔓 ${esc(UNLOCK_WORDS[u])}</span>`).join("")}</div>` : ""}
-      ${a.flockCap > 0 ? `<div class="meta">Room for ${a.flockCap} sheep.</div>` : ""}</div>`);
+      ${a.flockCap > 0 ? `<div class="meta">Room for ${state.flockCap} sheep.</div>` : ""}</div>`);
   }
   const blues = r.lambs.filter((l) => l.phenotype["colour"] === "blue");
   if (blues.length && state.stats.bluesBorn === blues.length) {
@@ -68,10 +68,11 @@ export function reportHtml(state: GameState, view: View): string {
     const shown = r.discoveries.slice(0, MAX_CARDS);
     const more = r.discoveries.length - shown.length;
     blocks.push(`<h3>New discoveries</h3><div class="dcards">${shown.map((d) =>
-      `<div class="dcard sparkle"><div class="d-top">✨ ${esc(LOCUS_FRIENDLY[d.locus] ?? "discovery")}</div><div>${esc(discoveryText(state, d))}</div></div>`).join("")}</div>
+      `<div class="dcard sparkle"><div class="d-top">✨ ${esc(discoveryTitle(d))}</div><div>${esc(discoveryText(state, d))}</div></div>`).join("")}</div>
       ${more > 0 ? `<p class="meta">…and ${more} more. <button class="link" data-open="codex">See them all in the codex</button></p>` : ""}`);
   }
-  const money: string[] = [`🧶 Wool sold for <b>${r.income}</b> coins`, `🌾 feed cost <b>${r.feed}</b>`];
+  const shed = r.shedBonus ? ` (the shearing shed added ${r.shedBonus})` : "";
+  const money: string[] = [`🧶 Wool sold for <b>${r.income}</b> coins${shed}`, `🌾 feed cost <b>${r.feed}</b>`];
   const lines: string[] = [];
   for (const o of r.orderResults) lines.push(`<li class="${o.outcome === "filled" ? "good" : "bad"}">${o.outcome === "filled" ? "✉️" : "💔"} ${esc(cap(o.text))}${o.reward ? ` <b>+${o.reward}</b>` : ""}</li>`);
   if (r.fairResult) {

@@ -136,7 +136,9 @@ export function updateDiscoveries(state: GameState): Discovery[] {
   const ids = Object.keys(state.sheep).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   for (const id of ids) {
     const s = state.sheep[id]!;
-    // Only sheep the player has had dealings with: the flock, its relatives and the visiting ram.
+    // Everything learned about one sheep at once goes on a single card, so a big season reads as a few
+    // cards rather than a dozen.
+    const learned: Fact[] = [];
     for (const f of factsFor(state, id)) {
       if (!f.certain || !f.genotype) continue;
       const prev = state.known[id]?.[f.locus];
@@ -145,13 +147,33 @@ export function updateDiscoveries(state: GameState): Discovery[] {
       // Only celebrate facts that are not obvious from the sheep's own look (i.e. came from relatives or tests).
       if (isObvious(s.phenotype, f.locus, f.genotype)) continue;
       if (state.market.includes(id) && !state.flock.includes(id)) continue;
-      const card: Discovery = { id: `d${state.discoveries.length + 1}`, season: state.season, sheep: id, locus: f.locus, text: `${s.name} ${f.text}.` };
-      state.discoveries.push(card);
-      state.stats.discoveries += 1;
-      fresh.push(card);
+      learned.push(f);
     }
+    if (!learned.length) continue;
+    // Lead with the most exciting fact (dilute = the road to blue), so the card's heading fits.
+    learned.sort((a, b) => LOCUS_ORDER.indexOf(a.locus) - LOCUS_ORDER.indexOf(b.locus));
+    const card: Discovery = {
+      id: `d${state.discoveries.length + 1}`, season: state.season, sheep: id, locus: learned[0]!.locus,
+      loci: learned.map((f) => f.locus),
+      text: `${s.name} ${joinAnd(learned.map((f) => withVerb(f.text)))}.`,
+    };
+    state.discoveries.push(card);
+    state.stats.discoveries += 1;
+    fresh.push(card);
   }
   return fresh;
+}
+
+const LOCUS_ORDER = ["D", "A", "B", "S", "P"];
+
+/** "no spotting allele" → "has no spotting allele", "horned" → "is horned"; "carries …" stays. */
+function withVerb(t: string): string {
+  const v = /^(no |two )/.test(t) ? `has ${t}` : /^(pure |horned|spotted|brown-based)/.test(t) ? `is ${t}` : t;
+  return v.replace(", no hidden colour", " with no hidden colour"); // no stray comma inside a joined list
+}
+
+function joinAnd(xs: string[]): string {
+  return xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }
 
 function isObvious(ph: Record<string, string | number>, locus: string, genotype: string): boolean {

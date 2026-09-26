@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { GOALS, acceptOrder, canBreed, factsFor, forecastOrder, type GameState } from "../core/index.js";
+import { GOALS, acceptOrder, canBreed, factsFor, forecastOrder, isAdult, seasonLabel, type GameState } from "../core/index.js";
 import { CONCEPTS, PANEL_NAMES, hudHtml, renderPanel, forecastPanelHtml, type View, type PanelName } from "./index.js";
 import { fixtures, type Fixture } from "./fixtures.js";
 
@@ -7,7 +7,7 @@ const PORTRAIT = "data:image/png;base64,AAAA";
 const GENOTYPE = /[A-Za-z]\/[A-Za-z]/;
 const VOCAB = new Set([
   "close", "open", "sheep", "findmate", "mate", "goal", "plan", "buy", "sell", "hire", "test", "accept", "decline",
-  "enter", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "sheep-id",
+  "enter", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "sheep-id", "upgrade",
 ]);
 
 function view(p: Partial<View> = {}): View {
@@ -255,6 +255,35 @@ describe("panel content", () => {
     expect(h).toContain('data-open="orders"');
     expect(h).toContain(`${s.flock.length}<span class="dim">/${s.flockCap}`);
     expect(hudHtml(fx("fresh").state, view())).not.toContain('data-open="orders"');
+  });
+
+  it("explains growing lambs when they block planning, with a market link", () => {
+    const s = structuredClone(fx("afterFirst").state) as GameState;
+    const lamb = s.flock.map((id) => s.sheep[id]!).find((x) => !isAdult(x, s.season))!;
+    expect(lamb).toBeDefined();
+    s.plans = {};
+    s.season = Math.max(s.season, 1); // not the first-season hint
+    // No grown sheep of the lamb's sex: planning is blocked until it grows up.
+    s.flock = s.flock.filter((id) => s.sheep[id]!.sex !== lamb.sex || !isAdult(s.sheep[id]!, s.season));
+    s.hiredRam = null;
+    const h = hudHtml(s, view());
+    expect(h).toContain(`No ${lamb.sex} is ready to breed`);
+    expect(h).toMatch(/still growing — (she|he|the first) can breed from Year \d+, (Spring|Summer|Autumn|Winter)\./);
+    expect(h).toContain('class="link" data-open="market"');
+    const f = forecastPanelHtml(s, view({ panel: "forecast", sheepId: lamb.id }));
+    expect(f).toContain(`can breed from ${seasonLabel(lamb.born + 2)}`);
+    expect(f).toContain('data-open="market"');
+  });
+
+  it("market lists farm improvements with a forecast and a Buy button", () => {
+    const s = structuredClone(fx("act3").state) as GameState;
+    s.money = 1000;
+    const h = renderPanel(s, view({ panel: "market" }));
+    expect(h).toContain("Farm improvements");
+    for (const id of ["paddock", "dog", "barn", "shearing"]) expect(h).toContain(`data-upgrade="${id}"`);
+    expect(h).toContain("pays for itself");
+    s.upgrades = ["dog"];
+    expect(renderPanel(s, view({ panel: "market" }))).not.toContain('data-upgrade="dog"');
   });
 
   it("escapes names", () => {

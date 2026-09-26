@@ -1,7 +1,7 @@
 /** Market (buy, sell, visiting ram), vet and fair panels. */
 import {
-  FAIR_LABEL, FAIR_PRIZES, TEST_LOCI, VET_FEE, buyPrice, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
-  isAdult, oddsLabel, seasonLabel, sheepValue,
+  FAIR_LABEL, FAIR_PRIZES, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, forecastUpgrade, hasUpgrade, upgradeBlocked, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
+  isAdult, oddsLabel, seasonLabel, sheepValue, yearOf,
   type CrossForecast, type GameState, type Sheep,
 } from "../core/index.js";
 import { litterRow, litterWords } from "./forecast.js";
@@ -47,6 +47,36 @@ function marketCard(state: GameState, view: View, s: Sheep): string {
   </div>`;
 }
 
+/** Farm improvements: each with what it would change for this farm (the forecast) before buying. */
+function upgradesHtml(state: GameState): string {
+  const rows = UPGRADES.map((u) => {
+    const owned = hasUpgrade(state, u.id);
+    const blocked = owned ? null : upgradeBlocked(state, u.id);
+    const locked = !owned && (state.act < u.minAct || (u.requires !== null && !hasUpgrade(state, u.requires)));
+    const fore = owned || locked ? "" : `<div class="u-fore">${esc(forecastUpgrade(state, u.id).text)}</div>`;
+    const act = owned
+      ? `<span class="tag ok">Yours ✓</span>`
+      : `<div class="price">${u.price} coins</div><button class="primary" data-upgrade="${u.id}" ${blocked ? "disabled" : ""}>Buy</button>${blocked && !locked ? `<div class="meta">Not enough coins</div>` : ""}`;
+    return `<div class="mcard upgrade ${owned ? "owned" : ""} ${locked ? "locked" : ""}">
+      <div class="u-icon" aria-hidden="true">${u.icon}</div>
+      <div class="m-body"><div class="m-name"><b>${esc(u.name)}</b></div>
+        <div class="meta">${esc(u.blurb)}</div>
+        ${locked ? `<div class="meta">🔒 ${esc(blocked ?? "")}</div>` : fore}</div>
+      <div class="m-buy">${act}</div>
+    </div>`;
+  }).join("");
+  const feed = feedPerHead(state.season);
+  const year = yearOf(state.season);
+  let rise = "That's as dear as hay gets.";
+  for (let y = year + 1; y <= year + 12; y++) {
+    const f = feedPerHead(y * 4);
+    if (f > feed) { rise = `It goes up to ${f} in Year ${y + 1}.`; break; }
+  }
+  return `<h3>Farm improvements</h3>
+    <p class="meta">One-time purchases. Feed costs ${feed} coins a sheep this season. ${rise}</p>
+    ${rows}`;
+}
+
 export function marketHtml(state: GameState, view: View): string {
   const stock = state.market.map((id) => state.sheep[id]).filter((s): s is Sheep => !!s);
   const v = state.visitingRam && state.visitingRam.season === state.season ? state.visitingRam : null;
@@ -75,6 +105,7 @@ export function marketHtml(state: GameState, view: View): string {
     <h3>For sale</h3>
     ${stock.length ? stock.map((s) => marketCard(state, view, s)).join("") : `<p class="meta">Sold out — come back next season.</p>`}
     ${visitor}
+    ${upgradesHtml(state)}
     <h3>Your flock (${state.flock.length} of ${state.flockCap})</h3>
     <ul class="sell-list">${flock}</ul>`;
 }

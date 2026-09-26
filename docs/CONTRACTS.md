@@ -30,7 +30,7 @@ then endless mode.
 |-----|----------------------|-----------------|------------------|
 | 0 | "The old farm is yours. Let's see what the flock gives us." | First lambs born (any planned mating produces a lamb) | Forecast panel (icons only), notebook facts |
 | 1 | Surprise lamb → "Hidden colours! Breed me a **blue** sheep." | A blue lamb is born | Discovery cards, vet carrier test, orders board |
-| 2 | Wool buyer: "I pay for fineness." | Fulfil 3 wool/colour orders (any) | Fleece range bars, `numbers` unlock (percentages), village fair |
+| 2 | Wool buyer: "I pay for fineness." | Fulfil 3 wool/colour orders (any); up to 2 filled before act 2 count, so at least one is filled in act 2 (`ORDERS_CARRIED`) | Fleece range bars, `numbers` unlock (percentages), village fair |
 | 3 | Small inbred lambs → "Blood too close. Bring in fresh rams." | Win a village fair (1st place, any category) | Family tree page, visiting rams, flock cap 16 |
 | 4 | "Found your own breed." | Registry: ≥6 living blue sheep, flock mean fineness ≤ 24 µm, mean inbreeding of those six < 0.125 | Ending screen, endless mode, flock cap 24 |
 
@@ -53,13 +53,29 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
   narrow what you know (entropy of that marginal, shown as words/dots).
 - **Events**: one per winter from act 1: `hardWinter` (feed cost ×2 that
   season; a random low-size sheep falls ill and misses breeding), `fox`
-  (one lamb lost unless the flock has an adult with boldness ≥ 7), `woolBoom`
+  (one lamb lost unless the flock has an adult with boldness ≥ 7 or the
+  `dog` improvement; the `barn` improvement stops hard-winter illness), `woolBoom`
   (one colour's wool price ×2 next season, announced in advance so it is a
   decision).
 - **Economy**: wool income per adult each season (existing formula), feed cost
-  2 coins per sheep per season, buy/sell at the market, order rewards, fair
-  prizes, vet fees, hire fees. Money may not go below 0: if feed cannot be
-  paid, the sim auto-sells the lowest-value sheep and reports it.
+  per sheep per season (`feedPerHead(season)`: 2 coins in years 1–2, then
+  dearer each year up to `FEED_MAX`), buy/sell at the market (the trader pays
+  a shrinking share of a sheep's worth each year: `sellFactor(season)`),
+  order rewards, fair prizes, vet fees, hire fees, farm improvements. Money
+  may not go below 0: if feed cannot be paid, the sim auto-sells the
+  lowest-value sheep and reports it.
+- **Farm improvements** (`core/upgrades.ts`, defs in `config.ts` `UPGRADES`):
+  one-time purchases in the market panel's "Farm improvements" section, each
+  shown with `forecastUpgrade(state, id).text` (what it would change for this
+  farm) before the Buy button. `paddock` (+4 flock cap), `dog` (a fox never
+  takes a lamb), `barn` (nobody falls ill in a hard winter), `shearing`
+  (wool ×1.25; the report shows `SeasonReport.shedBonus`), `meadow` (+6 cap,
+  act 3+, needs `paddock`). Stored in `state.upgrades: UpgradeId[]`
+  (optional; saves without it load as `[]`). Cap bonuses stack on top of each
+  act's cap. `buyUpgrade(state, id)` throws a player-readable message when
+  already owned, too early, missing its prerequisite, or unaffordable.
+- **Discovery cards**: everything learned about one sheep in one update is a
+  single card (`Discovery.loci` lists every locus on it; `locus` is the first).
 - **Ageing**: adults at 2 seasons, ewes breed until age 20, death at 24.
 - **Litter rule**: a valid planned mating always produces ≥1 lamb unless the
   ewe is ill; twins possible. (The "no lamb" bug must not return.)
@@ -108,6 +124,7 @@ export function declineOrder(state, orderId): void;
 export function enterFair(state, sheepId | null): void;
 export function hireVisitingRam(state): void;
 export function renameSheep(state, id, name): void;
+export function buyUpgrade(state, id): void;                // farm improvement (see §1)
 
 // forecasts (knowledge-limited; all pure)
 export function forecastCross(state, eweId, ramId): CrossForecast;   // existing shape + keep
@@ -206,7 +223,7 @@ data-findmate="id"        open forecast for sheep
 data-mate="id"            select candidate in forecast
 data-goal="blue|learn|fine|heavy"
 data-plan="ewe:ram"       toggle plan
-data-buy="id" / data-sell="id" / data-hire="1"
+data-buy="id" / data-sell="id" / data-hire="1" / data-upgrade="paddock|dog|barn|shearing|meadow"
 data-test="sheepId:locus"
 data-accept="orderId" / data-decline="orderId"
 data-enter="sheepId"      fair entry (or "none")
@@ -240,7 +257,7 @@ discovery/concept cards.
   animation, `?fresh=1` clear save.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
-  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"newGame", seed} | {type:"open", panel} | {type:"close"}`.
+  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"newGame", seed} | {type:"open", panel} | {type:"close"}`.
   Also sets `document.body.dataset.ready = "1"` when the first frame has
   rendered and `document.body.dataset.panel = <open panel name or "">`.
 - Sleep flow: world.sleepTransition() → core.advanceSeason → world.setSnapshot

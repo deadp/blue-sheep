@@ -39,6 +39,7 @@ export const blind: Brain = {
 
 const MAX = 60;
 const N = Number(process.env["SEEDS"] ?? 30);
+const FROM = Number(process.env["FROM"] ?? 1); // first seed
 const results = [];
-for (let i = 0; i < N; i++) results.push(await play(i + 1, blind, MAX));
+for (let i = 0; i < N; i++) results.push(await play(FROM + i, blind, MAX));
 summarise("blind (knowledge-limited)", results, MAX);

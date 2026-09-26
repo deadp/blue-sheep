@@ -1,6 +1,6 @@
 /** Codex: discovery card collection and concept cards that unlock with the story. */
 import { seasonLabel, type GameState } from "../core/index.js";
-import { discoveryText, esc, LOCUS_FRIENDLY } from "./util.js";
+import { discoveryText, discoveryTitle, esc, LOCUS_FRIENDLY } from "./util.js";
 import type { View } from "./view.js";
 
 export interface Concept { id: string; title: string; icon: string; text: string; unlocked: (s: GameState) => boolean; hint: string }
@@ -37,7 +37,7 @@ const SHOW_CARDS = 12;
 
 export function codexHtml(state: GameState, view: View): string {
   const byLocus = new Map<string, number>();
-  for (const d of state.discoveries) byLocus.set(d.locus, (byLocus.get(d.locus) ?? 0) + 1);
+  for (const d of state.discoveries) for (const l of d.loci ?? [d.locus]) byLocus.set(l, (byLocus.get(l) ?? 0) + 1);
   const slots = Object.entries(LOCUS_FRIENDLY).map(([l, name]) => {
     const n = byLocus.get(l) ?? 0;
     return `<div class="slot ${n ? "found" : "locked"}"><div class="s-icon">${n ? "✨" : "?"}</div><div>${esc(n ? name : "???")}</div><div class="meta">${n ? `${n} card${n === 1 ? "" : "s"}` : "not found"}</div></div>`;
@@ -47,7 +47,7 @@ export function codexHtml(state: GameState, view: View): string {
   const shown = all ? recent : recent.slice(0, SHOW_CARDS);
   const more = recent.length - shown.length;
   const cards = shown.map((d) =>
-    `<div class="dcard"><div class="d-top">✨ ${esc(LOCUS_FRIENDLY[d.locus] ?? "discovery")}</div><div>${esc(discoveryText(state, d))}</div><div class="meta">${esc(seasonLabel(d.season))}${state.sheep[d.sheep] ? ` · <button class="link" data-sheep="${esc(d.sheep)}">${esc(state.sheep[d.sheep]!.name)}</button>` : ""}</div></div>`).join("");
+    `<div class="dcard"><div class="d-top">✨ ${esc(discoveryTitle(d))}</div><div>${esc(discoveryText(state, d))}</div><div class="meta">${esc(seasonLabel(d.season))}${state.sheep[d.sheep] ? ` · <button class="link" data-sheep="${esc(d.sheep)}">${esc(state.sheep[d.sheep]!.name)}</button>` : ""}</div></div>`).join("");
   const concepts = CONCEPTS.map((c) => c.unlocked(state)
     ? `<div class="concept"><span class="c-icon">${c.icon}</span><h4>${esc(c.title)}</h4><p>${esc(c.text)}</p></div>`
     : `<div class="concept locked" aria-label="Locked concept"><span class="c-icon">🔒</span><h4>???</h4><p class="meta">${esc(c.hint)}</p></div>`).join("");

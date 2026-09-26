@@ -29,6 +29,9 @@ export interface Pairing { ewe: string; ram: string }
 
 export interface LogEntry { season: number; text: string }
 
+/** Farm improvements (definitions and prices in config.ts). */
+export type UpgradeId = "dog" | "barn" | "paddock" | "shearing" | "meadow";
+
 export type Unlock = "numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards";
 
 export type Locus = "A" | "B" | "D" | "S" | "P";
@@ -38,6 +41,8 @@ export interface Discovery {
   season: number;
   sheep: string;
   locus: string;
+  /** Every locus on this card (one card batches all that was learned about a sheep in one go). Absent in old saves. */
+  loci?: string[];
   /** Plain sentence, e.g. "Clover carries the dilute (blue!) allele." */
   text: string;
 }
@@ -130,7 +135,7 @@ export interface EventRecord {
   colour: string | null;
   /** Sheep affected (ill sheep for hardWinter, lost lamb for fox). */
   sheep: string | null;
-  /** fox: true when a guardian scared it off. */
+  /** fox: true when a guardian or the dog scared it off; hardWinter: true when the barn kept everyone well. */
   saved: boolean;
   text: string;
 }
@@ -205,6 +210,8 @@ export interface GameState {
   pendingEvent: PendingEvent | null;
   ending: { shown: boolean; season: number } | null;
   stats: Stats;
+  /** Farm improvements bought (absent in older saves: treat as none). */
+  upgrades?: UpgradeId[];
   /** Legacy v1 notebook/achievements, kept for old saves. */
   achievements: string[];
 }
@@ -233,6 +240,8 @@ export interface SeasonReport {
   endedSeason: number;
   lambs: Sheep[];
   income: number;
+  /** Part of `income` that came from the shearing shed. */
+  shedBonus: number;
   feed: number;
   deaths: Sheep[];
   /** Sheep the trader took because feed could not be paid or the flock was over its cap. */

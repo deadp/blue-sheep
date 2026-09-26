@@ -3,14 +3,15 @@ import type { Rng } from "@blue-sheep/genetics";
 import { FOX_GUARD_BOLDNESS } from "./config.js";
 import { removeFromFlock } from "./economy.js";
 import { addLog, flockSheep, isAdult, seasonOfYear } from "./state.js";
+import { hasUpgrade } from "./upgrades.js";
 import type { EventKind, EventRecord, GameState, PendingEvent } from "./types.js";
 
 const KINDS: EventKind[] = ["hardWinter", "fox", "woolBoom"];
 
 export function announceText(kind: EventKind, colour: string | null): string {
   switch (kind) {
-    case "hardWinter": return "The old folk say a hard winter is coming. Feed will cost double, and the smallest sheep may fall ill.";
-    case "fox": return "A fox has been seen near the village. A bold sheep in the flock would keep the lambs safe.";
+    case "hardWinter": return "The old folk say a hard winter is coming. Feed will cost double, and the smallest sheep may fall ill unless the barn is snug.";
+    case "fox": return "A fox has been seen near the village. A bold sheep in the flock — or a sheepdog — would keep the lambs safe.";
     case "woolBoom": return `The weavers are crying out for ${colour} wool — it will fetch double this winter.`;
   }
 }
@@ -45,7 +46,10 @@ export function applyEvent(state: GameState, rng: Rng): AppliedEvent | null {
     const adults = flockSheep(state).filter((s) => isAdult(s, state.season))
       .sort((a, b) => Number(a.phenotype["size"]) - Number(b.phenotype["size"]) || Number(a.id.slice(1)) - Number(b.id.slice(1)));
     const pool = adults.slice(0, 3);
-    if (pool.length) {
+    if (hasUpgrade(state, "barn")) {
+      rec.saved = true;
+      rec.text = "A hard winter. Feed cost double, but the snug barn kept everyone warm — nobody fell ill.";
+    } else if (pool.length) {
       const ill = pool[rng.int(pool.length)]!;
       ill.ill = true;
       rec.sheep = ill.id;
@@ -54,7 +58,10 @@ export function applyEvent(state: GameState, rng: Rng): AppliedEvent | null {
   } else if (ev.kind === "fox") {
     const guard = flockSheep(state).find((s) => isAdult(s, state.season) && Number(s.phenotype["boldness"]) >= FOX_GUARD_BOLDNESS);
     const lambs = flockSheep(state).filter((s) => !isAdult(s, state.season)).sort((a, b) => b.born - a.born || Number(b.id.slice(1)) - Number(a.id.slice(1)));
-    if (guard) {
+    if (hasUpgrade(state, "dog")) {
+      rec.saved = true;
+      rec.text = lambs.length ? "The fox came by night, but your sheepdog barked it off before it reached the lambs." : "The fox prowled around, but your sheepdog chased it away.";
+    } else if (guard) {
       rec.saved = true; rec.sheep = guard.id;
       rec.text = `The fox came by night, but bold ${guard.name} stood her ground and saw it off.`.replace("stood her", guard.sex === "ram" ? "stood his" : "stood her");
     } else if (lambs.length) {

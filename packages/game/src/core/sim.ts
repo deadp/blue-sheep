@@ -2,7 +2,7 @@
 import { mate } from "@blue-sheep/genetics";
 import { checkActAdvance, checkEnding } from "./acts.js";
 import { plannedPairings } from "./breeding.js";
-import { FEED_COST, MAX_AGE } from "./config.js";
+import { MAX_AGE, SHEARING_BONUS } from "./config.js";
 import { cheapestSheep, removeFromFlock, sheepValue, woolIncome } from "./economy.js";
 import { announceEvent, applyEvent } from "./events.js";
 import { judgeFair } from "./fair.js";
@@ -14,6 +14,7 @@ import {
   restockMarket, rngOf, saveRng, seasonLabel, seasonOfYear, species,
 } from "./state.js";
 import type { CrossForecast, GameState, SeasonReport, Sheep } from "./types.js";
+import { feedPerHead, hasUpgrade } from "./upgrades.js";
 import { departVisitingRam, offerVisitingRam } from "./visitor.js";
 
 /** Chance of twins for a mating whose lambs would have inbreeding f. */
@@ -30,7 +31,7 @@ export function advanceSeason(state: GameState): SeasonReport {
   const matings: Record<string, string> = {};
   for (const p of pairings) { forecastsSeen[p.ewe] = forecastCross(state, p.ewe, p.ram); matings[p.ewe] = p.ram; }
   const report: SeasonReport = {
-    season: t, endedSeason: t, lambs: [], income: 0, feed: 0, deaths: [], autoSold: [], discoveries: [], orderResults: [],
+    season: t, endedSeason: t, lambs: [], income: 0, shedBonus: 0, feed: 0, deaths: [], autoSold: [], discoveries: [], orderResults: [],
     newOrders: [], fairResult: null, event: null, announced: null, actAdvanced: null, endingReached: false, messages: [],
     forecastsSeen, matings,
   };
@@ -46,8 +47,13 @@ export function advanceSeason(state: GameState): SeasonReport {
   const shorn = shearForOrders(state);
   report.orderResults.push(...shorn.results);
   for (const r of shorn.results) say(r.text);
+  const shed = hasUpgrade(state, "shearing") ? SHEARING_BONUS : 1;
   for (const s of flockSheep(state)) {
-    if (isAdult(s, t) && !shorn.used.has(s.id)) report.income += woolIncome(s, ev?.boomColour ?? null);
+    if (!isAdult(s, t) || shorn.used.has(s.id)) continue;
+    const plain = woolIncome(s, ev?.boomColour ?? null);
+    const paid = woolIncome(s, ev?.boomColour ?? null, shed);
+    report.income += paid;
+    report.shedBonus += paid - plain;
   }
   state.money += report.income;
   state.stats.coinsEarned += report.income;
@@ -97,7 +103,7 @@ export function advanceSeason(state: GameState): SeasonReport {
   }
 
   // 5. Feed. Coins never go below zero: the trader takes the cheapest sheep instead.
-  const perHead = FEED_COST * (ev?.feedMultiplier ?? 1);
+  const perHead = feedPerHead(t) * (ev?.feedMultiplier ?? 1);
   const newborn = new Set(report.lambs.map((l) => l.id));
   const eaters = () => state.flock.filter((id) => !newborn.has(id)).length;
   while (state.money < eaters() * perHead) {

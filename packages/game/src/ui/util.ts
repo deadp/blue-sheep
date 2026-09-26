@@ -127,6 +127,12 @@ export function stars(rep: number): string {
   return `<span class="stars" title="Reputation">${"★".repeat(n)}<span class="off">${"★".repeat(5 - n)}</span></span>`;
 }
 
+/** Card heading: the friendly names of every hidden trait on the card. */
+export function discoveryTitle(d: { locus: string; loci?: string[] }): string {
+  const names = (d.loci ?? [d.locus]).map((l) => LOCUS_FRIENDLY[l] ?? "discovery");
+  return [...new Set(names)].join(" · ");
+}
+
 /** Discovery sentence with a verb ("Seamus no spotting allele" → "Seamus has no spotting allele"). */
 export function discoveryText(state: GameState, d: { sheep: string; text: string }): string {
   const name = state.sheep[d.sheep]?.name;

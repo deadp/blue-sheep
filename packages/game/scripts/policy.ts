@@ -5,12 +5,14 @@
  */
 /*
  * Diagnostics (env vars): PROF=1 phase timings, MONEY=1 coin sources per season,
- * ORDERS=1 order outcomes per seed, PLANS=1 matings per season, FLOCK=1 final flock with true genotypes.
+ * ORDERS=1 order outcomes per seed, PLANS=1 matings per season, FLOCK=1 final flock with true genotypes,
+ * LEDGER=1 median coins by source over the run, PERSEED=1 one line per seed, UPACT=N buy farm improvements
+ * only from act N. blind.ts/oracle.ts also take SEEDS=n and FROM=first seed.
  */
 import {
   acceptOrder, advanceSeason, buyPrice, buySheep, canBreed, currentAct, enterFair, fairScore, flockSheep,
   forecastOrder, isAdult, isEnding, lambRoom, markEndingShown, newGame, pedigreeOf, planMating, ramAvailable, RAM_CAPACITY,
-  sellSheep, hireVisitingRam, ageOf,
+  sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef,
   type GameState, type Sheep,
 } from "../src/core/index.js";
 
@@ -26,7 +28,7 @@ export interface Brain {
   vet?(g: GameState): void;
 }
 
-export interface RunResult { seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string }
+export interface RunResult { ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string }
 
 const fin = (s: Sheep) => Number(s.phenotype["fineness"]);
 
@@ -138,6 +140,14 @@ function manageFlock(g: GameState, b: Brain): void {
   }
 }
 
+/** Buy farm improvements in a sensible order once they're affordable with a little to spare. */
+function manageUpgrades(g: GameState): void {
+  if (g.act < Number(process.env["UPACT"] ?? 0)) return;
+  for (const id of ["paddock", "dog", "barn", "shearing", "meadow"] as const) {
+    if (!upgradeBlocked(g, id) && g.money >= upgradeDef(id).price + 40) buyUpgrade(g, id);
+  }
+}
+
 function manageVisitor(g: GameState, b: Brain, cache: Map<string, CrossDist>): void {
   const v = g.visitingRam;
   if (!v || v.season !== g.season || g.hiredRam || g.money < v.fee + 20) return;
@@ -171,18 +181,23 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
   const actSeason = [0, -1, -1, -1, -1];
   const money: number[] = [];
   let endSeason: number | null = null;
+  const ledger: Record<string, number> = {};
   for (let t = 0; t < maxSeasons; t++) {
     const cache = new Map<string, CrossDist>();
-    const T = (label: string, f: () => void) => { const t0 = Date.now(); f(); if (process.env["PROF"]) console.error(g.season, label, Date.now() - t0); };
+    const T = (label: string, f: () => void) => { const t0 = Date.now(), m0 = g.money; f(); ledger[label] = (ledger[label] ?? 0) + g.money - m0; if (process.env["PROF"]) console.error(g.season, label, Date.now() - t0); };
     T("orders", () => manageOrders(g));
     T("fair", () => manageFair(g));
     T("vet", () => b.vet?.(g));
+    T("upgrades", () => manageUpgrades(g));
     T("flock", () => manageFlock(g, b));
     T("visitor", () => manageVisitor(g, b, cache));
     T("plan", () => planAll(g, b, cache));
     let r!: ReturnType<typeof advanceSeason>;
     if (process.env["PLANS"]) console.log(g.season, "act", g.act, "flock", g.flock.length, "plans", Object.entries(g.plans).map(([e, ra]) => `${g.sheep[e]!.name}x${g.sheep[ra]!.name}`).join(","), "orders", g.acceptedOrders.length);
     T("advance", () => { r = advanceSeason(g); });
+    const add = (k: string, v: number) => { ledger[k] = (ledger[k] ?? 0) + v; };
+    add("wool", r.income); add("feed", -r.feed); add("orderPay", r.orderResults.reduce((t, o) => t + o.reward, 0));
+    add("fairPay", r.fairResult?.prize ?? 0); add("autoSold", r.autoSold.reduce((t, a) => t + a.price, 0));
     money.push(g.money);
     if (process.env["MONEY"]) console.log(g.season, g.act, "money", g.money, "wool", r.income, "feed", r.feed, "orders", r.orderResults.reduce((t, o) => t + o.reward, 0), "fair", r.fairResult?.prize ?? 0, "auto", r.autoSold.reduce((t, a) => t + a.price, 0), "flock", g.flock.length, "log", g.log.filter((l) => l.season === g.season - 1 && l.text.startsWith("Sold")).map((l) => l.text.match(/(\d+) coins/)?.[1]).join(","));
     if (r.actAdvanced) actSeason[r.actAdvanced.act] = g.season;
@@ -200,7 +215,7 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     const by = (st: string) => h.filter((o) => o.status === st);
     console.log(`seed ${seed}: posted ${g.nextOrderId - 1}, filled ${by("filled").length} [${by("filled").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}], failed ${by("failed").length} [${by("failed").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg + "kg<" + o.microns)).join(" ")}], expired ${by("expired").length} [${by("expired").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}]`);
   }
-  return { seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}` };
+  return { ledger, seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}` };
 }
 
 export function summarise(label: string, results: RunResult[], maxSeasons: number): void {
@@ -214,6 +229,15 @@ export function summarise(label: string, results: RunResult[], maxSeasons: numbe
   const done = results.filter((r) => r.endSeason !== null);
   const act4 = results.filter((r) => r.endSeason !== null).map((r) => r.endSeason! - r.actSeason[4]!);
   console.log(`ending: ${done.length}/${results.length} (${Math.round((100 * done.length) / results.length)}%), median season ${med(done.map((r) => r.endSeason!))}, median seasons in act 4: ${med(act4)}`);
-  console.log(`median money at end: ${med(results.map((r) => r.money[r.money.length - 1] ?? 0))}, max money seen: ${Math.max(...results.flatMap((r) => r.money))}`);
+  const ends = results.map((r) => r.money[r.money.length - 1] ?? 0).sort((x, y) => x - y);
+  const pct = (q: number) => ends[Math.min(ends.length - 1, Math.floor(q * ends.length))]!;
+  console.log(`median money at end: ${med(ends)} (min ${ends[0]}, p10 ${pct(0.1)}, p90 ${pct(0.9)}), max money seen: ${Math.max(...results.flatMap((r) => r.money))}, min money seen: ${Math.min(...results.flatMap((r) => r.money))}`);
+  const at = (t: number) => med(results.filter((r) => r.money.length > t).map((r) => r.money[t]!));
+  console.log(`median money after season 8: ${at(7)}, 20 (year 5): ${at(19)}, 40: ${at(39)} (seeds still playing)`);
+  if (process.env["PERSEED"]) for (const r of results) console.log(`  seed ${r.seed}: end season ${r.endSeason ?? "-"}, money ${r.money[r.money.length - 1]}, acts at ${r.actSeason.join(",")}`);
+  if (process.env["LEDGER"]) {
+    const keys = [...new Set(results.flatMap((r) => Object.keys(r.ledger)))];
+    console.log("ledger (median over seeds, whole run):", keys.map((k) => `${k} ${med(results.map((r) => r.ledger[k] ?? 0))}`).join(", "));
+  }
   for (const r of results.filter((x) => x.endSeason === null)) console.log(`  seed ${r.seed} unfinished — ${r.stuck} (acts at ${r.actSeason.join(",")})`);
 }
