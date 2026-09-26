@@ -201,3 +201,6 @@ Design rules extracted from the panel:
 | Visiting ram | Hire this outsider? | Outcome spread widened by unknown pedigree |
 | Culling | Sell which lamb? | What each one would contribute to the goal |
 | Vet test | Test which locus? | How much the test would narrow the forecast |
+| Dogs | Buy the terrier, the collie or the Maremma? | Odds a fox / a wolf gets a lamb, now and with that dog |
+| Farm cat | Buy a cat before a mouse season? | Coins a mouse season costs, now and with the cat |
+| Treats | Spend a coin on this animal? | Its fondness before → after, and what that does to its wool |

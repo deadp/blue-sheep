@@ -1,5 +1,5 @@
 /** Every balance number in one place, so the oracle scripts can tune them. */
-import type { ActNumber, FairCategory, Unlock, UpgradeId } from "./types.js";
+import type { ActNumber, DogId, FairCategory, PetId, SheepOrigin, Unlock, UpgradeId } from "./types.js";
 
 export const SEASONS = ["Spring", "Summer", "Autumn", "Winter"] as const;
 export const ADULT_AGE = 2; // seasons
@@ -51,11 +51,74 @@ export interface UpgradeDef {
 }
 export const UPGRADES: UpgradeDef[] = [
   { id: "paddock", name: "Open the far paddock", icon: "🌿", price: 120, minAct: 0, requires: null, cap: 4, blurb: "Mend the fence on the second paddock: room for four more sheep.", done: "The far paddock is open — room for four more sheep." },
-  { id: "dog", name: "A sheepdog", icon: "🐕", price: 90, minAct: 0, requires: null, cap: 0, blurb: "A good dog keeps watch at night, so a fox can never take a lamb.", done: "Meet your new sheepdog. Foxes, beware!" },
+  { id: "terrier", name: "Pip, a yappy terrier", icon: "🐕", price: 40, minAct: 0, requires: null, cap: 0, blurb: "Small, scruffy and very loud. Her barking scares a fox off some of the time, but a wolf just laughs.", done: "Pip the terrier has arrived. Yap yap yap!" },
+  { id: "collie", name: "Bess, a border collie", icon: "🐕", price: 90, minAct: 0, requires: null, cap: 0, blurb: "Herds the lambs in close at night. Good against foxes, a little help against a wolf.", done: "Meet Bess, your border collie. Foxes, beware!" },
+  { id: "maremma", name: "Samson, a Maremma guardian dog", icon: "🐕‍🦺", price: 180, minAct: 2, requires: null, cap: 0, blurb: "A big white guardian who lives with the flock. Stands up to foxes and wolves alike.", done: "Samson the Maremma has moved in with the flock. Nothing gets past him." },
+  { id: "cat", name: "Mog, a farm cat", icon: "🐈", price: 45, minAct: 1, requires: null, cap: 0, blurb: "Naps on the barn roof and catches mice, so they can't spoil the wool or eat the hay.", done: "Mog the cat has taken up residence on the barn roof." },
   { id: "barn", name: "A snug barn", icon: "🛖", price: 110, minAct: 0, requires: null, cap: 0, blurb: "Draught-proof the barn, so no sheep falls ill in a hard winter.", done: "The barn is snug and ready for winter." },
   { id: "shearing", name: "A shearing shed", icon: "✂️", price: 220, minAct: 1, requires: null, cap: 0, blurb: "Cleaner, better-sorted fleeces: all wool fetches a quarter more.", done: "The shearing shed is built. Your wool will fetch more." },
   { id: "meadow", name: "Rent the long meadow", icon: "🌾", price: 300, minAct: 3, requires: "paddock", cap: 6, blurb: "Graze the meadow by the river: room for six more sheep.", done: "The long meadow is yours to graze — room for six more sheep." },
 ];
+
+// ---- Farm animals: dogs and the cat ----------------------------------------
+
+export const PET_IDS: PetId[] = ["terrier", "collie", "maremma", "cat"];
+export const DOG_IDS: DogId[] = ["terrier", "collie", "maremma"];
+/** Short names used in sentences. */
+export const PET_NAME: Record<PetId, string> = { terrier: "Pip", collie: "Bess", maremma: "Samson", cat: "Mog" };
+export const PET_KIND: Record<PetId, string> = { terrier: "terrier", collie: "border collie", maremma: "Maremma", cat: "farm cat" };
+export const PET_SEX: Record<PetId, "she" | "he"> = { terrier: "she", collie: "she", maremma: "he", cat: "he" };
+
+/**
+ * Chance each dog sees a predator off before it reaches the lambs (at full fondness; see DOG_FOND_FLOOR).
+ * Several dogs keep watch together: the lambs are safe unless every dog misses.
+ */
+export const DOG_GUARD: Record<DogId, { fox: number; wolf: number }> = {
+  terrier: { fox: 0.5, wolf: 0 },
+  collie: { fox: 0.9, wolf: 0.3 },
+  maremma: { fox: 0.95, wolf: 0.9 },
+};
+/** Coins of food each farm animal eats a season (added to the feed bill). */
+export const PET_FEED: Record<PetId, number> = { terrier: 1, collie: 2, maremma: 3, cat: 1 };
+/** A dog guards at this share of its best when it barely knows you, rising to 1 when devoted. */
+export const DOG_FOND_FLOOR = 0.9;
+/** Wolves come down from the hills in winters from this act (core index) on. */
+export const WOLF_MIN_ACT = 2;
+
+// ---- Mice ------------------------------------------------------------------
+
+/** Chance, each season from act 1, that mice are announced for the next season (not while some are due). */
+export const MICE_CHANCE = 0.25;
+/** Share of the season's wool clip mice spoil. */
+export const MICE_WOOL = 0.2;
+/** Extra coins of hay a head mice eat. */
+export const MICE_FEED = 1;
+/** Share of the mice the cat catches when it barely knows you, rising to 1 when devoted. */
+export const CAT_CATCH_FLOOR = 0.75;
+
+// ---- Fondness ----------------------------------------------------------------
+
+/** Fondness an animal starts with, by where it came from. Farm-born lambs: FOND_LAMB_BASE + a share of the dam's. */
+export const FOND_START: Record<SheepOrigin, number> = { founder: 30, market: 10, visitor: 10, bred: 40 };
+export const FOND_LAMB_BASE = 40;
+export const FOND_LAMB_FROM_DAM = 0.3;
+/** A new dog or cat. */
+export const FOND_PET_START = 20;
+/** Greeting (opening its card), once a season. */
+export const FOND_GREET = 8;
+/** A treat, once a season, for TREAT_COST coins. */
+export const FOND_TREAT = 15;
+export const TREAT_COST = 1;
+/** Ignored for more than FOND_GRACE seasons: loses FOND_DECAY a season. */
+export const FOND_GRACE = 2;
+export const FOND_DECAY = 4;
+/** Wool: from FOND_WOOL_FROM up to 100 the fleece fetches up to FOND_WOOL_MAX more (+15 %); below FOND_WOOL_LOW_FROM, up to FOND_WOOL_LOW less. */
+export const FOND_WOOL_FROM = 40;
+export const FOND_WOOL_MAX = 0.15;
+export const FOND_WOOL_LOW_FROM = 20;
+export const FOND_WOOL_LOW = 0.08;
+/** Words for fondness, lowest first; each covers 20 points. */
+export const FOND_WORDS = ["Skittish", "Wary", "Friendly", "Fond of you", "Devoted"] as const;
 /** Wool price multiplier with the shearing shed. */
 export const SHEARING_BONUS = 1.25;
 

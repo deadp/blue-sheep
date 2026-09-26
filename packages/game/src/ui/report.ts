@@ -1,6 +1,6 @@
 /** The season report: lambs next to the forecast the player saw, money, orders, fair, event, discoveries, act advance. */
 import {
-  FAIR_LABEL, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
+  FAIR_LABEL, MICE_ANNOUNCE, PET_NAME, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
 import { lambTile, litterLooks, litterWords } from "./forecast.js";
 import { cap, discoveryText, discoveryTitle, esc, hex, portrait, UNLOCK_WORDS } from "./util.js";
@@ -103,15 +103,27 @@ export function reportHtml(state: GameState, view: View): string {
   const shed = r.shedBonus ? ` (the shearing shed added ${r.shedBonus})` : "";
   const money: string[] = [`🧶 Wool sold for <b>${r.income}</b> coins${shed}`, `🌾 feed cost <b>${r.feed}</b>`];
   const lines: string[] = [];
+  // Fondness: what happy (or skittish) sheep did to this shearing.
+  const fond = r.fondBonus ?? 0;
+  if (fond > 0) lines.push(`<li class="good fond">💗 Happy sheep: <b>+${fond}</b> coin${fond === 1 ? "" : "s"} this shearing. Sheep who are fond of you grow better wool.</li>`);
+  else if (fond < 0) lines.push(`<li class="bad fond">😟 Skittish sheep: <b>−${-fond}</b> coin${fond === -1 ? "" : "s"} this shearing. Say hello to them, or bring a treat.</li>`);
+  if (r.mice) lines.push(`<li class="${r.mice.cat ? "good" : "bad"}">🐭 ${esc(r.mice.text)}${r.mice.wool + r.mice.feed ? ` <b>−${r.mice.wool + r.mice.feed}</b>` : ""}</li>`);
   for (const o of r.orderResults) lines.push(`<li class="${o.outcome === "filled" ? "good" : "bad"}">${o.outcome === "filled" ? "✉️" : "💔"} ${esc(cap(o.text))}${o.reward ? ` <b>+${o.reward}</b>` : ""}</li>`);
   if (r.fairResult) {
     const fr = r.fairResult;
     lines.push(`<li class="${fr.place === 1 ? "good" : ""}">🎪 ${esc(FAIR_LABEL[fr.category])}: ${esc(fr.text)}${fr.prize ? ` <b>+${fr.prize}</b>` : ""}</li>`);
   }
-  if (r.event) lines.push(`<li>${r.event.kind === "fox" ? "🦊" : r.event.kind === "hardWinter" ? "❄️" : "📈"} ${esc(r.event.text)}</li>`);
+  if (r.event) {
+    const k = r.event.kind;
+    const icon = k === "fox" ? "🦊" : k === "wolf" ? "🐺" : k === "hardWinter" ? "❄️" : "📈";
+    const pred = k === "fox" || k === "wolf";
+    const cls = pred ? (r.event.saved ? "good" : r.event.sheep ? "bad" : "") : "";
+    lines.push(`<li class="${cls}">${icon} ${esc(r.event.text)}${pred && r.event.dog ? ` <span class="tag ok">Good dog, ${esc(PET_NAME[r.event.dog])}!</span>` : ""}</li>`);
+  }
   for (const d of r.deaths) lines.push(`<li>🕊 ${esc(d.name)} is gone.</li>`);
   for (const a of r.autoSold) lines.push(`<li class="bad">🛒 The trader took ${esc(a.name)} for ${a.price} coins (${a.reason === "feed" ? "feed money ran short" : "no room"}).</li>`);
   if (r.announced) lines.push(`<li>📣 ${esc(r.announced.text)}</li>`);
+  if (r.miceComing) lines.push(`<li>🐭 ${esc(MICE_ANNOUNCE)}</li>`);
   if (r.newOrders.length) lines.push(`<li>✉️ ${r.newOrders.length} new order${r.newOrders.length === 1 ? "" : "s"} in the mailbox.</li>`);
   blocks.push(`<h3>The farm</h3><p>${money.join(" · ")}. You have ${state.money} coins.</p>${lines.length ? `<ul class="plain events">${lines.join("")}</ul>` : ""}`);
   return `<h2>${esc(seasonLabel(r.season))} <span class="meta">— a new season</span></h2>

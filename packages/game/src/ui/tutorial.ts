@@ -86,6 +86,7 @@ function speech(state: GameState, view: View, id: TutorialStepId): Speech[] {
     case "ram":
       return [tom(view.panel === "sheep" && view.sheepId === t.ewe ? [
         `This is ${esc(E)}'s card. <b>What you know</b> lists what your records can tell about her. The dots show how sure you are: an empty dot is a guess, a full dot is certain.`,
+        `Saying hello like this once a season makes her fonder of you (the hearts), and happy sheep grow better wool.`,
         `She looks white, but white wool can hide other colours. Now meet your ram, <b>${esc(R)}</b>: click him in the field.`,
       ] : [`Now meet your ram, <b>${esc(R)}</b>. Click him in the field.`])];
     case "forecast":

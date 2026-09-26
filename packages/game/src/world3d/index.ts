@@ -4,16 +4,22 @@ import * as THREE from "three";
 import { buildFarm, HOTSPOT_DEF, HOTSPOT_LABEL, ZONES, GROUND, type FarmBuild, type Rect } from "./farm.js";
 import { applyPose, buildFullRig, buildRig, buildSheepGeos, disposeGeos, restPose, sheepKey, SheepMaterials } from "./sheepMesh.js";
 import { Markers, type MarkerKind } from "./markers.js";
-import { computePose, FACE_CAMERA, flickEars, newAnimState, startHop, stepSheep, type Ent, type FlockCtx } from "./behave.js";
+import { computePose, FACE_CAMERA, FOND_SKITTISH, FOND_TRUSTING, flickEars, fondOf, newAnimState, startHop, stepSheep, type Ent, type FlockCtx } from "./behave.js";
 import { FlockParts } from "./parts.js";
-import { Bubble, Puffs } from "./fx.js";
-import { Dog } from "./dog.js";
+import { Bubble, Hearts, Puffs } from "./fx.js";
+import { Dog, type DogKind } from "./dog.js";
+import { Cat } from "./cat.js";
 import { BLEATS, LivePortrait, type PortraitStats } from "./portrait.js";
 import { NIGHT, PORTRAIT_BG, SEASONS } from "./palette.js";
 import { hashString, mulberry32 } from "./rng.js";
-import type { Hotspot, HoverTarget, Personality, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
+import type { Hotspot, HoverTarget, Personality, PetKind, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
 
-export type { Hotspot, HoverTarget, Personality, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, WorldUpgrade, Zone } from "./types.js";
+export type { Hotspot, HoverTarget, Personality, PetKind, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, WorldUpgrade, Zone } from "./types.js";
+
+const DOG_KINDS: readonly DogKind[] = ["terrier", "collie", "maremma"];
+const PET_KINDS: readonly PetKind[] = ["terrier", "collie", "maremma", "cat"];
+const PET_LABEL: Record<PetKind, string> = { terrier: "the terrier", collie: "the collie", maremma: "the Maremma", cat: "the cat" };
+
 export { BLEATS } from "./portrait.js";
 
 const HOTSPOTS: readonly Hotspot[] = ["house", "shed", "market", "vet", "fairground", "mailbox"];
@@ -97,7 +103,9 @@ export class WorldView {
   private readonly parts: FlockParts;
   private readonly puffs: Puffs;
   private readonly bubble: Bubble;
-  private readonly dog: Dog;
+  private readonly dogs: Record<DogKind, Dog>;
+  private readonly cat: Cat;
+  private readonly hearts: Hearts;
   private live: LivePortrait | null = null;
   private attended: string | null = null;
   private attendSaved: { target: THREE.Vector3; zoom: number } | null = null;
@@ -180,7 +188,9 @@ export class WorldView {
     this.parts = new FlockParts(this.scene, this.sheepMats, true);
     this.puffs = new Puffs(this.scene);
     this.bubble = new Bubble(container);
-    this.dog = new Dog(this.scene, true);
+    this.dogs = { terrier: new Dog(this.scene, true, "terrier"), collie: new Dog(this.scene, true, "collie"), maremma: new Dog(this.scene, true, "maremma") };
+    this.cat = new Cat(this.scene, true);
+    this.hearts = new Hearts(this.scene, this.markers.geos.planned, this.markers.mat, this.reduced);
     this.flockCtx = {
       time: 0, night: 0, attended: null, ents: this.ents.values(),
       insetRect: (zone, r) => this.insetRect(zone, r),
@@ -220,7 +230,8 @@ export class WorldView {
     L.snugBarn.visible = up.has("barn");
     L.shearing.visible = up.has("shearing");
     L.longMeadow.visible = up.has("meadow");
-    this.dog.show(up.has("dog"), ZONES.paddock);
+    for (const k of DOG_KINDS) this.dogs[k].show(up.has(k) || (k === "collie" && up.has("dog")), ZONES.paddock);
+    this.cat.show(up.has("cat"));
 
     const seen = new Set<string>();
     for (const ws of s.sheep) {
@@ -357,10 +368,92 @@ export class WorldView {
     }
   }
 
+  /**
+   * Little hearts float up from a sheep, dog or cat (it has just been greeted or given a treat). `n` is how
+   * many (a treat gets more).
+   */
+  love(id: string, n = 3): void {
+    if (this.disposed) return;
+    const e = this.ents.get(id);
+    const p = e ? new THREE.Vector3(e.x, (e.geos.dims.top + 0.35) * e.geos.dims.rootScale, e.z) : this.petTop(id);
+    if (!p) return;
+    this.hearts.spawn(p.x, p.y + 0.2, p.z, n);
+    if (e && !this.reduced && e.fold < 0.1) { flickEars(e); startHop(e, 0.18, 0.3); }
+  }
+
+  /** A dog or the cat says something in a speech bubble (its card opened). */
+  say(id: PetKind, text: string): void {
+    if (this.disposed || !this.petTop(id)) return;
+    this.bubble.show(id, text, this.reduced ? Infinity : 2.4, !this.reduced);
+  }
+
+  /** PNG data URL of one of the farm's dogs or the cat, sitting, on a pastel background (cached). */
+  petPortrait(id: PetKind, px = 160): string {
+    if (this.disposed) return "";
+    px = Math.max(16, Math.min(512, Math.round(px)));
+    const key = `pet:${id}|${px}`;
+    const hit = this.pCache.get(key);
+    if (hit) return hit;
+    const holder = new THREE.Group();
+    const pet = id === "cat" ? new Cat(holder, false) : new Dog(holder, false, id);
+    pet.posePortrait();
+    const bg = id === "cat" ? "#f2e1c8" : id === "maremma" ? "#d6e6d0" : "#cfe0ee";
+    const url = this.renderPortrait(holder, bg, px, 0.62);
+    pet.dispose();
+    this.pCache.set(key, url);
+    return url;
+  }
+
+  /** Render an object into a square portrait PNG (shared by sheep and pet portraits). */
+  private renderPortrait(root: THREE.Object3D, bg: string, px: number, fit = 0.53): string {
+    this.pScene.add(root);
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    root.traverse((o) => { if ((o as THREE.Mesh).isMesh && ((o as THREE.Mesh).material as THREE.Material).visible !== false) box.expandByObject(o); });
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const half = Math.max(size.x, size.y * 1.1, size.z) * fit;
+    const cam = this.pCam;
+    cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
+    cam.updateProjectionMatrix();
+    cam.position.copy(center).add(new THREE.Vector3(0.25, 0.42, 1).normalize().multiplyScalar(20));
+    cam.lookAt(center);
+    this.pGround.scale.set(size.x * 0.6, 1, size.z * 0.7);
+    this.pGround.position.x = center.x;
+    this.pGround.position.z = center.z;
+    let rt = this.pRTs.get(px);
+    if (!rt) {
+      rt = new THREE.WebGLRenderTarget(px, px, { samples: 4 });
+      rt.texture.colorSpace = THREE.SRGBColorSpace;
+      this.pRTs.set(px, rt);
+    }
+    this.pScene.background = new THREE.Color(bg);
+    const prev = this.renderer.getRenderTarget();
+    const prevShadow = this.renderer.shadowMap.autoUpdate;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.setRenderTarget(rt);
+    this.renderer.render(this.pScene, cam);
+    const buf = new Uint8Array(px * px * 4);
+    this.renderer.readRenderTargetPixels(rt, 0, 0, px, px, buf);
+    this.renderer.setRenderTarget(prev);
+    this.renderer.shadowMap.autoUpdate = prevShadow;
+    this.pScene.remove(root);
+    const c = this.pCanvas;
+    if (c.width !== px) { c.width = px; c.height = px; }
+    const ctx = c.getContext("2d")!;
+    const img = ctx.createImageData(px, px);
+    const row = px * 4;
+    for (let y = 0; y < px; y++) img.data.set(buf.subarray((px - 1 - y) * row, (px - y) * row), y * row);
+    ctx.putImageData(img, 0, 0);
+    return c.toDataURL("image/png");
+  }
+
   focus(id: string | Hotspot): void {
     let to: THREE.Vector3 | null = null;
     const e = this.ents.get(id);
+    const pt = e ? null : this.petTop(id);
     if (e) to = new THREE.Vector3(e.x, 0, e.z);
+    else if (pt) to = new THREE.Vector3(pt.x, 0, pt.z);
     else if ((HOTSPOTS as readonly string[]).includes(id)) {
       const a = HOTSPOT_DEF[id as Hotspot].anchor;
       to = new THREE.Vector3(a[0], 0, a[2]);
@@ -377,9 +470,12 @@ export class WorldView {
     if (this.disposed) return null;
     const v = new THREE.Vector3();
     const e = this.ents.get(id);
+    const pt = e ? null : this.petTop(id);
     if (e) {
       const d = e.geos.dims;
       v.set(e.x, (d.top + 0.1) * d.rootScale + e.pose.bob * d.rootScale, e.z);
+    } else if (pt) {
+      v.copy(pt);
     } else if ((HOTSPOTS as readonly string[]).includes(id)) {
       const a = HOTSPOT_DEF[id as Hotspot].anchor;
       v.set(a[0], a[1], a[2]);
@@ -428,7 +524,8 @@ export class WorldView {
     e.attendT = 0;
     e.mode = "attend";
     e.nuzzle = null;
-    const say = opts.say ?? BLEATS[e.personality][0]!;
+    const fond = fondOf(e);
+    const say = opts.say ?? `${BLEATS[e.personality][0]!}${fond >= 80 ? " ♥" : ""}`;
     if (this.reduced) {
       e.heading = FACE_CAMERA;
       this.bubble.show(id, say, Infinity, false);
@@ -437,14 +534,17 @@ export class WorldView {
       const P = e.personality;
       window.setTimeout(() => {
         if (this.attended !== id || this.disposed) return;
-        if (P === "bold") startHop(e, 0.42, 0.5);
+        if (fond < FOND_SKITTISH) startHop(e, 0.16, 0.34, 1.1); // skittish: backs away first, whatever its temper
+        else if (P === "bold") startHop(e, 0.42, 0.5);
         else if (P === "curious") startHop(e, 0.3, 0.42);
         else if (P === "shy") startHop(e, 0.14, 0.3, 0.9);
         this.bubble.show(id, say, 2.8, true);
       }, P === "calm" ? 450 : 320);
-      // shy neighbours shuffle away from the fuss
+      // shy and skittish neighbours shuffle away from the fuss; fond ones come over soon
       for (const o of this.ents.values()) {
-        if (o === e || o.zone !== e.zone || o.personality !== "shy" || o.fold > 0.1) continue;
+        if (o === e || o.zone !== e.zone || o.fold > 0.1) continue;
+        if (fondOf(o) >= FOND_TRUSTING && o.personality !== "shy") { o.timer = Math.min(o.timer, 0.3 + Math.random() * 0.6); continue; }
+        if (o.personality !== "shy" && fondOf(o) >= FOND_SKITTISH) continue;
         const d = Math.hypot(o.x - e.x, o.z - e.z);
         if (d > 4) continue;
         o.heading = Math.atan2(-(o.z - e.z), o.x - e.x) + Math.PI; // face the fuss…
@@ -521,7 +621,9 @@ export class WorldView {
     this.parts.dispose();
     this.puffs.dispose();
     this.bubble.dispose();
-    this.dog.dispose();
+    for (const k of DOG_KINDS) this.dogs[k].dispose();
+    this.cat.dispose();
+    this.hearts.dispose();
     this.live?.dispose();
     this.live = null;
     if (this.particles) { this.particles.geometry.dispose(); (this.particles.material as THREE.Material).dispose(); }
@@ -538,11 +640,12 @@ export class WorldView {
   }
 
   /** Not part of the contract: render stats for the dev harness. */
-  debugStats(): { calls: number; triangles: number; sheep: number; geometries: number; dog: boolean; attended: string | null; bubble: string | null; portrait: PortraitStats } {
+  debugStats(): { calls: number; triangles: number; sheep: number; geometries: number; dog: boolean; dogs: DogKind[]; cat: boolean; hearts: number; attended: string | null; bubble: string | null; portrait: PortraitStats } {
     const i = this.renderer.info;
     return {
       calls: i.render.calls, triangles: i.render.triangles, sheep: this.ents.size, geometries: i.memory.geometries,
-      dog: this.dog.visible, attended: this.attended, bubble: this.bubble.id ? this.bubble.el.textContent : null,
+      dog: DOG_KINDS.some((k) => this.dogs[k].visible), dogs: DOG_KINDS.filter((k) => this.dogs[k].visible), cat: this.cat.visible,
+      hearts: this.hearts.active, attended: this.attended, bubble: this.bubble.id ? this.bubble.el.textContent : null,
       portrait: this.live?.stats() ?? { mounted: false, id: null, calls: 0, frames: 0 },
     };
   }
@@ -907,11 +1010,15 @@ export class WorldView {
     this.raycaster.setFromCamera(ndc, this.camera);
     const list: THREE.Object3D[] = [];
     for (const e of this.ents.values()) list.push(e.rig.pick);
+    for (const k of DOG_KINDS) if (this.dogs[k].visible) list.push(this.dogs[k].pick);
+    if (this.cat.visible) list.push(this.cat.pick);
     for (const p of this.farm.hotspotPicks) list.push(p);
     const hits = this.raycaster.intersectObjects(list, false);
     for (const h of hits) {
       const sid = h.object.userData.sheepId as string | undefined;
       if (sid && this.ents.has(sid)) return { kind: "sheep", id: sid };
+      const pet = h.object.userData.pet as PetKind | undefined;
+      if (pet && (PET_KINDS as readonly string[]).includes(pet)) return { kind: "pet", id: pet };
       const hs = h.object.userData.hotspot as Hotspot | undefined;
       if (hs) return { kind: "hotspot", id: hs };
     }
@@ -929,7 +1036,9 @@ export class WorldView {
     if (t?.kind === "hotspot") (this.farm.hotspotMeshes[t.id].material as THREE.MeshLambertMaterial).emissiveIntensity = 0.28;
     this.renderer.domElement.style.cursor = t ? "pointer" : "";
     if (t) {
-      this.label.textContent = t.kind === "sheep" ? this.ents.get(t.id)?.ws.name ?? "" : HOTSPOT_LABEL[t.id];
+      this.label.textContent = t.kind === "sheep" ? this.ents.get(t.id)?.ws.name ?? ""
+        : t.kind === "pet" ? this.snap?.pets?.find((p) => p.id === t.id)?.name ?? PET_LABEL[t.id]
+        : HOTSPOT_LABEL[t.id];
       this.label.style.display = "block";
     } else this.label.style.display = "none";
     this.handlers.onHover?.(t);
@@ -944,6 +1053,10 @@ export class WorldView {
       if (!e) return;
       const d = e.geos.dims;
       v.set(e.x, (d.top + (e.marker ? 0.7 : 0.1)) * d.rootScale + 0.2, e.z);
+    } else if (t.kind === "pet") {
+      const p = this.petTop(t.id);
+      if (!p) return;
+      v.copy(p);
     } else {
       const a = HOTSPOT_DEF[t.id].anchor;
       v.set(a[0], a[1], a[2]);
@@ -992,6 +1105,7 @@ export class WorldView {
     const hit = this.pick(this.ndc(ev));
     if (!hit) return;
     if (hit.kind === "sheep") this.handlers.onSheep(hit.id);
+    else if (hit.kind === "pet") this.handlers.onPet?.(hit.id);
     else this.handlers.onHotspot(hit.id);
   };
 
@@ -1087,6 +1201,7 @@ export class WorldView {
     }
     this.syncTransforms();
     this.stepDog(dt);
+    this.hearts.step(dt);
     this.placeBubble();
 
     if (this.hoverDirty && this.pointer && !this.drag?.moved) {
@@ -1099,7 +1214,9 @@ export class WorldView {
   };
 
   private stepDog(dt: number): void {
-    if (!this.dog.visible) return;
+    this.cat.update(this.reduced ? 0 : dt, this.time, this.night, this.reduced);
+    const live = DOG_KINDS.map((k) => this.dogs[k]).filter((d) => d.visible);
+    if (!live.length) return;
     const pad: { x: number; z: number; radius: number }[] = [];
     let att: { x: number; z: number } | null = null;
     for (const e of this.ents.values()) {
@@ -1107,16 +1224,28 @@ export class WorldView {
       pad.push(e);
       if (e.ws.id === this.attended) att = e;
     }
-    this.dog.update(this.reduced ? 0 : dt, { time: this.time, night: this.night, zone: ZONES.paddock, sheep: pad, attended: att, still: this.reduced });
+    const dogs = live.map((d) => ({ x: d.x, z: d.z, radius: 0.35 * (d.kind === "maremma" ? 1.6 : d.kind === "terrier" ? 0.8 : 1.1), self: d }));
+    for (const d of live) d.update(this.reduced ? 0 : dt, { time: this.time, night: this.night, zone: ZONES.paddock, sheep: pad, dogs, attended: att, still: this.reduced });
+  }
+
+  /** A pet's position (world, just above its head), if it's on the farm. */
+  private petTop(id: string): THREE.Vector3 | null {
+    if (id === "cat") return this.cat.visible ? this.cat.top() : null;
+    const d = (this.dogs as Record<string, Dog>)[id];
+    if (!d?.visible) return null;
+    const s = d.kind === "maremma" ? 1.6 : d.kind === "terrier" ? 1.05 : 1.35;
+    return new THREE.Vector3(d.x, 1.15 * s, d.z);
   }
 
   private placeBubble(): void {
     const id = this.bubble.id;
     if (!id) return;
     const e = this.ents.get(id);
-    if (!e) { this.bubble.hide(); return; }
-    const d = e.geos.dims;
-    const v = new THREE.Vector3(e.x, (d.top - 0.25) * d.rootScale + e.pose.bob * d.rootScale, e.z).project(this.camera);
+    const pt = e ? null : this.petTop(id);
+    if (!e && !pt) { this.bubble.hide(); return; }
+    const v = e
+      ? new THREE.Vector3(e.x, (e.geos.dims.top - 0.25) * e.geos.dims.rootScale + e.pose.bob * e.geos.dims.rootScale, e.z).project(this.camera)
+      : pt!.project(this.camera);
     this.bubble.place(((v.x + 1) / 2) * this.container.clientWidth, ((1 - v.y) / 2) * this.container.clientHeight);
   }
 

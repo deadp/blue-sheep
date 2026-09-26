@@ -10,14 +10,20 @@ export { planMating, unplanMating, plannedPairings, ramLoad, ramAvailable, lambR
 export { buySheep, sellSheep, sheepValue, buyPrice, ramPrice, woolIncome, finenessMultiplier } from "./economy.js";
 export { vetTest, forecastVet, isTestLocus } from "./vet.js";
 export {
-  buyUpgrade, forecastUpgrade, upgradeBlocked, upgradeDef, hasUpgrade, upgradeCapBonus, feedPerHead,
+  buyUpgrade, forecastUpgrade, upgradeBlocked, upgradeDef, hasUpgrade, upgradeCapBonus, feedPerHead, chanceWords, type UpgradeForecast,
 } from "./upgrades.js";
+export {
+  fondnessOf, defaultFondness, fondnessWord, fondnessHearts, fondWoolMultiplier, greetAnimal, giveTreat, treatBlocked,
+  forecastTreat, greetedThisSeason, treatedThisSeason, isPetId, isOwnAnimal, ownedPets, petEffort, fleeceAt, seasonCare,
+  type TreatForecast,
+} from "./care.js";
+export { hasCat, catCatch, miceCost, miceNow, miceComingText, MICE_ANNOUNCE } from "./mice.js";
 export {
   acceptOrder, declineOrder, forecastOrder, forecastOrderFor, sheepMatchesOrder,
 } from "./orders.js";
 export { enterFair, forecastFair, fairScore, fairOdds, fieldMean } from "./fair.js";
 export { hireVisitingRam, forecastVisitor } from "./visitor.js";
-export { announceText } from "./events.js";
+export { announceText, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
   forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, GOALS, type Goal,
 } from "./forecast.js";

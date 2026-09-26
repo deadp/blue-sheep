@@ -7,13 +7,15 @@
  * Diagnostics (env vars): PROF=1 phase timings, MONEY=1 coin sources per season,
  * ORDERS=1 order outcomes per seed, PLANS=1 matings per season, FLOCK=1 final flock with true genotypes,
  * LEDGER=1 median coins by source over the run, PERSEED=1 one line per seed, UPACT=N buy farm improvements
- * only from act N. blind.ts/oracle.ts also take SEEDS=n and FROM=first seed.
+ * only from act N, NOCARE=1 never greet or treat, NODOGS=1 never buy dogs or the cat. blind.ts/oracle.ts also take
+ * SEEDS=n and FROM=first seed.
  */
 import {
   acceptOrder, advanceSeason, buyPrice, buySheep, canBreed, currentAct, enterFair, fairScore, flockSheep,
   forecastOrder, isAdult, isEnding, lambRoom, markEndingShown, newGame, pedigreeOf, planMating, ramAvailable, RAM_CAPACITY,
-  sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef,
-  type GameState, type Sheep,
+  sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
+  ownedPets, fondnessOf, hasUpgrade,
+  type GameState, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
 
 export interface CrossDist { colour: Record<string, number>; horns: Record<string, number>; learnBits?: number }
@@ -36,11 +38,21 @@ function blueValue(d: Doses): number {
   return d.d * 3 + d.a * 2 + Math.min(1, d.B) * 1;
 }
 
+/**
+ * True when no sheep in the flock can pass on black (B), as far as the farmer knows: blue is then impossible
+ * until a black-carrier is brought in (e.g. a flock drifted to all fawn).
+ */
+function flockLacksBlack(g: GameState, b: Brain): boolean {
+  return g.act <= 1 && flockSheep(g).every((x) => b.doses(g, x).B < 0.3);
+}
+
 /** How much the farmer wants to keep a sheep. */
 function keepValue(g: GameState, b: Brain, s: Sheep): number {
   const act = g.act;
   const colour = String(s.phenotype["colour"]);
-  let v = blueValue(b.doses(g, s));
+  const d = b.doses(g, s);
+  let v = blueValue(d);
+  if (d.B >= 0.3 && flockLacksBlack(g, b)) v += 6;
   if (colour === "blue") v += 8;
   if (act >= 2) v += (26 - fin(s)) * (act >= 4 ? 1.2 : 0.6);
   if (act >= 4) v -= s.inbreeding * 30;
@@ -140,12 +152,34 @@ function manageFlock(g: GameState, b: Brain): void {
   }
 }
 
-/** Buy farm improvements in a sensible order once they're affordable with a little to spare. */
+/**
+ * Buy farm improvements in a sensible order once they're affordable with a little to spare. Dogs: the cheap
+ * terrier as a stop-gap when a fox is announced early on; from act 2 the collie, then the Maremma (wolves
+ * roam from act 2; bought at once when one is announced). The cat from act 2, once there is wool worth guarding.
+ */
 function manageUpgrades(g: GameState): void {
   if (g.act < Number(process.env["UPACT"] ?? 0)) return;
-  for (const id of ["paddock", "dog", "barn", "shearing", "meadow"] as const) {
-    if (!upgradeBlocked(g, id) && g.money >= upgradeDef(id).price + 40) buyUpgrade(g, id);
+  const buy = (id: UpgradeId, spare = 40) => { if (!upgradeBlocked(g, id) && g.money >= upgradeDef(id).price + spare) buyUpgrade(g, id); };
+  const ev = g.pendingEvent?.kind;
+  const dogs = () => ["terrier", "collie", "maremma"].filter((d) => hasUpgrade(g, d as UpgradeId)).length;
+  if (process.env["NODOGS"]) {
+    for (const id of ["paddock", "barn", "shearing", "meadow"] as const) buy(id);
+    return;
   }
+  // Early on, coins go to breeding and the vet: only a cheap terrier as a stop-gap when a fox is announced.
+  if (ev === "fox" && !dogs()) buy("terrier", 20);
+  if (ev === "wolf") buy("maremma", 10);
+  if (g.act < 2) { for (const id of ["paddock", "barn"] as const) buy(id); return; }
+  for (const id of ["paddock", "collie", "cat", "barn", "maremma", "shearing", "meadow"] as const) buy(id);
+}
+
+/** Say hello to every animal each season (free); give treats when coins are plentiful. */
+function manageCare(g: GameState): void {
+  if (process.env["NOCARE"]) return;
+  const ids = [...g.flock, ...ownedPets(g)];
+  for (const id of ids) greetAnimal(g, id);
+  if (g.money < 150) return;
+  for (const id of ids) if (fondnessOf(g, id) < 100 && !treatBlocked(g, id)) giveTreat(g, id);
 }
 
 function manageVisitor(g: GameState, b: Brain, cache: Map<string, CrossDist>): void {
@@ -189,6 +223,7 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     T("fair", () => manageFair(g));
     T("vet", () => b.vet?.(g));
     T("upgrades", () => manageUpgrades(g));
+    T("care", () => manageCare(g));
     T("flock", () => manageFlock(g, b));
     T("visitor", () => manageVisitor(g, b, cache));
     T("plan", () => planAll(g, b, cache));
@@ -196,7 +231,8 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     if (process.env["PLANS"]) console.log(g.season, "act", g.act, "flock", g.flock.length, "plans", Object.entries(g.plans).map(([e, ra]) => `${g.sheep[e]!.name}x${g.sheep[ra]!.name}`).join(","), "orders", g.acceptedOrders.length);
     T("advance", () => { r = advanceSeason(g); });
     const add = (k: string, v: number) => { ledger[k] = (ledger[k] ?? 0) + v; };
-    add("wool", r.income); add("feed", -r.feed); add("orderPay", r.orderResults.reduce((t, o) => t + o.reward, 0));
+    add("wool", r.income); add("feed", -r.feed); add("fondWool", r.fondBonus); add("miceLoss", -((r.mice?.wool ?? 0) + (r.mice?.feed ?? 0)));
+    add("foxWolfLambs", r.event && (r.event.kind === "fox" || r.event.kind === "wolf") && !r.event.saved && r.event.sheep ? -1 : 0); add("orderPay", r.orderResults.reduce((t, o) => t + o.reward, 0));
     add("fairPay", r.fairResult?.prize ?? 0); add("autoSold", r.autoSold.reduce((t, a) => t + a.price, 0));
     money.push(g.money);
     if (process.env["MONEY"]) console.log(g.season, g.act, "money", g.money, "wool", r.income, "feed", r.feed, "orders", r.orderResults.reduce((t, o) => t + o.reward, 0), "fair", r.fairResult?.prize ?? 0, "auto", r.autoSold.reduce((t, a) => t + a.price, 0), "flock", g.flock.length, "log", g.log.filter((l) => l.season === g.season - 1 && l.text.startsWith("Sold")).map((l) => l.text.match(/(\d+) coins/)?.[1]).join(","));

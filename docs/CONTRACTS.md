@@ -53,10 +53,35 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
   narrow what you know (entropy of that marginal, shown as words/dots).
 - **Events**: one per winter from act 1: `hardWinter` (feed cost ×2 that
   season; a random low-size sheep falls ill and misses breeding), `fox`
-  (one lamb lost unless the flock has an adult with boldness ≥ 7 or the
-  `dog` improvement; the `barn` improvement stops hard-winter illness), `woolBoom`
+  (one lamb lost unless the flock has an adult with boldness ≥ 7 or a dog sees
+  it off; the `barn` improvement stops hard-winter illness), `woolBoom`
   (one colour's wool price ×2 next season, announced in advance so it is a
-  decision).
+  decision), and from act 2 (`WOLF_MIN_ACT`, core index) `wolf` (like the fox,
+  but a bold sheep doesn't help and only a strong dog does). Predators
+  (`core/events.ts`): every owned dog keeps watch, strongest first; each sees the
+  predator off with its `DOG_GUARD` chance × `petEffort` (0.9 → 1 with fondness);
+  `predatorRisk(state, kind, dogs?)` = the chance a lamb is taken if it comes
+  (0 for a fox with a bold adult; otherwise Π(1 − each dog's chance)).
+  `EventRecord.dog` names the dog that saved the lambs.
+- **Mice** (`core/mice.ts`): from act 1, each new season has a `MICE_CHANCE`
+  (25 %) chance that mice are announced for the season after (`state.mice` =
+  that season; one at a time). When they come they spoil `MICE_WOOL` (20 %) of
+  the clip and eat `MICE_FEED` coin of hay a head, both × (1 − the cat's catch:
+  `CAT_CATCH_FLOOR` 0.75 → 1 with the cat's fondness). `SeasonReport.mice`
+  reports it; `SeasonReport.miceComing` the announcement.
+- **Fondness** (`core/care.ts`): one player-facing measure, "Fondness", 0–100 per
+  animal (flock sheep and owned dogs/cat) in `state.care: Record<id, {level,
+  greeted, treated, cared}>` (optional; missing records use a default by origin:
+  founder 30, market/visitor 10, farm-born lamb 40 + 0.3 × its dam's, a new dog or
+  cat 20). Opening an own animal's card greets it: +8 once per animal per season
+  (`greetAnimal`). A treat (`giveTreat`, data-treat) costs 1 coin, +15, once per
+  animal per season, with `forecastTreat` shown before the button. Ignored for 2+
+  seasons: −4 a season (`seasonCare`, end of each season; records of sheep that
+  left are dropped). Effects: wool price × `fondWoolMultiplier` (1 from 20 to 40,
+  up to ×1.15 at 100, down to ×0.92 at 0), reported as `SeasonReport.fondBonus`
+  ("Happy sheep: +N coins this shearing"); dogs guard and the cat catches a little
+  better. Words by 20s: Skittish, Wary, Friendly, Fond of you, Devoted; five hearts;
+  the number /100 only with `numbers`.
 - **Economy**: wool income per adult each season (existing formula), feed cost
   per sheep per season (`feedPerHead(season)`: 2 coins in years 1–2, then
   dearer each year up to `FEED_MAX`), buy/sell at the market (the trader pays
@@ -67,11 +92,24 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
 - **Farm improvements** (`core/upgrades.ts`, defs in `config.ts` `UPGRADES`):
   one-time purchases in the market panel's "Farm improvements" section, each
   shown with `forecastUpgrade(state, id).text` (what it would change for this
-  farm) before the Buy button. `paddock` (+4 flock cap), `dog` (a fox never
-  takes a lamb), `barn` (nobody falls ill in a hard winter), `shearing`
-  (wool ×1.25; the report shows `SeasonReport.shedBonus`), `meadow` (+6 cap,
-  act 3+, needs `paddock`). Stored in `state.upgrades: UpgradeId[]`
-  (optional; saves without it load as `[]`). Cap bonuses stack on top of each
+  farm) before the Buy button. `paddock` (+4 flock cap), `barn` (nobody falls
+  ill in a hard winter), `shearing` (wool ×1.25; the report shows
+  `SeasonReport.shedBonus`), `meadow` (+6 cap, act 3+, needs `paddock`), and the
+  animals (`PetId`, shown first as "Dogs and a cat"):
+
+  | id | name | price | from | fox | wolf | eats/season |
+  |----|------|-------|------|-----|------|-------------|
+  | `terrier` | Pip, a yappy terrier | 40 | act 1 | 0.5 | 0 | 1 |
+  | `collie` | Bess, a border collie | 90 | act 1 | 0.9 | 0.3 | 2 |
+  | `maremma` | Samson, a Maremma guardian dog | 180 | act 3 (core 2) | 0.95 | 0.9 | 3 |
+  | `cat` | Mog, a farm cat | 45 | act 2 (core 1) | — | — | 1 |
+
+  Dogs join (each one bought keeps watch with the others). Their market cards show
+  `forecastUpgrade(state, id).risk` = the odds a fox / a wolf gets a lamb, now and
+  with that dog (risk meters, words; % only with numbers); the cat's shows `.mice`
+  (coins a mouse season costs now and with the cat). Pet food (`PET_FEED`) is on
+  the feed bill. Stored in `state.upgrades: UpgradeId[]`
+  (optional; saves without it load as `[]`; an old save's `"dog"` loads as `"collie"`). Cap bonuses stack on top of each
   act's cap. `buyUpgrade(state, id)` throws a player-readable message when
   already owned, too early, missing its prerequisite, or unaffordable.
 - **Discovery cards**: everything learned about one sheep in one update is a
@@ -143,7 +181,9 @@ export function declineOrder(state, orderId): void;
 export function enterFair(state, sheepId | null): void;
 export function hireVisitingRam(state): void;
 export function renameSheep(state, id, name): void;
-export function buyUpgrade(state, id): void;                // farm improvement (see §1)
+export function buyUpgrade(state, id): void;                // farm improvement or animal (see §1)
+export function greetAnimal(state, id): number;             // fondness gained (0 if already greeted this season / not yours)
+export function giveTreat(state, id): number;               // 1 coin, once per animal per season; throws otherwise
 
 // tutorial (see §1)
 export function newTutorialGame(seed: number): GameState;
@@ -158,6 +198,10 @@ export function candidates(state, forId): Sheep[];
 export function forecastOrder(state, orderId): { pFill: number; text: string };
 export function forecastFair(state, sheepId): { pWin: number; pPlace: number; text: string };
 export function forecastVet(state, sheepId, locus): { gainBits: number; text: string };
+export function forecastUpgrade(state, id): { text; risk?: { fox: {now, with}; wolf: {now, with} }; mice?: { now, with } };
+export function forecastTreat(state, id): { before; after; woolBefore; woolAfter; text };
+export function predatorRisk(state, "fox" | "wolf", dogs?): number;  // chance a lamb is taken if it comes
+export function fondnessOf(state, id): number;              // 0–100, sheep id or PetId
 export function factsFor(state, sheepId): Fact[];
 export function familyTree(state, sheepId): { ancestors: ..., descendants: ... };
 
@@ -201,6 +245,7 @@ export interface WorldSheep {
   marker?: "planned" | "new" | "ill" | "rosette" | "selected" | null;
   personality?: "shy" | "calm" | "curious" | "bold"; // idle behaviour + greeting (default calm)
   dam?: string | null;  // lambs stay near their mother
+  fondness?: number;    // 0–100 (default 30): 60+ come to the front and follow the visited sheep; <20 back away
 }
 export interface WorldSnapshot {
   season: 0 | 1 | 2 | 3;      // spring..winter: light, foliage colour, snow in winter
@@ -210,13 +255,15 @@ export interface WorldSnapshot {
   paddock2: boolean;          // second paddock fenced & open
   visitorPresent: boolean;    // visiting ram pen occupied
   fairToday: boolean;         // bunting on the fairground
-  upgrades?: string[];        // owned improvements: "dog" (sheepdog), "barn" (snug barn), "shearing" (shed), "meadow"
+  upgrades?: string[];        // owned: "terrier" | "collie" | "maremma" (dogs; old "dog" = collie), "cat", "barn", "shearing", "meadow"
+  pets?: { id: PetKind; name: string; fondness?: number }[];  // hover names of the dogs and cat
 }
 export interface WorldHandlers {
   onSheep(id: string): void;
   onHotspot(h: Hotspot): void;
   onHover?(target: { kind: "sheep"; id: string } | { kind: "hotspot"; id: Hotspot } | null): void;
   onPortraitClick?(id: string): void; // the live portrait was clicked (it hops); the controller plays the voice
+  onPet?(id: PetKind): void;          // a dog or the cat was clicked in the field (PetKind = terrier|collie|maremma|cat)
 }
 export class WorldView {
   constructor(container: HTMLElement, handlers: WorldHandlers, opts?: { seed?: number; reducedMotion?: boolean });
@@ -233,6 +280,9 @@ export class WorldView {
   mountPortrait(el: HTMLElement, sheep: WorldSheep): () => void;
     // live animated 3D portrait (own small renderer, canvas[data-live-portrait]) inside el; one at a
     // time; mounting the same sheep again moves the canvas. The disposer stops rendering.
+  love(id: string, n?: number): void;  // pink hearts float up from a sheep, dog or cat (greeted / treated)
+  say(id: PetKind, text: string): void; // speech bubble over a dog or the cat
+  petPortrait(id: PetKind, px?: number): string; // PNG data URL of a dog or the cat sitting (animal card)
   sleepTransition(): Promise<void>;    // dusk → night → dawn, ~1.5 s, resolves at darkest point? No: resolves when fully dark; call again with dawn(): Promise<void>
   dawn(): Promise<void>;
   resize(): void;
@@ -245,7 +295,16 @@ bold "BAA!". In the field shy sheep keep to the fence and hop back from a fuss, 
 come to the front, curious ones walk over to the sheep being visited. Everyone grazes, looks about,
 nuzzles, lambs skip after their dam, and the flock lies down at night. Legs, ears and eyes are
 instanced flock-wide (three draw calls). Reduced motion: static poses, instant camera, static bubble.
-`debugStats()` (not contract) reports draw calls, the dog, the visited sheep, the bubble and the portrait.
+Farm animals (`dog.ts`, `cat.ts`): Pip the terrier (small, scruffy white with tan patches, a beard, upright
+ears) darts about; Bess the collie (black and white) trots round the flock and sits to watch; Samson the
+Maremma (big, cream-white, droopy ears, plumed tail) lies among the flock and patrols slowly. All three watch
+the visited sheep from their own side and sleep by the gate at night. Mog the cat (orange tabby) naps and
+grooms on the barn roof, jumps down via the hay bales, stalks and pounces on the barn floor, naps in the sun,
+and curls up on the roof at night. Each has an invisible pick box (`userData.pet`), so it can be hovered
+(label) and clicked (`onPet`). `screenPoint`/`focus` accept a PetKind. Fondness in the field: 60+ trot to the
+front and come over to the visited sheep; under 20 keep to the fence and hop back when visited (or when a
+neighbour is); 80+ add "♥" to their greeting.
+`debugStats()` (not contract) reports draw calls, the dogs (`dog`, `dogs[]`), `cat`, live `hearts`, the visited sheep, the bubble and the portrait.
 
 Sheep look (`sheepMesh.ts`): chibi proportions. A round body made of overlapping wool puffs around a
 soft core (crimp → more, smaller, lumpier puffs; fleece weight → bigger puffs; size → body scale; spots
@@ -277,7 +336,9 @@ data-findmate="id"        open forecast for sheep
 data-mate="id"            select candidate in forecast
 data-goal="blue|learn|fine|heavy"
 data-plan="ewe:ram"       toggle plan
-data-buy="id" / data-sell="id" / data-hire="1" / data-upgrade="paddock|dog|barn|shearing|meadow"
+data-buy="id" / data-sell="id" / data-hire="1" / data-upgrade="paddock|terrier|collie|maremma|cat|barn|shearing|meadow"
+data-treat="id"           give a sheep in the flock, or an owned dog/cat (PetId), a treat (1 coin)
+data-open="animal" data-sheep-id="terrier|collie|maremma|cat"   the animal card
 data-test="sheepId:locus"
 data-accept="orderId" / data-decline="orderId"
 data-enter="sheepId"      fair entry (or "none")
@@ -309,7 +370,17 @@ the live portrait into, plus a personality line (`personalityLine`, core/persona
 and looks only). The report flips each born lamb card next to the forecast it matched. The family tree
 is an SVG-connected tree with portrait nodes. `actTrack` draws the five acts in the board and HUD.
 
-Panels: `titleHtml`, `helpHtml`, `sheepCardHtml`, `forecastPanelHtml`
+Care UI: `heartMeter` (five hearts, the word, faint hearts for what a treat would add, /100 only with
+numbers). The sheep card (own flock sheep only) and the animal card have a care box: Fondness hearts,
+"♥ said hello this season", what fondness does to its wool (coins; % with numbers), the treat forecast and
+"Give a treat · 1 coin" (or "Treat given ✓"). `animalCardHtml` (panel `animal`, a right-docked side panel
+like the sheep card): portrait from `view.petArt(id)`, what the dog does (fox/wolf risk meters with all your
+dogs) or the cat does (mice caught, mice coming), the care box, and the other animals. Risk meters use
+`oddsMeter(..., {risk: true})` (warm colours). The report adds "💗 Happy sheep: +N coins this shearing" (or
+"😟 Skittish sheep: −N"), 🐭 mice, 🐺 wolf and "Good dog, <name>!" when a dog saved the lambs. The board's
+"Coming up" lists mice and "Your animals" (chips with hearts).
+
+Panels: `titleHtml`, `helpHtml`, `sheepCardHtml`, `animalCardHtml`, `forecastPanelHtml`
 (existing, extended with visiting ram + rosette + numbers), `boardHtml`
 (goal card, planned matings, diary), `ordersHtml`, `marketHtml` (buy/sell +
 visitor hire with forecast), `vetHtml`, `fairHtml`, `codexHtml` (discovery
@@ -334,7 +405,10 @@ discovery/concept cards.
   animation, `?fresh=1` clear save.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
-  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"newGame", seed} | {type:"open", panel} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?}`.
+  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?}`.
+  Opening an own sheep's card (`open` sheep) or an animal's card (`open` animal with a PetId) greets it
+  (fondness, once per season; hearts in the field; saved). The animal card also glides the camera to the
+  animal, which speaks (bubble + bark/mew).
   `window.__game.tutorial()` returns `{ step, id, done }` or `null` (no tutorial). `body[data-tutorial]`
   holds the running step number, or `""`.
   Also sets `document.body.dataset.ready = "1"` when the first frame has
@@ -343,6 +417,11 @@ discovery/concept cards.
   Also (not contract): `debug.lastSound()` (the last bleat's voice params, `steps`, `played`, `reason`
   = `muted | locked | no-audio | busy`), `debug.voiceOf(id)` and `async debug.renderVoice(id | VoiceInput,
   "one" | "random")` (offline render: `{ voice, steps, sampleRate, samples }`).
+- Fondness in voices: `voiceFor({..., fondness})` warms a flock sheep's delivery (smoother, less breathy, a
+  little rising, and sometimes an extra happy bleat) without changing pitch, vowel or length.
+  `petVoiceFor(kind, fondness)`: terrier yap-yap(-yap) ~560 Hz, collie woof(-woof) ~340 Hz, Maremma one deep
+  WOOF ~175 Hz, cat "mrrp? mew" ~540 Hz; `Voice.species` is "dog" | "cat".
+  Hook extras (not contract): `debug.fondness(id)`, `debug.petPoint(id)`, `forecast.upgrade(id)`.
 - Voices (`src/audio/`): `voiceFor({id, sex, adult, ageSeasons, size, personality})` is pure and stable per
   sheep (lamb > ewe > ram in pitch, bigger = a little lower, per-id variation; shy soft/breathy/falling
   "meh", calm steady "baaa", curious rising and often double, bold loud/rough/long, sometimes "BAA-A-A").
@@ -373,12 +452,20 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    order resolves by its deadline, act only increases.
 5. Deep-links every panel and screenshots each for visual review.
 6. Life (`life.mjs`): the sheep card mounts exactly one live portrait canvas and the world visits that
-   sheep; switching cards moves it; close/Escape unmount it; the forecast never has one. The sheepdog
-   is in the world exactly when the dog improvement is owned. With motion on it saves frame sequences
+   sheep; switching cards moves it; close/Escape unmount it; the forecast never has one. With motion
+   on (all four animals bought) it saves frame sequences
    (`life-world-*`, `life-close-*`, `life-sheep-*`, `life-report-*`, `life-night`) and notes fps and
    draw calls. Voices: a lamb, a ewe and a ram (card open, then a real click on the portrait) have three
    different voices with pitch lamb > ewe > ram and stay stable; a shy sheep is softer, smoother and
    shorter than a bold one; with the settings toggle off a click plays nothing (`reason: "muted"`).
+6a. Care (in `life.mjs`): at act 3 the dogs/cat in the world match the owned ones; buying the collie lowers
+   the Maremma card's "a wolf gets a lamb now" forecast and meter; the cat's card forecasts cheaper mouse
+   seasons; after buying all four they are in `snapshot().upgrades`/`pets` and the world (`dogs`, `cat`); each
+   animal card greets it and it speaks (barks terrier > collie > Maremma in pitch). Greeting a sheep raises
+   fondness once per season (a second greeting the same season does not; next season it does) and floats
+   hearts; a treat costs exactly 1 coin, gives more than a greeting and is refused the second time. A staged
+   season shows "Happy sheep: +N", a wolf and mice in the report. Screenshots `care-*` (sheep card, treat,
+   market pets, each animal card, report, and motion close-ups `care-close-<pet>-*`).
 6b. Voices (`voices.mjs`): renders lamb/ewe/ram × shy/calm/curious/bold offline in the real build,
    measures length, peak/RMS level and pitch (YIN), asserts measured pitch lamb > ewe > ram per temperament
    and near the designed pitch, lambs shorter than rams, shy ≥ 3 dB quieter than bold, and writes
@@ -410,7 +497,7 @@ Exit code non-zero on any failure; prints a one-screen summary. Artifacts in
   (thin wrappers over core forecast functions) so the play probe can act.
 - Readiness: `document.body.dataset.ready = "1"` after the first rendered frame;
   `document.body.dataset.panel` mirrors the open panel name or `""`.
-- Panel names the probe deep-links: title, help, sheep, forecast, board, market,
+- Panel names the probe deep-links: title, help, sheep, animal, forecast, board, market,
   settings, report (any act); orders, vet, codex (act ≥ 1); fair (act ≥ 2);
   tree (act ≥ 3); ending (act 4 via `?act=4`).
 - Chrome needs `--enable-unsafe-swiftshader` (already in the probe harness).

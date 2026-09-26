@@ -1,12 +1,13 @@
 /** Deterministic game states at different points of the story, for UI tests and the dev preview. Uses only core actions. */
 import {
-  advanceSeason, acceptOrder, canBreed, deserialize, enterAct, lambRoom, newGame, planMating, rankCandidates, sellSheep,
+  advanceSeason, acceptOrder, canBreed, deserialize, enterAct, greetAnimal, lambRoom, newGame, ownedPets, planMating, rankCandidates, sellSheep,
   seasonOfYear, serialize, sheepValue, hireVisitingRam, enterFair, isAdult,
   type GameState, type SeasonReport,
 } from "../core/index.js";
 
-/** One greedy season: make room, plan every ewe with its best "blue" mate, take an order, sleep. */
+/** One greedy season: say hello to everyone, make room, plan every ewe with its best "blue" mate, take an order, sleep. */
 export function greedySeason(s: GameState): SeasonReport {
+  for (const id of [...s.flock, ...ownedPets(s)]) greetAnimal(s, id);
   while (lambRoom(s) < 3 && s.flock.length > 6) {
     const cheapest = s.flock.map((id) => s.sheep[id]!).sort((a, b) => sheepValue(a, s.season) - sheepValue(b, s.season))[0]!;
     sellSheep(s, cheapest.id);

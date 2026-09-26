@@ -3,15 +3,15 @@ import type { Goal, SeasonReport } from "../core/index.js";
 
 export type PanelName =
   | "title" | "help" | "sheep" | "forecast" | "board" | "orders" | "market" | "vet"
-  | "fair" | "codex" | "tree" | "report" | "ending" | "settings";
+  | "fair" | "codex" | "tree" | "report" | "ending" | "settings" | "animal";
 
 export const PANEL_NAMES: PanelName[] = [
-  "title", "help", "sheep", "forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report", "ending", "settings",
+  "title", "help", "sheep", "forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report", "ending", "settings", "animal",
 ];
 
 export interface View {
   panel: PanelName | null;
-  /** Sheep the panel is about (sheep card, forecast "for", tree root). Falls back sensibly when null. */
+  /** Sheep the panel is about (sheep card, forecast "for", tree root; the animal card: a PetId). Falls back sensibly when null. */
   sheepId: string | null;
   /** Selected candidate in the forecast panel. */
   mateId: string | null;
@@ -24,6 +24,8 @@ export interface View {
   portraits: (id: string) => string;
   /** PNG data URL of a made-up lamb with this look, for forecast litters (optional; CSS blobs without it). */
   lambArt?: (look: { colour: string; pattern: string; horns: string }) => string;
+  /** PNG data URL of a farm dog or the cat (PetId), for the animal card (optional; an emoji without it). */
+  petArt?: (id: string) => string;
   /** Settings: current reduced-motion flag (optional). */
   reducedMotion?: boolean;
   /** Settings: sound on/off and volume 0–1 (optional; saved in localStorage by the controller). */

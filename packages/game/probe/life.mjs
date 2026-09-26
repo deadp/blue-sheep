@@ -1,8 +1,10 @@
 // Life probe: the sheep card makes its sheep feel present.
 // Rules checked: opening a sheep card mounts exactly one live portrait canvas in the card and the world
 // visits that sheep; closing the card (or opening another panel) unmounts it and releases the sheep;
-// body[data-panel] keeps tracking the open panel. The sheepdog is in the world exactly when the "dog"
-// improvement is owned. With motion on it also saves frame sequences (life-sheep-*.png, life-world-*.png,
+// body[data-panel] keeps tracking the open panel.
+// Care: the dogs and the cat are in the world exactly when owned; buying a dog changes the predator forecast;
+// greeting (opening a card) raises fondness once a season; a treat costs a coin; each animal has its own voice;
+// the report shows the happy-sheep wool line. With motion on it also saves frame sequences (life-sheep-*.png, life-world-*.png,
 // life-report-*.png) and notes draw calls and frame rate, for a human or agent to look at. Voices: a lamb, a ewe
 // and a ram bleat in three different voices, lamb > ewe > ram in pitch; shy is softer and smoother than bold.
 import { isMain, runSteps } from "./lib/harness.mjs";
@@ -13,6 +15,8 @@ const GAP_MS = 300;
 
 /** @param {import("./lib/browser.mjs").GamePage} g */
 const world = (g) => g.page.evaluate(() => /** @type {any} */ (window).__game.debug?.world?.() ?? null);
+/** @param {import("./lib/browser.mjs").GamePage} g */
+const last = (g) => g.page.evaluate(() => /** @type {any} */ (window).__game.debug.lastSound());
 /** @param {import("./lib/browser.mjs").GamePage} g */
 const canvases = (g) => g.page.evaluate(() => ({
   inCard: document.querySelectorAll("#overlay [data-live-portrait-slot] canvas[data-live-portrait]").length,
@@ -64,25 +68,152 @@ export const life = {
       await g.close();
     }
 
-    // ---- 2. the sheepdog appears exactly when owned
+    // ---- 2. the dogs and the cat: forecasts change when you buy one, they appear in the world, each has its own voice
+    // Rules: buying a dog changes the predator forecast (the Maremma card's "a wolf gets a lamb now" drops once
+    // the collie keeps watch); an owned dog/cat is in the snapshot and in the world exactly when owned; opening its
+    // card greets it once per season and it barks (or mews) in its own voice.
     {
       const g = await ctx.newPage();
       await g.boot("?seed=7&fresh=1&nomotion=1&act=3");
       const st = await g.state();
-      const owned = (st.upgrades ?? []).includes("dog");
+      const owned = (st.upgrades ?? []).filter((/** @type {string} */ u) => ["terrier", "collie", "maremma", "cat"].includes(u));
       let w = await world(g);
-      if (w.dog !== owned) throw new ProbeError(`dog in world (${w.dog}) should match the dog upgrade (${owned})`);
-      if (!owned) {
-        const r = await g.act({ type: "upgrade", id: "dog" });
-        if (!r.ok) throw new ProbeError(`could not buy the dog at act 3: ${r.error}`);
-        const snap = await g.page.evaluate(() => /** @type {any} */ (window).__game.snapshot());
-        if (!snap.upgrades?.includes("dog")) throw new ProbeError(`snapshot().upgrades should list the dog: ${JSON.stringify(snap.upgrades)}`);
-        w = await world(g);
-        if (!w.dog) throw new ProbeError("the sheepdog should be in the world once bought");
+      if (w.dogs.length !== owned.filter((/** @type {string} */ u) => u !== "cat").length || w.cat !== owned.includes("cat")) throw new ProbeError(`world animals ${JSON.stringify({ dogs: w.dogs, cat: w.cat })} should match the owned ones ${JSON.stringify(owned)}`);
+      // coins for all four (a probe-only top-up, so every card can be bought)
+      await g.page.evaluate(() => { /** @type {any} */ (window).__game.state().money = 2000; });
+      await g.act({ type: "open", panel: "market" });
+      await g.waitPanel("market");
+      const fore = (/** @type {string} */ id) => g.page.evaluate((u) => JSON.parse(JSON.stringify(/** @type {any} */ (window).__game.forecast.upgrade(u))), id);
+      /** The "now" wolf meter on the Maremma's market card (0–10 segments). */
+      const wolfNowMeter = () => g.page.evaluate(() => {
+        const m = document.querySelector('#overlay [data-upgrade-card="maremma"] .p-cell.now.wolf .meter2');
+        return m ? Number(m.getAttribute("aria-valuenow")) : -1;
+      });
+      const m0 = await fore("maremma");
+      const meter0 = await wolfNowMeter();
+      if (!(m0.risk.wolf.with < m0.risk.wolf.now)) throw new ProbeError(`the Maremma should make a wolf less likely to get a lamb: ${JSON.stringify(m0.risk)}`);
+      if (meter0 !== Math.round(m0.risk.wolf.now * 10)) throw new ProbeError(`the Maremma card's "now" wolf meter (${meter0}) should show the forecast (${m0.risk.wolf.now})`);
+      await g.page.click('#overlay [data-upgrade="collie"]');
+      const m1 = await fore("maremma");
+      const meter1 = await wolfNowMeter();
+      if (!(m1.risk.wolf.now < m0.risk.wolf.now)) throw new ProbeError(`buying the collie should lower the wolf risk shown on the Maremma card: ${m0.risk.wolf.now} -> ${m1.risk.wolf.now}`);
+      if (!(meter1 < meter0)) throw new ProbeError(`the Maremma card's wolf meter should drop after buying the collie: ${meter0} -> ${meter1}`);
+      ctx.note(`dog forecast: a wolf gets a lamb ${m0.risk.wolf.now.toFixed(2)} -> ${m1.risk.wolf.now.toFixed(2)} with the collie (meter ${meter0} -> ${meter1}); Maremma would make it ${m1.risk.wolf.with.toFixed(2)}`);
+      const cat0 = await fore("cat");
+      if (!(cat0.mice.with < cat0.mice.now)) throw new ProbeError(`the cat card should forecast cheaper mouse seasons: ${JSON.stringify(cat0.mice)}`);
+      for (const id of ["terrier", "maremma", "cat"]) {
+        await g.page.click(`#overlay [data-upgrade="${id}"]`);
       }
-      ctx.artifact(await g.screenshot("life-dog"));
-      g.assertNoErrors("with the dog");
-      ctx.note("sheepdog appears in the world when the dog improvement is owned");
+      const after = await g.state();
+      for (const id of ["terrier", "collie", "maremma", "cat"]) if (!after.upgrades.includes(id)) throw new ProbeError(`${id} should be owned after clicking Buy`);
+      const snap = await g.page.evaluate(() => /** @type {any} */ (window).__game.snapshot());
+      for (const id of ["terrier", "collie", "maremma", "cat"]) if (!snap.upgrades?.includes(id) || !snap.pets?.some((/** @type {any} */ p) => p.id === id)) throw new ProbeError(`snapshot should list ${id}: ${JSON.stringify({ up: snap.upgrades, pets: snap.pets })}`);
+      w = await world(g);
+      if (w.dogs.length !== 3 || !w.cat) throw new ProbeError(`all three dogs and the cat should be in the world: ${JSON.stringify({ dogs: w.dogs, cat: w.cat })}`);
+      await g.page.evaluate(() => document.querySelector('#overlay [data-upgrade-card="terrier"]')?.scrollIntoView({ block: "start" }));
+      ctx.artifact(await g.screenshot("care-market-pets"));
+      // each animal's card: greets it once per season, and it speaks in its own voice
+      /** @type {Record<string, number>} */
+      const pitches = {};
+      for (const id of ["terrier", "collie", "maremma", "cat"]) {
+        const f0 = await g.page.evaluate((p) => /** @type {any} */ (window).__game.debug.fondness(p), id);
+        const r = await g.act({ type: "open", panel: "animal", id });
+        if (!r.ok) throw new ProbeError(`open the ${id}'s card: ${r.error}`);
+        await g.waitPanel("animal");
+        const f1 = await g.page.evaluate((p) => /** @type {any} */ (window).__game.debug.fondness(p), id);
+        if (!(f1 > f0)) throw new ProbeError(`opening the ${id}'s card should greet it (fondness ${f0} -> ${f1})`);
+        const snd = await last(g);
+        if (snd?.id !== `pet:${id}`) throw new ProbeError(`opening the ${id}'s card should make it speak, last sound was ${snd?.id}`);
+        pitches[id] = snd.pitch;
+        const card = await g.page.evaluate((p) => document.querySelector(`#overlay [data-pet="${p}"]`) !== null && document.querySelector(`#overlay [data-treat="${p}"]`) !== null, id);
+        if (!card) throw new ProbeError(`the ${id}'s card should show it with a treat button`);
+        ctx.artifact(await g.screenshot(`care-animal-${id}`));
+      }
+      if (!(pitches.terrier > pitches.collie && pitches.collie > pitches.maremma)) throw new ProbeError(`barks should go terrier > collie > Maremma in pitch: ${JSON.stringify(pitches)}`);
+      ctx.note(`animals: terrier ${pitches.terrier} Hz yap, collie ${pitches.collie} Hz, Maremma ${pitches.maremma} Hz, cat ${pitches.cat} Hz mew; all four greeted on their cards`);
+      g.assertNoErrors("with the dogs and the cat");
+      await g.close();
+    }
+
+    // ---- 2a. fondness: greeting counts once a season, a treat costs a coin; hearts in the field; the report's wool line
+    // Rules: opening an own sheep's card raises its fondness by the greeting amount once per season (a second
+    // greeting the same season does not); a treat costs exactly 1 coin, raises fondness more, and only once a
+    // season; greeting floats hearts in the world; after a sleep the report shows what happy sheep added.
+    {
+      const g = await ctx.newPage();
+      await g.boot("?seed=7&fresh=1&nomotion=1");
+      const st = await g.state();
+      const a = st.flock[0];
+      const fond = () => g.page.evaluate((id) => /** @type {any} */ (window).__game.debug.fondness(id), a);
+      const f0 = await fond();
+      await g.act({ type: "open", panel: "sheep", id: a });
+      await g.waitPanel("sheep");
+      const f1 = await fond();
+      if (!(f1 > f0)) throw new ProbeError(`greeting ${a} (opening its card) should raise its fondness: ${f0} -> ${f1}`);
+      const hearts = (await world(g)).hearts;
+      if (!(hearts > 0)) throw new ProbeError(`greeting should float hearts above ${a} in the world (hearts ${hearts})`);
+      const said = await g.page.evaluate(() => document.querySelector("#overlay .care .c-said")?.textContent ?? "");
+      if (!/said hello/.test(said)) throw new ProbeError(`the card should say you've said hello this season, got "${said}"`);
+      ctx.artifact(await g.screenshot("care-sheep-card"));
+      await g.act({ type: "close" });
+      await g.act({ type: "open", panel: "sheep", id: a });
+      const f2 = await fond();
+      if (f2 !== f1) throw new ProbeError(`a second greeting the same season should not count: ${f1} -> ${f2}`);
+      // a treat: exactly one coin, more fondness, once a season
+      const m0 = (await g.state()).money;
+      await g.page.click(`#overlay [data-treat="${a}"]`);
+      const s1 = await g.state();
+      const f3 = await fond();
+      if (m0 - s1.money !== 1) throw new ProbeError(`a treat should cost 1 coin: ${m0} -> ${s1.money}`);
+      if (!(f3 - f2 > f1 - f0)) throw new ProbeError(`a treat should give a bigger boost than a greeting: +${f3 - f2} vs +${f1 - f0}`);
+      const again = await g.act({ type: "treat", id: a });
+      if (again.ok) throw new ProbeError("a second treat the same season should be refused");
+      if ((await g.state()).money !== s1.money) throw new ProbeError("a refused treat should not cost anything");
+      ctx.artifact(await g.screenshot("care-sheep-treat"));
+      // next season: greeting counts again
+      await g.act({ type: "close" });
+      await g.act({ type: "sleep" });
+      await g.waitPanel("report", 10_000);
+      await g.act({ type: "close" });
+      const f4 = await fond();
+      await g.act({ type: "open", panel: "sheep", id: a });
+      const f5 = await fond();
+      if (!(f5 > f4)) throw new ProbeError(`a new season's greeting should count again: ${f4} -> ${f5}`);
+      ctx.note(`fondness: ${f0} -> greet ${f1} -> greet again ${f2} -> treat ${f3} (1 coin) -> next season ${f4} -> greet ${f5}`);
+      g.assertNoErrors("greeting and treats");
+      await g.close();
+    }
+
+    // ---- 2c. the report: happy sheep's wool, mice with the cat, a wolf seen off by the Maremma (staged for review)
+    {
+      const g = await ctx.newPage();
+      await g.boot("?seed=7&fresh=1&nomotion=1&act=3");
+      await g.page.evaluate(() => {
+        const s = /** @type {any} */ (window).__game.state();
+        s.money = 2000;
+        for (const id of s.flock) s.care[id] = { level: 100, greeted: -1, treated: -1, cared: s.season };
+      });
+      for (const id of ["maremma", "cat"]) await g.act({ type: "upgrade", id });
+      await g.page.evaluate(() => {
+        const s = /** @type {any} */ (window).__game.state();
+        s.care.maremma = { level: 100, greeted: -1, treated: -1, cared: s.season };
+        s.pendingEvent = { kind: "wolf", season: s.season, colour: null, text: "A wolf is coming." };
+        s.mice = s.season;
+        for (const id of s.flock) s.sheep[id].phenotype.boldness = 2;
+      });
+      await g.act({ type: "sleep" });
+      await g.waitPanel("report", 10_000);
+      const r = await g.page.evaluate(() => ({
+        fond: document.querySelector("#overlay li.fond")?.textContent ?? "",
+        wolf: [...document.querySelectorAll("#overlay li")].map((l) => l.textContent ?? "").find((t) => t.includes("🐺")) ?? "",
+        mice: [...document.querySelectorAll("#overlay li")].map((l) => l.textContent ?? "").find((t) => t.includes("🐭")) ?? "",
+      }));
+      if (!/Happy sheep: \+\d+/.test(r.fond)) throw new ProbeError(`the report should show what happy sheep added: "${r.fond}"`);
+      if (!r.wolf || !r.mice) throw new ProbeError(`the report should show the wolf and the mice: ${JSON.stringify(r)}`);
+      await g.page.evaluate(() => document.querySelector("#overlay li.fond")?.scrollIntoView({ block: "center" }));
+      ctx.artifact(await g.screenshot("care-report"));
+      ctx.note(`report: "${r.fond.trim()}" · "${r.wolf.trim()}" · "${r.mice.trim()}"`);
+      g.assertNoErrors("report with care lines");
       await g.close();
     }
 
@@ -154,7 +285,8 @@ export const life = {
     {
       const g = await ctx.newPage();
       await g.boot("?seed=7&fresh=1&act=3");
-      await g.act({ type: "upgrade", id: "dog" });
+      await g.page.evaluate(() => { /** @type {any} */ (window).__game.state().money = 2000; });
+      for (const id of ["terrier", "collie", "maremma", "cat"]) await g.act({ type: "upgrade", id });
       await g.act({ type: "close" });
       await g.page.waitForTimeout(1500);
       for (let i = 0; i < FRAMES; i++) { ctx.artifact(await g.screenshot(`life-world-${i}`)); await g.page.waitForTimeout(GAP_MS); }
@@ -163,6 +295,17 @@ export const life = {
       for (let i = 0; i < 6; i++) { await g.page.mouse.wheel(0, -160); await g.page.waitForTimeout(60); }
       await g.page.waitForTimeout(600);
       for (let i = 0; i < FRAMES; i++) { ctx.artifact(await g.screenshot(`life-close-${i}`)); await g.page.waitForTimeout(GAP_MS); }
+      // close-ups of each dog and the cat (their card glides the camera over; zoom in, card closed)
+      for (const id of ["terrier", "collie", "maremma", "cat"]) {
+        await g.act({ type: "open", panel: "animal", id });
+        await g.act({ type: "close" });
+        await g.page.waitForTimeout(700);
+        const p = await g.page.evaluate((pid) => /** @type {any} */ (window).__game.debug.petPoint?.(pid) ?? null, id);
+        if (p) { await g.page.mouse.move(p.x, p.y); for (let k = 0; k < 8; k++) { await g.page.mouse.wheel(0, -200); await g.page.waitForTimeout(40); } }
+        await g.page.waitForTimeout(500);
+        for (let k = 0; k < 3; k++) { ctx.artifact(await g.screenshot(`care-close-${id}-${k}`)); await g.page.waitForTimeout(700); }
+        for (let k = 0; k < 8; k++) { await g.page.mouse.wheel(0, 300); await g.page.waitForTimeout(30); }
+      }
       const st = await g.state();
       const who = st.flock.find((/** @type {string} */ id) => st.sheep[id].born < st.season - 1) ?? st.flock[0];
       await g.act({ type: "open", panel: "sheep", id: who });

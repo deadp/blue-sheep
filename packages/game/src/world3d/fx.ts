@@ -157,3 +157,75 @@ export class Bubble {
     this.el.remove();
   }
 }
+
+/**
+ * Little pink hearts that float up from an animal you've just greeted (or given a treat) and fade. Under
+ * reduced motion they appear still for a moment instead.
+ */
+export class Hearts {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly data = new Float32Array(24 * 6); // x, y, z, sway phase, age (age < 0 = free), size
+  private next = 0;
+  private live = 0;
+  private readonly _m = new THREE.Matrix4();
+  private readonly _q = new THREE.Quaternion();
+  private readonly _p = new THREE.Vector3();
+  private readonly _s = new THREE.Vector3();
+
+  constructor(scene: THREE.Scene, heart: THREE.BufferGeometry, mat: THREE.Material, private readonly still: boolean) {
+    this.mesh = new THREE.InstancedMesh(heart, mat, 24);
+    this.mesh.frustumCulled = false;
+    this.mesh.count = 0;
+    this.mesh.visible = false;
+    this.mesh.renderOrder = 2;
+    for (let i = 0; i < 24; i++) this.data[i * 6 + 4] = -1;
+    scene.add(this.mesh);
+  }
+
+  spawn(x: number, y: number, z: number, n: number): void {
+    for (let k = 0; k < n; k++) {
+      const i = this.next;
+      this.next = (this.next + 1) % 24;
+      const o = i * 6;
+      const a = (k / Math.max(1, n)) * Math.PI * 2;
+      this.data[o] = x + Math.cos(a) * 0.35;
+      this.data[o + 1] = y + (this.still ? k * 0.35 : 0);
+      this.data[o + 2] = z + Math.sin(a) * 0.35;
+      this.data[o + 3] = a;
+      this.data[o + 4] = this.still ? 0 : -k * 0.18; // staggered
+      this.data[o + 5] = 0.5 + (k % 2) * 0.15;
+    }
+    this.step(0);
+  }
+
+  get active(): number { return this.live; }
+
+  step(dt: number): void {
+    const LIFE = this.still ? 1.6 : 1.7;
+    let n = 0;
+    this._q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+    for (let i = 0; i < 24; i++) {
+      const o = i * 6;
+      if (this.data[o + 4]! < -0.9) continue;
+      const age = (this.data[o + 4]! += dt);
+      if (age > LIFE) { this.data[o + 4] = -1; continue; }
+      if (age < 0) continue;
+      const u = age / LIFE;
+      const rise = this.still ? 0 : age * 1.1;
+      const sway = this.still ? 0 : Math.sin(age * 5 + this.data[o + 3]!) * 0.18;
+      const s = this.data[o + 5]! * (u < 0.15 ? u / 0.15 : u > 0.75 ? (1 - u) / 0.25 : 1);
+      this._p.set(this.data[o]! + sway, this.data[o + 1]! + rise, this.data[o + 2]!);
+      this._m.compose(this._p, this._q, this._s.set(s, s, s));
+      this.mesh.setMatrixAt(n++, this._m);
+    }
+    this.live = n;
+    this.mesh.count = n;
+    this.mesh.visible = n > 0;
+    if (n) this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.mesh.removeFromParent();
+    this.mesh.dispose();
+  }
+}

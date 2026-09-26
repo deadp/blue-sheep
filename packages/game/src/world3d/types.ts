@@ -5,7 +5,9 @@ export type Hotspot = "house" | "shed" | "market" | "vet" | "fairground" | "mail
 /** How a sheep behaves in the field and how it greets you. Derived from boldness by the controller. */
 export type Personality = "shy" | "calm" | "curious" | "bold";
 /** Farm improvements drawn in the diorama. */
-export type WorldUpgrade = "paddock" | "dog" | "barn" | "shearing" | "meadow";
+export type WorldUpgrade = "paddock" | "terrier" | "collie" | "maremma" | "cat" | "barn" | "shearing" | "meadow";
+/** The farm's other animals: three dogs and a cat. */
+export type PetKind = "terrier" | "collie" | "maremma" | "cat";
 
 export interface WorldSheep {
   id: string;
@@ -29,6 +31,11 @@ export interface WorldSheep {
   personality?: Personality;
   /** Mother's id, so lambs can stay close to her (optional). */
   dam?: string | null;
+  /**
+   * How fond of you it is, 0–100 (optional; default 30). Fond sheep (60+) trot over to the front and follow
+   * the sheep you're visiting; skittish ones (under 20) back away from a fuss. Personality applies on top.
+   */
+  fondness?: number;
 }
 
 export interface WorldSnapshot {
@@ -43,11 +50,16 @@ export interface WorldSnapshot {
   visitorPresent: boolean;
   /** bunting on the fairground */
   fairToday: boolean;
-  /** Owned farm improvements (optional): a sheepdog, the snug barn, the shearing shed, the long meadow. */
+  /**
+   * Owned farm improvements (optional): the dogs ("terrier", "collie", "maremma"; the old "dog" means the
+   * collie), the "cat", the snug barn, the shearing shed, the long meadow.
+   */
   upgrades?: string[];
+  /** Names (hover label) and fondness of the dogs and cat you own (optional). */
+  pets?: { id: PetKind; name: string; fondness?: number }[];
 }
 
-export type HoverTarget = { kind: "sheep"; id: string } | { kind: "hotspot"; id: Hotspot } | null;
+export type HoverTarget = { kind: "sheep"; id: string } | { kind: "hotspot"; id: Hotspot } | { kind: "pet"; id: PetKind } | null;
 
 export interface WorldHandlers {
   onSheep(id: string): void;
@@ -55,6 +67,8 @@ export interface WorldHandlers {
   onHover?(target: HoverTarget): void;
   /** The live portrait was clicked (the sheep hops and bleats); the controller plays its voice. */
   onPortraitClick?(id: string): void;
+  /** A dog or the cat was clicked in the field. */
+  onPet?(id: PetKind): void;
 }
 
 export interface WorldOptions {

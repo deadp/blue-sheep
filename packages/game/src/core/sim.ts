@@ -4,7 +4,9 @@ import { checkActAdvance, checkEnding } from "./acts.js";
 import { plannedPairings } from "./breeding.js";
 import { MAX_AGE, SHEARING_BONUS } from "./config.js";
 import { cheapestSheep, removeFromFlock, sheepValue, woolIncome } from "./economy.js";
+import { fondWoolMultiplier, fondnessOf, petFeed, seasonCare, welcomeLamb } from "./care.js";
 import { announceEvent, applyEvent } from "./events.js";
+import { announceMice, applyMice } from "./mice.js";
 import { judgeFair } from "./fair.js";
 import { forecastCross } from "./forecast.js";
 import { updateDiscoveries } from "./knowledge.js";
@@ -32,7 +34,7 @@ export function advanceSeason(state: GameState): SeasonReport {
   const matings: Record<string, string> = {};
   for (const p of pairings) { forecastsSeen[p.ewe] = forecastCross(state, p.ewe, p.ram); matings[p.ewe] = p.ram; }
   const report: SeasonReport = {
-    season: t, endedSeason: t, lambs: [], income: 0, shedBonus: 0, feed: 0, deaths: [], autoSold: [], discoveries: [], orderResults: [],
+    season: t, endedSeason: t, lambs: [], income: 0, shedBonus: 0, fondBonus: 0, mice: null, miceComing: false, feed: 0, deaths: [], autoSold: [], discoveries: [], orderResults: [],
     newOrders: [], fairResult: null, event: null, announced: null, actAdvanced: null, endingReached: false, messages: [],
     forecastsSeen, matings,
   };
@@ -51,11 +53,19 @@ export function advanceSeason(state: GameState): SeasonReport {
   const shed = hasUpgrade(state, "shearing") ? SHEARING_BONUS : 1;
   for (const s of flockSheep(state)) {
     if (!isAdult(s, t) || shorn.used.has(s.id)) continue;
-    const plain = woolIncome(s, ev?.boomColour ?? null);
-    const paid = woolIncome(s, ev?.boomColour ?? null, shed);
+    const boom = ev?.boomColour ?? null;
+    const plain = woolIncome(s, boom);
+    const shedOnly = woolIncome(s, boom, shed);
+    // Happy sheep grow better wool; skittish ones a little worse.
+    const paid = woolIncome(s, boom, shed * fondWoolMultiplier(fondnessOf(state, s.id)));
     report.income += paid;
-    report.shedBonus += paid - plain;
+    report.shedBonus += shedOnly - plain;
+    report.fondBonus += paid - shedOnly;
   }
+  // Mice (announced last season) spoil some of the clip; the cat catches most of them.
+  const eatersNow = state.flock.length;
+  report.mice = applyMice(state, report.income, eatersNow);
+  if (report.mice) { report.income -= report.mice.wool; say(report.mice.text); }
   state.money += report.income;
   state.stats.coinsEarned += report.income;
 
@@ -77,6 +87,7 @@ export function advanceSeason(state: GameState): SeasonReport {
         sex: rng.chance(0.5) ? "ewe" : "ram", born: t + 1, dam: ewe.id, sire: ram.id, genome, inbreeding: f, origin: "bred",
       });
       state.flock.push(lamb.id);
+      welcomeLamb(state, lamb, ewe.id, t + 1);
       report.lambs.push(lamb);
       born.push(lamb);
       state.stats.lambsBorn += 1;
@@ -110,7 +121,9 @@ export function advanceSeason(state: GameState): SeasonReport {
   const perHead = feedPerHead(t) * (ev?.feedMultiplier ?? 1);
   const newborn = new Set(report.lambs.map((l) => l.id));
   const eaters = () => state.flock.filter((id) => !newborn.has(id)).length;
-  while (state.money < eaters() * perHead) {
+  // The dogs and the cat eat too; mice (if any came) eat into the hay.
+  const extraFeed = (report.mice?.feed ?? 0) + petFeed(state);
+  while (state.money < eaters() * perHead + extraFeed) {
     const s = cheapestSheep(state, newborn) ?? cheapestSheep(state);
     if (!s) break;
     const price = sheepValue(s, state.season);
@@ -119,7 +132,7 @@ export function advanceSeason(state: GameState): SeasonReport {
     report.autoSold.push({ id: s.id, name: s.name, price, reason: "feed" });
     say(`There wasn't enough for feed, so the trader took ${s.name} for ${price} coins.`);
   }
-  report.feed = Math.min(state.money, eaters() * perHead);
+  report.feed = Math.min(state.money, eaters() * perHead + extraFeed);
   state.money -= report.feed;
 
   // 6. Ageing.
@@ -143,6 +156,9 @@ export function advanceSeason(state: GameState): SeasonReport {
     say(`There wasn't room for everyone, so the trader took ${s.name} for ${price} coins.`);
   }
 
+  // 7b. Fondness fades for animals left alone for a while.
+  seasonCare(state, t);
+
   // 8. Plans resolve; last season's invalids are well again.
   state.plans = {};
   for (const s of wasIll) { s.ill = false; if (state.flock.includes(s.id)) say(`${s.name} is feeling better.`); }
@@ -165,6 +181,7 @@ export function advanceSeason(state: GameState): SeasonReport {
   if (state.unlocks.includes("visitor") && seasonOfYear(state.season) === 0) offerVisitingRam(state, rng);
   report.announced = announceEvent(state, rng);
   if (report.announced) say(report.announced.text);
+  report.miceComing = announceMice(state, rng);
   restockMarket(state, rng);
   report.newOrders = generateOrders(state, rng);
 

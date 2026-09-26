@@ -29,8 +29,26 @@ export interface Pairing { ewe: string; ram: string }
 
 export interface LogEntry { season: number; text: string }
 
-/** Farm improvements (definitions and prices in config.ts). */
-export type UpgradeId = "dog" | "barn" | "paddock" | "shearing" | "meadow";
+/** Farm improvements (definitions and prices in config.ts). The three dogs and the cat are animals too (PetId). */
+export type UpgradeId = "terrier" | "collie" | "maremma" | "cat" | "barn" | "paddock" | "shearing" | "meadow";
+
+/** Farm animals that are not sheep: bought as improvements, each with its own fondness. */
+export type PetId = "terrier" | "collie" | "maremma" | "cat";
+export type DogId = "terrier" | "collie" | "maremma";
+
+/**
+ * Fondness: how fond an animal is of you, 0–100. Grows when you greet it (once a season) or give it a treat
+ * (once a season, 1 coin); fades slowly when it is ignored for a while. Keyed by sheep id or PetId.
+ */
+export interface CareRecord {
+  level: number;
+  /** Season it was last greeted (-1: never). */
+  greeted: number;
+  /** Season it last had a treat (-1: never). */
+  treated: number;
+  /** Season of the last greeting or treat (decay starts a while after this). */
+  cared: number;
+}
 
 export type Unlock = "numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards";
 
@@ -117,7 +135,7 @@ export interface FairState {
 
 // ---- Events ---------------------------------------------------------------
 
-export type EventKind = "hardWinter" | "fox" | "woolBoom";
+export type EventKind = "hardWinter" | "fox" | "woolBoom" | "wolf";
 
 export interface PendingEvent {
   kind: EventKind;
@@ -133,10 +151,24 @@ export interface EventRecord {
   kind: EventKind;
   season: number;
   colour: string | null;
-  /** Sheep affected (ill sheep for hardWinter, lost lamb for fox). */
+  /** Sheep affected (ill sheep for hardWinter, lost lamb for fox/wolf). */
   sheep: string | null;
-  /** fox: true when a guardian or the dog scared it off; hardWinter: true when the barn kept everyone well. */
+  /** fox/wolf: true when a guardian sheep or a dog saw it off; hardWinter: true when the barn kept everyone well. */
   saved: boolean;
+  text: string;
+  /** fox/wolf: the dog that saw it off, if one did (absent in older saves). */
+  dog?: DogId | null;
+}
+
+/** Mice in the barn: announced a season ahead, they spoil some wool and eat some hay. The cat catches most. */
+export interface MiceReport {
+  /** Coins of wool spoiled. */
+  wool: number;
+  /** Extra coins of hay eaten. */
+  feed: number;
+  /** What it would have cost without the cat (equal to wool + feed when there is no cat). */
+  without: number;
+  cat: boolean;
   text: string;
 }
 
@@ -228,6 +260,10 @@ export interface GameState {
   stats: Stats;
   /** Farm improvements bought (absent in older saves: treat as none). */
   upgrades?: UpgradeId[];
+  /** Fondness per animal (sheep id or PetId). Missing records use a default by origin (core/care.ts). */
+  care?: Record<string, CareRecord>;
+  /** The season mice are expected in the barn, announced a season ahead (null: none coming). */
+  mice?: number | null;
   /** Legacy v1 notebook/achievements, kept for old saves. */
   achievements: string[];
   /** Tutorial progress; null when there is no tutorial (absent in older saves: loaded as null). */
@@ -260,6 +296,10 @@ export interface SeasonReport {
   income: number;
   /** Part of `income` that came from the shearing shed. */
   shedBonus: number;
+  /** Part of `income` that came from happy (or was lost to skittish) sheep: fondness. Can be negative. */
+  fondBonus: number;
+  /** Mice in the barn this season (null when none came). */
+  mice: MiceReport | null;
   feed: number;
   deaths: Sheep[];
   /** Sheep the trader took because feed could not be paid or the flock was over its cap. */
@@ -271,6 +311,8 @@ export interface SeasonReport {
   event: EventRecord | null;
   /** Newly announced event for the coming season, if any. */
   announced: PendingEvent | null;
+  /** True when mice were announced for the coming season. */
+  miceComing: boolean;
   actAdvanced: ActInfo | null;
   /** True if the act-4 registry goal was reached this season. */
   endingReached: boolean;

@@ -7,16 +7,17 @@ import {
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
   seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
-  type GameState, type Goal, type Sheep,
+  greetAnimal, giveTreat, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade,
+  type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
 } from "./core/index.js";
-import { WorldView, type Hotspot, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
+import { WorldView, type Hotspot, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
 import {
   Overlay, PANEL_NAMES, defaultView, delegateActions, hudHtml, panelOptions, renderPanel, toast,
   mentorHtml, tutorialStepMet, tutorialTarget,
   type ActionData, type PanelName, type TutorialTarget, type View,
 } from "./ui/index.js";
 import { fastForward } from "./debug.js";
-import { Voices, bleatSeries, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
+import { Voices, bleatSeries, petVoiceFor, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
 
 export const SAVE_KEY = "blue-sheep-save-v2";
 const MOTION_KEY = "blue-sheep-reduced-motion";
@@ -36,6 +37,8 @@ export type Action =
   | { type: "enter"; id: string | null }
   | { type: "hire" }
   | { type: "upgrade"; id: string }
+  /** Give a sheep in the flock, or an owned dog/cat, a treat (1 coin, once a season). Greeting is opening its card. */
+  | { type: "treat"; id: string }
   | { type: "rename"; id: string; name: string }
   | { type: "newGame"; seed?: number }
   | { type: "open"; panel: PanelName; id?: string }
@@ -66,6 +69,8 @@ export class App {
   private portraitStop: (() => void) | null = null;
   /** The sheep the world camera is visiting (sheep card open). */
   private attendedId: string | null = null;
+  /** The pet whose card is open (so re-renders don't bark again). */
+  private petShown: string | null = null;
   // ---- tutorial: the mentor card, the arrow, what it points at
   private readonly mentorEl: HTMLElement;
   private readonly arrowEl: HTMLElement;
@@ -76,6 +81,8 @@ export class App {
   private tutScrollKey = "";
   /** Sheep voices (WebAudio). Settings live in localStorage, not in the game state. */
   private readonly voices = new Voices();
+  /** Hearts to float up in the world after the next render (a greeting or a treat): id → how many. */
+  private loveQueue = new Map<string, number>();
 
   constructor() {
     const q = new URLSearchParams(location.search);
@@ -86,6 +93,7 @@ export class App {
     this.view = defaultView((id) => this.portraitOf(id));
     this.view.reducedMotion = this.reduced;
     this.view.lambArt = (l) => this.lambArt(l);
+    this.view.petArt = (id) => { try { return isPetId(id) ? this.world.petPortrait(id as PetKind, 180) : ""; } catch { return ""; } };
     this.view.sound = { on: this.voices.on, volume: this.voices.volume };
 
     // ---- which game?
@@ -148,20 +156,27 @@ export class App {
     this.world = new WorldView(this.worldEl, {
       onSheep: (id) => this.guard(() => this.onSheepClick(id)),
       onHotspot: (h) => this.guard(() => this.onHotspot(h)),
-      onPortraitClick: (id) => this.bleat(id, true),
+      // a scratch behind the ears: it bleats, and (cosmetic only) a couple of hearts float up in the field
+      onPortraitClick: (id) => { this.bleat(id, true); if (this.state.flock.includes(id)) this.world.love(id, 2); },
+      onPet: (id) => this.guard(() => this.onPetClick(id)),
     }, { seed: this.state.seed, reducedMotion: this.reduced });
     this.world.setSnapshot(this.snapshot());
   }
 
   // ------------------------------------------------------------------ voices
 
-  /** The stable voice of a sheep: age, sex, size and temperament (all visible traits), plus its id. */
+  /**
+   * The stable voice of a sheep: age, sex, size and temperament (all visible traits), plus its id; fondness
+   * only warms its delivery. Dogs and the cat (PetId) bark and mew.
+   */
   private voiceOf(id: string): Voice | null {
+    if (isPetId(id)) return petVoiceFor(id, fondnessOf(this.state, id));
     const s = this.state.sheep[id];
     if (!s) return null;
     return voiceFor({
       id: s.id, sex: s.sex, adult: isAdult(s, this.state.season), ageSeasons: this.state.season - s.born,
       size: Number(s.phenotype["size"] ?? 60), personality: personalityOf(s),
+      ...(this.state.flock.includes(s.id) ? { fondness: fondnessOf(this.state, s.id) } : {}),
     });
   }
 
@@ -185,6 +200,13 @@ export class App {
     // clicking the sheep whose card is already open: it just says something again
     if (this.view.panel === "sheep" && this.view.sheepId === id) this.bleat(id);
     this.openPanel("sheep", id);
+    this.render();
+  }
+
+  private onPetClick(id: PetKind): void {
+    if (this.sleeping) return;
+    if (this.view.panel === "animal" && this.view.sheepId === id) this.bleat(id);
+    this.openPanel("animal", id);
     this.render();
   }
 
@@ -228,7 +250,7 @@ export class App {
       horns: p["horns"] === "horned" ? "horned" : "polled",
       size: Number(p["size"] ?? 60), fleeceWeight: Number(p["fleeceWeight"] ?? 4),
       fineness: Number(p["fineness"] ?? 26), crimp: Number(p["crimp"] ?? 5),
-      zone, marker, personality: personalityOf(s), dam: s.dam,
+      zone, marker, personality: personalityOf(s), dam: s.dam, fondness: fondnessOf(this.state, s.id),
     };
   }
 
@@ -278,6 +300,7 @@ export class App {
       visitorPresent: !!v,
       fairToday: s.unlocks.includes("fair") && s.fair.nextSeason === s.season,
       upgrades: [...(s.upgrades ?? [])],
+      pets: ownedPets(s).map((p) => ({ id: p, name: PET_NAME[p], fondness: fondnessOf(s, p) })),
     };
   }
 
@@ -297,6 +320,29 @@ export class App {
     this.world.setSnapshot(this.snapshot());
     this.syncSheepLife();
     this.renderTutorial();
+    for (const [id, n] of this.loveQueue) this.world.love(id, n);
+    this.loveQueue.clear();
+  }
+
+  /**
+   * Say hello to an animal whose card has just opened: fondness grows once per animal per season. When it
+   * does, hearts float up in the field and the game saves.
+   */
+  private greet(id: string): void {
+    if (greetAnimal(this.state, id) > 0) {
+      this.loveQueue.set(id, Math.max(this.loveQueue.get(id) ?? 0, 3));
+      this.persist = true;
+      this.save();
+    }
+  }
+
+  /** A treat (the card's button or the probe action): costs a coin, more hearts, a happy noise. */
+  private treat(id: string): void {
+    const name = isPetId(id) ? PET_NAME[id] : this.state.sheep[id]?.name ?? "It";
+    this.mutate(() => giveTreat(this.state, id));
+    this.loveQueue.set(id, 6);
+    this.bleat(id, true);
+    toast(`${name} loved that!`);
   }
 
   // ------------------------------------------------------------------ tutorial
@@ -450,6 +496,7 @@ export class App {
 
   private onOverlayClosed(): void {
     const was = this.view.panel;
+    this.petShown = null;
     this.view.panel = null;
     this.view.tab = null;
     if (!this.closing && was === "report" && isEnding(this.state)) {
@@ -464,7 +511,7 @@ export class App {
     if (!(PANEL_NAMES as string[]).includes(panel)) throw new Error(`There is no "${String(panel)}" panel.`);
     const s = this.state;
     const flock = s.flock.map((x) => s.sheep[x]!);
-    if (id !== undefined && !s.sheep[id]) throw new Error("I can't find that sheep.");
+    if (id !== undefined && !s.sheep[id] && !(panel === "animal" && isPetId(id))) throw new Error("I can't find that sheep.");
     this.view.tab = tab;
     switch (panel) {
       case "forecast":
@@ -473,7 +520,24 @@ export class App {
         break;
       case "sheep":
         this.view.sheepId = id ?? flock[0]?.id ?? null;
+        if (this.view.sheepId) this.greet(this.view.sheepId);
         break;
+      case "animal": {
+        const own = ownedPets(s);
+        const pet: PetId | null = id && isPetId(id) && own.includes(id) ? id : own[0] ?? null;
+        this.view.sheepId = pet;
+        if (pet) {
+          const again = this.view.panel === "animal" && this.petShown === pet;
+          this.greet(pet);
+          if (!again) {
+            this.petShown = pet;
+            this.world.focus(pet);
+            this.world.say(pet as PetKind, pet === "cat" ? "Mrrp?" : pet === "maremma" ? "WOOF." : pet === "terrier" ? "Yap! Yap!" : "Woof!");
+            this.bleat(pet);
+          }
+        }
+        break;
+      }
       case "tree": {
         // Default to the flock sheep with the most family on record (parents + lambs + grandlambs).
         const all = Object.values(s.sheep);
@@ -527,6 +591,7 @@ export class App {
       else if (d["sell"]) this.mutate(() => { const name = this.state.sheep[d["sell"]!]?.name; const p = sellSheep(this.state, d["sell"]!); toast(`Sold ${name ?? "the sheep"} for ${p} coins.`); });
       else if (d["hire"]) this.mutate(() => hireVisitingRam(this.state));
       else if (d["upgrade"]) this.mutate(() => { buyUpgrade(this.state, d["upgrade"]!); toast(upgradeDef(d["upgrade"]!).done); });
+      else if (d["treat"]) this.treat(d["treat"]);
       else if (d["test"]) { const [id, l] = d["test"].split(":"); this.mutate(() => vetTest(this.state, id!, l!)); }
       else if (d["accept"]) this.mutate(() => acceptOrder(this.state, d["accept"]!));
       else if (d["decline"]) this.mutate(() => declineOrder(this.state, d["decline"]!));
@@ -569,6 +634,7 @@ export class App {
       case "enter": this.mutate(() => enterFair(this.state, a.id && a.id !== "none" ? a.id : null)); break;
       case "hire": this.mutate(() => hireVisitingRam(this.state)); break;
       case "upgrade": this.mutate(() => buyUpgrade(this.state, a.id)); break;
+      case "treat": this.treat(a.id); break;
       case "rename": this.mutate(() => renameSheep(this.state, a.id, a.name)); break;
       case "newGame": this.startNewGame(a.seed); return;
       case "tutorial": this.tutorialOp(a.op, a.seed); if (a.op === "start") return; break;
@@ -722,8 +788,12 @@ export class App {
         world: () => this.world.debugStats(),
         /** The voice params of the last bleat (played or not: `played`/`reason` say which). */
         lastSound: () => this.voices.lastSound(),
-        /** The stable voice of a sheep, without playing it. */
+        /** The stable voice of a sheep (or a dog/cat by PetId), without playing it. */
         voiceOf: (id: string) => this.voiceOf(id),
+        /** Where a dog or the cat is on screen (client px), or null. */
+        petPoint: (id: string) => this.world.screenPoint(id),
+        /** An animal's fondness 0–100 (sheep id or PetId). */
+        fondness: (id: string) => fondnessOf(this.state, id),
         /** Render a sheep's bleat (or any made-up voice) offline (no speakers or gesture needed): mono samples for probes. */
         renderVoice: async (who: string | VoiceInput, series: "one" | "random" = "one") => {
           const v = typeof who === "string" ? this.voiceOf(who) : voiceFor(who);
@@ -737,6 +807,8 @@ export class App {
         cross: (ewe: string, ram: string) => forecastCross(this.state, ewe, ram),
         order: (id: string) => forecastOrder(this.state, id),
         fair: (id: string) => forecastFair(this.state, id),
+        /** What an improvement would change (dogs: fox/wolf risk now and with it; the cat: mice cost). */
+        upgrade: (id: string) => forecastUpgrade(this.state, id as UpgradeId),
       },
     };
   }

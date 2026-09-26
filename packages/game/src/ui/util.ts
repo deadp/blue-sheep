@@ -1,6 +1,6 @@
 /** Small shared bits for panel HTML: escaping, swatches, dots, pips, words. No DOM. */
 import {
-  ageOf, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, type GameState, type Sheep, type Unlock,
+  ageOf, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, type GameState, type Sheep, type Unlock,
 } from "../core/index.js";
 
 export function esc(s: unknown): string {
@@ -63,6 +63,8 @@ export interface MeterOptions {
   label?: string;
   /** Hide the scale words (tight lists). */
   compact?: boolean;
+  /** A risk (something bad happening): the segments fill in warning colours instead of green. */
+  risk?: boolean;
 }
 
 function segments(n: number, kind: string): string {
@@ -79,8 +81,8 @@ export function oddsMeter(state: GameState, p: number, o: MeterOptions = {}): st
   const n = Math.max(0, Math.min(10, Math.round(p * 10)));
   const word = o.word ?? oddsLabel(p);
   const scale = o.compact ? "" : `<span class="m-scale odds">${ODDS_SCALE.map((w, i) => `<span class="w${i}">${w}</span>`).join("")}</span>`; // long shot · likely · sure
-  return `<span class="meter2 odds ${o.compact ? "compact" : ""}" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="${n}" aria-label="${esc(o.label ?? word)}" title="${esc(o.label ?? word)}">
-    <span class="m-row">${segments(n, "odds")}<span class="m-word">${esc(word)}${numbersOn(state) ? ` <span class="num">${Math.round(p * 100)}%</span>` : ""}</span></span>${scale}</span>`;
+  return `<span class="meter2 odds ${o.compact ? "compact" : ""} ${o.risk ? "risk" : ""}" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="${n}" aria-label="${esc(o.label ?? word)}" title="${esc(o.label ?? word)}">
+    <span class="m-row">${segments(n, o.risk ? "risk" : "odds")}<span class="m-word">${esc(word)}${numbersOn(state) ? ` <span class="num">${Math.round(p * 100)}%</span>` : ""}</span></span>${scale}</span>`;
 }
 
 /** Same look for "how much would this teach you" (forecast, vet): 0..1, blue segments, "a little → a lot". */
@@ -183,4 +185,21 @@ export function discoveryText(state: GameState, d: { sheep: string; text: string
   const rest = d.text.slice(name.length + 1);
   const fixed = /^(no |two )/.test(rest) ? `has ${rest}` : /^(pure |horned|spotted|brown-based)/.test(rest) ? `is ${rest}` : /^shows /.test(rest) ? rest : rest;
   return `${name} ${fixed}`;
+}
+
+/**
+ * The fondness heart meter: five hearts (halves allowed) and the word (Skittish … Devoted). The number out of
+ * 100 only with the numbers unlock. `to` draws the hearts a treat would add, faintly.
+ */
+export function heartMeter(state: GameState, level: number, o: { to?: number; compact?: boolean } = {}): string {
+  const h = fondnessHearts(level);
+  const t = o.to !== undefined ? fondnessHearts(o.to) : h;
+  let out = "";
+  for (let i = 0; i < 5; i++) {
+    const cls = h >= i + 1 ? "full" : h >= i + 0.5 ? "half" : t >= i + 0.5 ? "more" : "";
+    out += `<i class="${cls}" aria-hidden="true">♥</i>`;
+  }
+  const word = fondnessWord(level);
+  const num = numbersOn(state) ? ` <span class="num">${Math.round(level)}/100</span>` : "";
+  return `<span class="hearts ${o.compact ? "compact" : ""}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(level)}" aria-label="Fondness: ${esc(word)}" title="Fondness: ${esc(word)}"><span class="h-row">${out}</span><span class="h-word">${esc(word)}${num}</span></span>`;
 }

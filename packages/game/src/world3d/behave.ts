@@ -72,6 +72,16 @@ export interface FlockCtx {
   puff(x: number, z: number, n: number, size?: number): void;
 }
 
+/** Fondness at or above this: the sheep seeks you out (comes to the front, follows the sheep you visit). */
+export const FOND_TRUSTING = 60;
+/** Below this: skittish, it keeps its distance and backs away from a fuss. */
+export const FOND_SKITTISH = 20;
+
+export function fondOf(e: Ent): number {
+  const f = e.ws.fondness;
+  return typeof f === "number" && Number.isFinite(f) ? f : 30;
+}
+
 /** Heading that faces the isometric camera (which looks from +x +z). */
 export const FACE_CAMERA = -Math.PI / 4;
 
@@ -144,9 +154,10 @@ function choose(e: Ent, ctx: FlockCtx): void {
     walkTo(e, dam.x + Math.cos(a) * 1.3, dam.z + Math.sin(a) * 1.3, ctx, true);
     return;
   }
-  // Curious sheep come over to see who's getting attention.
+  // Curious sheep, and sheep that are fond of you, come over to see who's getting attention.
   const att = ctx.attended;
-  if (e.personality === "curious" && att && att !== e && sameZone(e, att)) {
+  const fond = fondOf(e);
+  if ((e.personality === "curious" || fond >= FOND_TRUSTING) && fond >= FOND_SKITTISH && att && att !== e && sameZone(e, att)) {
     const d = dist(e, att);
     if (d > 2.6) {
       const k = (d - 1.9) / d;
@@ -186,7 +197,7 @@ function choose(e: Ent, ctx: FlockCtx): void {
     }
   }
   const rect = ctx.insetRect(e.zone, e.radius);
-  if (e.personality === "shy") {
+  if (e.personality === "shy" || (fond < FOND_SKITTISH && Math.random() < 0.6)) {
     // keep to the fence line
     const edge = Math.floor(Math.random() * 4);
     const ux = rect.x0 + (rect.x1 - rect.x0) * Math.random(), uz = rect.z0 + (rect.z1 - rect.z0) * Math.random();
@@ -196,7 +207,7 @@ function choose(e: Ent, ctx: FlockCtx): void {
     walkTo(e, e.x + (px - e.x) * k, e.z + (pz - e.z) * k, ctx);
     return;
   }
-  if (e.personality === "bold" && Math.random() < 0.3) {
+  if ((e.personality === "bold" && Math.random() < 0.3) || (fond >= FOND_TRUSTING && Math.random() < 0.3)) {
     // saunter to the front of the field, towards the camera
     walkTo(e, rect.x1 - Math.random() * 2, rect.z1 - Math.random() * 2, ctx);
     return;

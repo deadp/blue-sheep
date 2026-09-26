@@ -38,7 +38,8 @@ export function helpHtml(_state: GameState, _view: View): string {
   return `<h2>How to play</h2>
   <div class="help-grid">
     <div><h3>Around the farm</h3><ul class="plain">
-      <li>🐑 <b>Click a sheep</b> to see what you know about it.</li>
+      <li>🐑 <b>Click a sheep</b> to see what you know about it — and to say hello.</li>
+      <li>💗 Animals grow <b>fond</b> of you when you say hello each season or bring a treat. Happy sheep grow better wool; a dog or cat that loves you works harder.</li>
       <li>🏠 <b>House</b> — sleep to end the season.</li>
       <li>📋 <b>Shed</b> — the board with your plans and diary.</li>
       <li>🛒 <b>Market</b> — buy and sell sheep.</li>

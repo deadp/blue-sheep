@@ -1,8 +1,9 @@
 /** Shed board (goal, plans, orders, announcements, diary) and the orders panel. */
 import {
-  FAIR_LABEL, MAX_ACCEPTED_ORDERS, currentAct, forecastOrderFor, lambRoom, seasonLabel,
+  FAIR_LABEL, MAX_ACCEPTED_ORDERS, currentAct, forecastOrderFor, lambRoom, miceComingText, seasonLabel,
   type GameState, type Order,
 } from "../core/index.js";
+import { myAnimalsHtml } from "./pets.js";
 import { litterWords } from "./forecast.js";
 import { crossCached } from "./cache.js";
 import { dueWords, esc, has, pips, prop, swatch } from "./util.js";
@@ -23,6 +24,8 @@ export function goalCard(state: GameState): string {
 function upcoming(state: GameState): string[] {
   const out: string[] = [];
   if (state.pendingEvent) out.push(`📣 ${state.pendingEvent.text}`);
+  const mice = miceComingText(state);
+  if (mice) out.push(`🐭 ${mice}`);
   if (lambRoom(state) < 1) out.push("🌾 The fields are full — no room for new lambs until you sell.");
   if (has(state, "fair")) {
     const when = state.fair.nextSeason - state.season;
@@ -67,7 +70,8 @@ export function boardHtml(state: GameState, _view: View): string {
       <div class="row"><button class="primary" data-sleep="1">Sleep 🌙</button></div></div>
     ${has(state, "orders") ? `<div class="note"><b>Promised orders</b>${orders ? `<ul class="plain">${orders}</ul>` : `<p class="meta">None taken. Check the mailbox.</p>`}
       <div class="row"><button class="secondary" data-open="orders">Orders</button></div></div>` : ""}
-    <div class="note"><b>Coming up</b>${news.length ? `<ul class="plain">${news.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="meta">A quiet season ahead.</p>`}</div>
+    <div class="note"><b>Coming up</b>${news.length ? `<ul class="plain">${news.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="meta">A quiet season ahead.</p>`}
+      ${myAnimalsHtml(state) ? `<b>Your animals</b>${myAnimalsHtml(state)}` : ""}</div>
   </div>
   <h3>Diary</h3><ul class="diary">${diary}</ul>`;
 }

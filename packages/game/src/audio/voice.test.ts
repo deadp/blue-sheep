@@ -1,3 +1,4 @@
+import { petVoiceFor } from "./voice.js";
 import { describe, expect, it } from "vitest";
 import { bleatSeries, seriesLength, voiceFor, type VoiceInput, type VoicePersonality } from "./voice.js";
 
@@ -87,5 +88,37 @@ describe("bleatSeries", () => {
       expect(seriesLength(v, s)).toBeLessThan(3);
       for (let i = 1; i < s.length; i++) expect(s[i]!.at).toBeGreaterThan(s[i - 1]!.at);
     }
+  });
+});
+
+describe("fondness and farm animals", () => {
+  const base = { id: "s42", sex: "ewe" as const, adult: true, ageSeasons: 6, size: 60, personality: "calm" as const };
+
+  it("a sheep fond of you keeps its own voice but sounds warmer and says more", () => {
+    const cold = voiceFor({ ...base, fondness: 10 });
+    const warm = voiceFor({ ...base, fondness: 100 });
+    for (const k of ["pitch", "duration", "vibratoRate", "vowel"] as const) expect(warm[k]).toEqual(cold[k]);
+    expect(warm.formants).toEqual(cold.formants);
+    expect(warm.roughness).toBeLessThan(cold.roughness);
+    expect(warm.glide).toBeGreaterThan(cold.glide);
+    let coldN = 0, warmN = 0;
+    for (let i = 0; i < 200; i++) {
+      const r = () => ((i * 7919) % 1000) / 1000;
+      coldN += bleatSeries(cold, r).length;
+      warmN += bleatSeries(warm, r).length;
+    }
+    expect(warmN).toBeGreaterThan(coldN);
+  });
+
+  it("dogs bark (terrier yaps high, the Maremma booms low) and the cat mews", () => {
+    const t = petVoiceFor("terrier"), c = petVoiceFor("collie"), m = petVoiceFor("maremma"), cat = petVoiceFor("cat");
+    expect(t.pitch).toBeGreaterThan(c.pitch);
+    expect(c.pitch).toBeGreaterThan(m.pitch);
+    expect(t.duration).toBeLessThan(0.2);
+    expect(cat.duration).toBeGreaterThan(t.duration * 3);
+    expect(cat.vowel).toBe("meh");
+    expect(bleatSeries(t, () => 0.9).length).toBe(3); // yap-yap-yap
+    expect(bleatSeries(m, () => 0.1).length).toBe(1); // one deep WOOF
+    expect(bleatSeries(cat, () => 0.9).length).toBeGreaterThanOrEqual(1);
   });
 });

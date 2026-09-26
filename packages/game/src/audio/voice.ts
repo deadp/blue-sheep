@@ -21,7 +21,16 @@ export interface VoiceInput {
   /** kg, typically 40–80 */
   size: number;
   personality?: VoicePersonality;
+  /**
+   * Fondness 0–100 (optional). A sheep that is fond of you sounds warmer: smoother, less breathy, a little
+   * rising, and says more (an extra happy bleat now and then). It never changes pitch, vowel or length, so a
+   * sheep keeps its own voice.
+   */
+  fondness?: number;
 }
+
+/** Farm animals that aren't sheep. */
+export type PetVoiceKind = "terrier" | "collie" | "maremma" | "cat";
 
 export interface Voice {
   id: string;
@@ -52,6 +61,10 @@ export interface Voice {
   vowel: "baa" | "meh";
   /** attack time (s) */
   attack: number;
+  /** 0..1: how warm (fond of you) the voice is; adds happy extra bleats (absent = 0). */
+  warmth?: number;
+  /** What is speaking (absent = a sheep). */
+  species?: "sheep" | "dog" | "cat";
 }
 
 /** One bleat in a series: offsets relative to the voice. */
@@ -130,20 +143,23 @@ export function voiceFor(s: VoiceInput): Voice {
   const pitch = base.pitch * sizeK * idK * T.pitch * oldK;
   const tract = base.formant * (1 + u() * 0.05) * clamp(1 - (size - 60) * 0.002, 0.95, 1.05);
   const [f1, f2, f3] = VOWEL[T.vowel];
+  // Fondness warms the delivery only (never pitch, vowel or length): from "friendly" (40) up to devoted.
+  const w = clamp(((s.fondness ?? 0) - 40) / 60, 0, 1);
   return {
     id: s.id, age, sex: s.sex, personality,
     pitch: round(pitch, 1),
-    glide: round(T.glide + u() * 0.6, 2),
+    glide: round(T.glide + u() * 0.6 + w * 1.2, 2),
     duration: round(base.duration * T.duration * (1 + u() * 0.08), 3),
     loudness: round(clamp(T.loudness * base.loud * (1 + u() * 0.05), 0.1, 1), 3),
-    roughness: round(clamp(T.roughness + (s.sex === "ram" && s.adult ? 0.08 : 0) + (age === "old" ? 0.08 : 0) + u() * 0.04, 0, 1), 3),
-    breath: round(clamp(T.breath + (age === "old" ? 0.08 : 0) + u() * 0.04, 0, 1), 3),
+    roughness: round(clamp((T.roughness + (s.sex === "ram" && s.adult ? 0.08 : 0) + (age === "old" ? 0.08 : 0) + u() * 0.04) * (1 - 0.4 * w), 0, 1), 3),
+    breath: round(clamp((T.breath + (age === "old" ? 0.08 : 0) + u() * 0.04) * (1 - 0.3 * w), 0, 1), 3),
     vibratoRate: round(base.vibrato * (1 + u() * 0.12) * (age === "old" ? 0.85 : 1), 2),
     vibratoDepth: round(T.vibDepth * (1 + u() * 0.2) * (age === "old" ? 1.5 : 1), 3),
     tremolo: round(clamp(T.tremolo * (1 + u() * 0.2) + (age === "old" ? 0.1 : 0), 0, 0.85), 3),
     formants: [round(f1 * tract, 0), round(f2 * tract * (1 + u() * 0.04), 0), round(f3 * tract, 0)],
     vowel: T.vowel,
     attack: T.attack,
+    warmth: round(w, 3),
   };
 }
 
@@ -152,6 +168,18 @@ export function voiceFor(s: VoiceInput): Voice {
  * (`rnd` defaults to Math.random; pass a fixed function for tests or offline renders).
  */
 export function bleatSeries(v: Voice, rnd: () => number = Math.random): BleatStep[] {
+  if (v.species === "dog" || v.species === "cat") return petSeries(v, rnd);
+  const steps = sheepSeries(v, rnd);
+  // A sheep that is fond of you often adds a little happy bleat, rising, after the rest.
+  const w = v.warmth ?? 0;
+  if (w > 0.3 && rnd() < w * 0.7) {
+    const end = seriesLength(v, steps);
+    steps.push({ at: end + 0.1, dur: v.personality === "shy" ? 0.4 : 0.5, pitch: 1.06, gain: 0.75, glide: Math.abs(v.glide) * 0.5 + 1.5 });
+  }
+  return steps;
+}
+
+function sheepSeries(v: Voice, rnd: () => number): BleatStep[] {
   const x = rnd();
   const one = (dur = 1): BleatStep[] => [{ at: 0, dur, pitch: 1, gain: 1, glide: v.glide }];
   switch (v.personality) {
@@ -192,4 +220,46 @@ export function seriesLength(v: Voice, steps: BleatStep[]): number {
 function round(v: number, dp: number): number {
   const k = 10 ** dp;
   return Math.round(v * k) / k;
+}
+
+// ---- Dogs and the cat --------------------------------------------------------
+
+interface PetBase { pitch: number; duration: number; glide: number; loud: number; rough: number; breath: number; formants: [number, number, number]; vowel: "baa" | "meh"; attack: number; vib: number; vibDepth: number; tremolo: number }
+const PET: Record<PetVoiceKind, PetBase> = {
+  // a sharp little "yap": high, short, falling
+  terrier: { pitch: 560, duration: 0.12, glide: -5, loud: 0.8, rough: 0.5, breath: 0.25, formants: [1000, 1700, 3000], vowel: "baa", attack: 0.004, vib: 0, vibDepth: 0, tremolo: 0 },
+  // a friendly "woof"
+  collie: { pitch: 340, duration: 0.17, glide: -6, loud: 0.9, rough: 0.55, breath: 0.2, formants: [720, 1250, 2500], vowel: "baa", attack: 0.006, vib: 0, vibDepth: 0, tremolo: 0 },
+  // a deep, slow "WOOF"
+  maremma: { pitch: 175, duration: 0.26, glide: -4, loud: 1, rough: 0.75, breath: 0.18, formants: [520, 980, 2250], vowel: "baa", attack: 0.01, vib: 0, vibDepth: 0, tremolo: 0 },
+  // "mew": nasal, rising then falling, with a little vibrato
+  cat: { pitch: 540, duration: 0.62, glide: -3.5, loud: 0.6, rough: 0.08, breath: 0.18, formants: [620, 1900, 3100], vowel: "meh", attack: 0.07, vib: 5.5, vibDepth: 0.35, tremolo: 0.08 },
+};
+
+/** The voice of a farm dog or the cat. Fondness warms it a little (a softer, happier bark; a longer purr-ish mew). */
+export function petVoiceFor(kind: PetVoiceKind, fondness = 0): Voice {
+  const b = PET[kind];
+  const w = clamp((fondness - 40) / 60, 0, 1);
+  return {
+    id: `pet:${kind}`, age: "adult", sex: kind === "maremma" || kind === "cat" ? "ram" : "ewe", personality: kind === "terrier" ? "bold" : "calm",
+    pitch: b.pitch, glide: round(b.glide + w * (kind === "cat" ? 2 : 1), 2), duration: b.duration,
+    loudness: b.loud, roughness: round(b.rough * (1 - 0.3 * w), 3), breath: b.breath,
+    vibratoRate: b.vib || 6, vibratoDepth: b.vibDepth, tremolo: b.tremolo, formants: b.formants, vowel: b.vowel, attack: b.attack,
+    warmth: round(w, 3), species: kind === "cat" ? "cat" : "dog",
+  };
+}
+
+function petSeries(v: Voice, rnd: () => number): BleatStep[] {
+  const x = rnd();
+  const step = (at: number, dur = 1, pitch = 1, gain = 1, glide = v.glide): BleatStep => ({ at, dur, pitch, gain, glide });
+  if (v.species === "cat") {
+    // "mrrp?" then "mew", or just "mew"; a fond cat adds a soft second mew
+    const out = x < 0.4 ? [step(0, 0.35, 0.82, 0.6, 3), step(0.32, 1)] : [step(0)];
+    if ((v.warmth ?? 0) > 0.4 && rnd() < 0.5) out.push(step(seriesLength(v, out) + 0.15, 0.7, 1.08, 0.7, -2));
+    return out;
+  }
+  const gap = v.duration + 0.06;
+  if (v.pitch > 450) return [0, 1, 2].slice(0, x < 0.3 ? 2 : 3).map((i) => step(i * gap, 1, 1 + (i % 2) * 0.05, 1 - i * 0.08)); // yap-yap-yap
+  if (v.pitch > 250) return x < 0.3 ? [step(0)] : [step(0), step(gap + 0.08, 1, 0.96, 0.9)]; // woof woof
+  return x < 0.7 ? [step(0)] : [step(0), step(gap + 0.35, 1.1, 0.95, 0.95)]; // WOOF … WOOF
 }

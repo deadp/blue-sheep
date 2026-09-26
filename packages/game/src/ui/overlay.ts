@@ -48,7 +48,10 @@ export class Overlay {
 
   show(html: string, opts: ShowOptions = {}): void {
     const wasOpen = this.open;
-    const scroll = wasOpen ? this.el.querySelector(".panel")?.scrollTop ?? 0 : 0;
+    const prev = wasOpen ? this.el.querySelector<HTMLElement>(".panel") : null;
+    // Keep the scroll position when the same panel re-renders, not when another panel replaces it.
+    const same = !!prev && (prev.dataset.panel ?? "") === (opts.name ?? "");
+    const scroll = same ? prev!.scrollTop : 0;
     this.closable = opts.closable !== false;
     if (!wasOpen) this.lastFocus = document.activeElement;
     this.el.innerHTML = `<div class="panel ${opts.wide ? "wide" : ""}" role="dialog" aria-modal="true" tabindex="-1" ${opts.name ? `data-panel="${opts.name}"` : ""}>
@@ -56,7 +59,7 @@ export class Overlay {
     this.el.classList.toggle("side", !!opts.side);
     this.el.hidden = false;
     const panel = this.el.querySelector<HTMLElement>(".panel");
-    if (panel && wasOpen) panel.scrollTop = scroll;
+    if (panel && same) panel.scrollTop = scroll;
     // Focus the dialog itself so Tab starts inside it, without a focus ring on an arbitrary button.
     if (!wasOpen) panel?.focus({ preventScroll: true });
   }

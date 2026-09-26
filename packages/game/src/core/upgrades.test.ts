@@ -5,9 +5,9 @@ import {
 } from "./index.js";
 import { GENOTYPE_RE, planAll } from "./testkit.js";
 
-function atWinter(seed: number, kind: EventKind, upgrade: "dog" | "barn"): GameState {
+function atWinter(seed: number, kind: EventKind, upgrade: "collie" | "maremma" | "barn"): GameState {
   const g = newGame(seed);
-  enterAct(g, 1);
+  enterAct(g, upgrade === "maremma" ? 2 : 1);
   g.money = 500;
   buyUpgrade(g, upgrade);
   g.season = 3;
@@ -19,11 +19,11 @@ describe("farm improvements", () => {
   it("cost their price once, are remembered, and can't be bought twice", () => {
     const g = newGame(200);
     g.money = 1000;
-    buyUpgrade(g, "dog");
-    expect(g.money).toBe(1000 - UPGRADES.find((u) => u.id === "dog")!.price);
-    expect(hasUpgrade(g, "dog")).toBe(true);
-    expect(() => buyUpgrade(g, "dog")).toThrow(/already/);
-    expect(deserialize(serialize(g)).upgrades).toEqual(["dog"]);
+    buyUpgrade(g, "collie");
+    expect(g.money).toBe(1000 - UPGRADES.find((u) => u.id === "collie")!.price);
+    expect(hasUpgrade(g, "collie")).toBe(true);
+    expect(() => buyUpgrade(g, "collie")).toThrow(/already/);
+    expect(deserialize(serialize(g)).upgrades).toEqual(["collie"]);
   });
 
   it("refuse without enough coins, before their act, or without the prerequisite", () => {
@@ -58,8 +58,9 @@ describe("farm improvements", () => {
     expect(g.flockCap).toBe(16 + 4);
   });
 
-  it("the dog stops the fox taking a lamb", () => {
-    const g = atWinter(204, "fox", "dog");
+  it("a devoted Maremma sees the fox off", () => {
+    const g = atWinter(204, "fox", "maremma");
+    g.care = { maremma: { level: 100, greeted: -1, treated: -1, cared: 99 } };
     planAll(g); advanceSeason(g); // lambs in the field
     const lambs = flockSheep(g).filter((s) => !isAdult(s, g.season)).length;
     expect(lambs).toBeGreaterThan(0);
@@ -68,7 +69,8 @@ describe("farm improvements", () => {
     const before = g.flock.length;
     const r = advanceSeason(g);
     expect(r.event?.saved).toBe(true);
-    expect(r.event?.text).toMatch(/sheepdog/);
+    expect(r.event?.dog).toBe("maremma");
+    expect(r.event?.text).toMatch(/Samson/);
     expect(r.deaths).toHaveLength(0);
     expect(g.flock.length).toBeGreaterThanOrEqual(before);
   });

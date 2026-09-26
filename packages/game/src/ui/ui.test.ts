@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { GOALS, acceptOrder, canBreed, factsFor, forecastOrder, isAdult, seasonLabel, type GameState } from "../core/index.js";
+import { GOALS, acceptOrder, canBreed, factsFor, forecastOrder, giveTreat, greetAnimal, isAdult, seasonLabel, type GameState } from "../core/index.js";
 import { CONCEPTS, ODDS_SCALE, PANEL_NAMES, hudHtml, mentorHtml, renderPanel, forecastPanelHtml, tutorialStepMet, tutorialTarget, type View, type PanelName } from "./index.js";
 import { TUTORIAL_STEPS, advanceSeason, advanceTutorial, buySheep, cheapestMarketEwe, newTutorialGame, planMating, tutorialStep } from "../core/index.js";
 import { personalityLine } from "../core/index.js";
@@ -9,7 +9,9 @@ const PORTRAIT = "data:image/png;base64,AAAA";
 const GENOTYPE = /[A-Za-z]\/[A-Za-z]/;
 const VOCAB = new Set([
   "close", "open", "sheep", "findmate", "mate", "goal", "plan", "buy", "sell", "hire", "test", "accept", "decline",
-  "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial",
+  "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial", "treat",
+  // not actions: markers on the care box, the animal card and improvement cards (for probes and styles)
+  "care", "pet", "upgrade-card",
   // not actions: the mentor card's step markers for probes and styles
   "step", "step-id",
   // settings' volume slider (an input, handled on input/change)
@@ -297,10 +299,71 @@ describe("panel content", () => {
     s.money = 1000;
     const h = renderPanel(s, view({ panel: "market" }));
     expect(h).toContain("Farm improvements");
-    for (const id of ["paddock", "dog", "barn", "shearing"]) expect(h).toContain(`data-upgrade="${id}"`);
+    for (const id of ["paddock", "terrier", "collie", "maremma", "cat", "barn", "shearing"]) expect(h).toContain(`data-upgrade="${id}"`);
     expect(h).toContain("pays for itself");
-    s.upgrades = ["dog"];
-    expect(renderPanel(s, view({ panel: "market" }))).not.toContain('data-upgrade="dog"');
+    // dogs show the odds a fox / a wolf gets a lamb, now and with that dog; the cat shows the mice cost
+    // (rows where nothing would change are left out: the act-3 flock may have a bold sheep keeping foxes off)
+    const noBold = structuredClone(s) as GameState;
+    for (const id of noBold.flock) noBold.sheep[id]!.phenotype["boldness"] = 2;
+    const nb = renderPanel(noBold, view({ panel: "market" }));
+    expect(nb).toMatch(/A fox gets a lamb[\s\S]*with Pip/);
+    expect(nb).toMatch(/A wolf gets a lamb[\s\S]*with Samson/);
+    expect(nb).toMatch(/Pip is no help against a wolf/);
+    expect(h).toMatch(/mouse season costs[\s\S]*with Mog/);
+    s.upgrades = ["collie"];
+    const owned = renderPanel(s, view({ panel: "market" }));
+    expect(owned).not.toContain('data-upgrade="collie"');
+    expect(owned).toContain('data-open="animal" data-sheep-id="collie"');
+  });
+
+  it("the sheep card shows fondness hearts, whether you've said hello, the wool effect and a treat with its forecast", () => {
+    const s = structuredClone(fx("afterFirst").state) as GameState;
+    const id = s.flock.find((x) => isAdult(s.sheep[x]!, s.season))!;
+    let h = renderPanel(s, view({ panel: "sheep", sheepId: id }));
+    expect(h).toContain('class="hearts');
+    expect(h).toContain(`data-treat="${id}"`);
+    expect(h).toContain("Give a treat");
+    expect(h).toMatch(/would go from/);
+    expect(h).not.toContain("said hello this season");
+    greetAnimal(s, id);
+    giveTreat(s, id);
+    h = renderPanel(s, view({ panel: "sheep", sheepId: id }));
+    expect(h).toContain("said hello this season");
+    expect(h).toContain("Treat given");
+    expect(h).not.toContain(`data-treat="${id}"`);
+    // market sheep are not yours: no care box
+    expect(renderPanel(s, view({ panel: "sheep", sheepId: s.market[0]! }))).not.toContain("data-treat");
+    // the number out of 100 only with numbers
+    expect(h).not.toMatch(/\d+\/100/);
+    const n = structuredClone(fx("act2").state) as GameState;
+    const nid = n.flock[0]!;
+    expect(renderPanel(n, view({ panel: "sheep", sheepId: nid }))).toMatch(/\d+\/100/);
+  });
+
+  it("the animal card shows a dog's job, its fondness and a treat; without animals it points to the market", () => {
+    const s = structuredClone(fx("act3").state) as GameState;
+    expect(renderPanel(s, view({ panel: "animal" }))).toContain('data-open="market"');
+    s.upgrades = [...(s.upgrades ?? []), "maremma", "cat"];
+    const h = renderPanel(s, view({ panel: "animal", sheepId: "maremma" }));
+    expect(h).toContain("Samson");
+    expect(h).toMatch(/A wolf gets a lamb/);
+    expect(h).toContain('data-treat="maremma"');
+    expect(h).toContain('data-sheep-id="cat"'); // the other animals
+    const c = renderPanel(s, view({ panel: "animal", sheepId: "cat" }));
+    expect(c).toMatch(/mice/);
+  });
+
+  it("the report shows what happy sheep added, mice, and a wolf seen off by a dog", () => {
+    const s = structuredClone(fx("act3").state) as GameState;
+    const r = { ...fx("act3").report! };
+    r.fondBonus = 7;
+    r.mice = { wool: 3, feed: 2, without: 12, cat: true, text: "Mice got into the barn. Mog caught most of them." };
+    r.event = { kind: "wolf", season: s.season - 1, colour: null, sheep: null, saved: true, text: "The wolf came by night, but Samson the Maremma stood over the flock.", dog: "maremma" };
+    const h = renderPanel(s, view({ panel: "report", report: r }));
+    expect(h).toContain("Happy sheep: <b>+7</b>");
+    expect(h).toContain("🐭");
+    expect(h).toContain("🐺");
+    expect(h).toContain("Good dog, Samson!");
   });
 
   it("escapes names", () => {

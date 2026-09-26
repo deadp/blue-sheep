@@ -8,7 +8,7 @@ import {
   ACTS, ADULT_AGE, EWE_BREED_MAX_AGE, FAIR_CATEGORIES, FAIR_SEASON, MARKET_SIZE, SEASONS, START_MONEY,
 } from "./config.js";
 import { EWE_NAMES, RAM_NAMES } from "./names.js";
-import type { ActNumber, FairCategory, GameState, Phenotype, Sex, Sheep, SheepOrigin, Unlock } from "./types.js";
+import type { ActNumber, FairCategory, GameState, Phenotype, Sex, Sheep, SheepOrigin, Unlock, UpgradeId } from "./types.js";
 
 export const species: Species = sheepSpecies.sheep;
 
@@ -188,6 +188,8 @@ export function newGame(seed: number): GameState {
     ending: null,
     stats: { lambsBorn: 0, bluesBorn: 0, coinsEarned: 0, discoveries: 0, fairsWon: 0, ordersFilled: 0, ordersFailed: 0 },
     upgrades: [],
+    care: {},
+    mice: null,
     achievements: [],
     tutorial: null,
   };
@@ -241,6 +243,11 @@ export function deserialize(json: string): GameState {
     const st = raw as unknown as GameState;
     // Saves from before farm improvements have no `upgrades`: treat as none bought.
     if (!Array.isArray(st.upgrades)) st.upgrades = [];
+    // The single sheepdog of older saves is Bess, the border collie.
+    st.upgrades = [...new Set((st.upgrades as string[]).map((u) => (u === "dog" ? "collie" : u)))] as UpgradeId[];
+    // Saves from before fondness and mice: every animal starts at its default (by origin), no mice due.
+    if (!st.care || typeof st.care !== "object") st.care = {};
+    if (st.mice === undefined) st.mice = null;
     // Saves from before the tutorial have none.
     if (st.tutorial === undefined) st.tutorial = null;
     return st;
@@ -307,6 +314,8 @@ export function migrateV1(v1: Record<string, unknown>): GameState {
       fairsWon: 0, ordersFilled: 0, ordersFailed: 0,
     },
     upgrades: [],
+    care: {},
+    mice: null,
     achievements,
     tutorial: null,
   };

@@ -1,13 +1,14 @@
 /** Market (buy, sell, visiting ram), vet and fair panels. */
 import {
-  FAIR_LABEL, FAIR_PRIZES, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, forecastUpgrade, hasUpgrade, upgradeBlocked, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
+  FAIR_LABEL, FAIR_PRIZES, PET_NAME, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, fondnessOf, forecastUpgrade, hasUpgrade, isPetId, upgradeBlocked, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
   isAdult, oddsLabel, seasonLabel, sheepValue, yearOf,
   type CrossForecast, type GameState, type Sheep,
 } from "../core/index.js";
 import { litterRow, litterWords } from "./forecast.js";
-import { ageWords, chip, dot, esc, has, learnMeter, learnWord, numbersOn, pips, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, chip, dot, esc, has, heartMeter, learnMeter, learnWord, numbersOn, pips, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
 import type { View } from "./view.js";
 import { crossCached } from "./cache.js";
+import { PET_ICON, petForecastHtml } from "./pets.js";
 
 /** Best pairing of an outside sheep with the flock, by blue chance then learning. */
 function bestMatch(state: GameState, s: Sheep): { mate: Sheep; f: CrossForecast } | null {
@@ -47,24 +48,31 @@ function marketCard(state: GameState, view: View, s: Sheep): string {
   </div>`;
 }
 
-/** Farm improvements: each with what it would change for this farm (the forecast) before buying. */
-function upgradesHtml(state: GameState): string {
-  const rows = UPGRADES.map((u) => {
-    const owned = hasUpgrade(state, u.id);
-    const blocked = owned ? null : upgradeBlocked(state, u.id);
-    const locked = !owned && (state.act < u.minAct || (u.requires !== null && !hasUpgrade(state, u.requires)));
-    const fore = owned || locked ? "" : `<div class="u-fore">${esc(forecastUpgrade(state, u.id).text)}</div>`;
-    const act = owned
-      ? `<span class="tag ok">Yours ✓</span>`
-      : `<div class="price">${u.price} coins</div><button class="primary" data-upgrade="${u.id}" ${blocked ? "disabled" : ""}>Buy</button>${blocked && !locked ? `<div class="meta">Not enough coins</div>` : ""}`;
-    return `<div class="mcard upgrade ${owned ? "owned" : ""} ${locked ? "locked" : ""}">
-      <div class="u-icon" aria-hidden="true">${u.icon}</div>
+/** One improvement card: what it would change for this farm (the forecast) next to the Buy button. */
+function upgradeCard(state: GameState, u: (typeof UPGRADES)[number]): string {
+  const owned = hasUpgrade(state, u.id);
+  const blocked = owned ? null : upgradeBlocked(state, u.id);
+  const locked = !owned && (state.act < u.minAct || (u.requires !== null && !hasUpgrade(state, u.requires)));
+  const pet = isPetId(u.id) ? u.id : null;
+  let fore = "";
+  if (!owned && !locked) fore = pet ? petForecastHtml(state, pet) : `<div class="u-fore">${esc(forecastUpgrade(state, u.id).text)}</div>`;
+  if (owned && pet) fore = `<div class="u-fore">${heartMeter(state, fondnessOf(state, pet), { compact: true })} <button class="link" data-open="animal" data-sheep-id="${pet}">Visit ${esc(PET_NAME[pet])}</button></div>`;
+  const act = owned
+    ? `<span class="tag ok">Yours ✓</span>`
+    : `<div class="price">${u.price} coins</div><button class="primary" data-upgrade="${u.id}" ${blocked ? "disabled" : ""}>Buy</button>${blocked && !locked ? `<div class="meta">Not enough coins</div>` : ""}`;
+  return `<div class="mcard upgrade ${owned ? "owned" : ""} ${locked ? "locked" : ""} ${pet ? "pet" : ""}" data-upgrade-card="${u.id}">
+      <div class="u-icon" aria-hidden="true">${pet ? PET_ICON[pet] : u.icon}</div>
       <div class="m-body"><div class="m-name"><b>${esc(u.name)}</b></div>
         <div class="meta">${esc(u.blurb)}</div>
         ${locked ? `<div class="meta">🔒 ${esc(blocked ?? "")}</div>` : fore}</div>
       <div class="m-buy">${act}</div>
     </div>`;
-  }).join("");
+}
+
+/** Farm animals (dogs, the cat) and farm improvements, each with its forecast before buying. */
+function upgradesHtml(state: GameState): string {
+  const pets = UPGRADES.filter((u) => isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
+  const rows = UPGRADES.filter((u) => !isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
   const feed = feedPerHead(state.season);
   const year = yearOf(state.season);
   let rise = "That's as dear as hay gets.";
@@ -72,7 +80,10 @@ function upgradesHtml(state: GameState): string {
     const f = feedPerHead(y * 4);
     if (f > feed) { rise = `It goes up to ${f} in Year ${y + 1}.`; break; }
   }
-  return `<h3>Farm improvements</h3>
+  return `<h3>Dogs and a cat</h3>
+    <p class="meta">Dogs keep watch together: each one you add makes the lambs safer. The bars show the odds a predator gets a lamb, now and with that dog.</p>
+    ${pets}
+    <h3>Farm improvements</h3>
     <p class="meta">One-time purchases. Feed costs ${feed} coins a sheep this season. ${rise}</p>
     ${rows}`;
 }

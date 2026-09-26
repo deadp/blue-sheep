@@ -1,9 +1,10 @@
 /** Sheep card and family tree. */
 import {
-  FAIR_LABEL, PERSONALITY_ICON, PERSONALITY_WORD, canBreed, factsFor, familyTree, flavoursOf, isAdult, isIll, personalityLine, personalityOf, sheepValue,
+  FAIR_LABEL, PERSONALITY_ICON, PERSONALITY_WORD, TREAT_COST, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
+  forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
-import { ageWords, chip, dot, esc, has, hex, numbersOn, portrait, sexMark, swatch, traitWords } from "./util.js";
+import { ageWords, chip, dot, esc, has, heartMeter, hex, numbersOn, portrait, sexMark, swatch, traitWords } from "./util.js";
 
 /** Pastel backdrop per wool colour for the live portrait (matches the world's portrait backgrounds). */
 const PORTRAIT_BG: Record<string, string> = { white: "#bfdcec", black: "#f5dcc4", brown: "#d4e9c6", blue: "#f7e2c2", fawn: "#cfdcf2" };
@@ -13,6 +14,40 @@ import type { View } from "./view.js";
 export function cardSubject(state: GameState, view: View): Sheep | null {
   const s = view.sheepId ? state.sheep[view.sheepId] : undefined;
   return s ?? (state.flock[0] ? state.sheep[state.flock[0]]! : null);
+}
+
+/**
+ * The care box: how fond the animal is of you (hearts), whether you've said hello this season, what its
+ * happiness does for its wool, and the treat: its forecast next to the button (Decide → Forecast → Commit).
+ */
+export function careHtml(state: GameState, id: string, effect: string): string {
+  const level = fondnessOf(state, id);
+  const treated = treatedThisSeason(state, id);
+  const fc = treated ? null : forecastTreat(state, id);
+  const blocked = treatBlocked(state, id);
+  const said = greetedThisSeason(state, id) ? `<span class="c-said">♥ said hello this season</span>` : "";
+  const act = treated
+    ? `<span class="tag ok">Treat given ✓</span>`
+    : `<button class="secondary treat" data-treat="${esc(id)}" ${blocked ? "disabled" : ""}>Give a treat · ${TREAT_COST} coin</button>${blocked && state.money < TREAT_COST ? `<span class="meta">Not enough coins</span>` : ""}`;
+  return `<div class="care" data-care="${esc(id)}">
+    <div class="c-top"><span class="c-lbl">Fondness</span>${heartMeter(state, level, fc && fc.after > level ? { to: fc.after } : {})}${said}</div>
+    ${effect ? `<div class="c-wool">${effect}</div>` : ""}
+    <div class="c-fore">${treated ? "Had a treat this season. Say hello again next season." : esc(fc!.text)}</div>
+    <div class="c-act">${act}</div>
+  </div>`;
+}
+
+/** What this sheep's fondness does for its wool, in a short sentence (coins; % only with numbers). */
+function woolEffect(state: GameState, s: Sheep): string {
+  const her = s.sex === "ram" ? "His" : "Her";
+  if (!isAdult(s, state.season)) return "Too young to shear. Lambs raised with kindness grow into happy sheep.";
+  const level = fondnessOf(state, s.id);
+  const m = fondWoolMultiplier(level);
+  const d = fleeceAt(state, s, level) - fleeceAt(state, s, 30);
+  const pct = numbersOn(state) && Math.abs(m - 1) > 0.001 ? ` (${m > 1 ? "+" : "−"}${Math.round(Math.abs(m - 1) * 100)}%)` : "";
+  if (m > 1.001) return d > 0 ? `💗 Happy sheep grow better wool: ${her.toLowerCase()} fleece fetches about <b>+${d} coin${d === 1 ? "" : "s"}</b> a shearing${pct}.` : `💗 A happy sheep: ${her.toLowerCase()} wool is getting better${pct}.`;
+  if (m < 0.999) return `😟 Skittish sheep grow poorer wool: ${her.toLowerCase()} fleece fetches ${d < 0 ? `about <b>−${-d} coin${d === -1 ? "" : "s"}</b>` : "a little less"} a shearing${pct}. Say hello!`;
+  return `${her} wool fetches the usual price. Once ${s.sex === "ram" ? "he" : "she"} is fond of you, it fetches more.`;
 }
 
 export function sheepCardHtml(state: GameState, view: View): string {
@@ -64,6 +99,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
       ${rosettes}
       <dl class="traits">${traits}</dl>
     </div>
+    ${own ? careHtml(state, s.id, woolEffect(state, s)) : ""}
     ${buttons.length || planText ? `<div class="row actions">${buttons.join("")}${planText ? `<span class="meta">${planText}</span>` : ""}</div>` : ""}
     <div class="sc-family">
       <div><span class="lbl">Parents</span> ${parents}</div>

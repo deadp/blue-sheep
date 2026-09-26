@@ -1,8 +1,12 @@
 /** Farm improvements: one-time purchases with a clear effect, each shown with a forecast before buying. */
-import { FEED_COST, FEED_GROWTH, FEED_MAX, SHEARING_BONUS, UPGRADES, type UpgradeDef } from "./config.js";
+import { FEED_COST, FEED_GROWTH, FEED_MAX, PET_FEED, PET_NAME, PET_SEX, SHEARING_BONUS, UPGRADES, WOLF_MIN_ACT, type UpgradeDef } from "./config.js";
+import { fondWoolMultiplier, fondnessOf, isPetId } from "./care.js";
 import { woolIncome } from "./economy.js";
+import { ownedDogs, predatorRisk } from "./events.js";
+import { miceCost } from "./mice.js";
 import { addLog, flockSheep, isAdult, yearOf } from "./state.js";
-import type { GameState, UpgradeId } from "./types.js";
+import type { DogId, GameState, UpgradeId } from "./types.js";
+import { fractionWords } from "./words.js";
 
 export function upgradeDef(id: string): UpgradeDef {
   const d = UPGRADES.find((u) => u.id === id);
@@ -34,13 +38,28 @@ export function upgradeBlocked(state: GameState, id: UpgradeId): string | null {
   return null;
 }
 
-/** Coins this season's clip would fetch at today's prices (no booms). */
+/** Coins this season's clip would fetch at today's prices (no booms), with each sheep's fondness. */
 function clipValue(state: GameState, bonus: number): number {
-  return flockSheep(state).filter((s) => isAdult(s, state.season)).reduce((t, s) => t + woolIncome(s, null, bonus), 0);
+  return flockSheep(state).filter((s) => isAdult(s, state.season)).reduce((t, s) => t + woolIncome(s, null, bonus * fondWoolMultiplier(fondnessOf(state, s.id))), 0);
 }
 
-/** What buying this improvement would change for this farm, in one or two plain sentences. */
-export function forecastUpgrade(state: GameState, id: UpgradeId): { text: string } {
+export interface UpgradeForecast {
+  text: string;
+  /** Dogs: chance a fox / a wolf takes a lamb if it comes (and there are lambs), now and with this dog. */
+  risk?: { fox: { now: number; with: number }; wolf: { now: number; with: number } };
+  /** Cat: coins a mouse season would cost at today's flock, now and with the cat. */
+  mice?: { now: number; with: number };
+}
+
+/** "never", "every time", "about one in four". */
+export function chanceWords(p: number): string {
+  if (p <= 0.001) return "never";
+  if (p >= 0.999) return "every time";
+  return fractionWords(p);
+}
+
+/** What buying this improvement would change for this farm, in one or two plain sentences (plus odds for dogs). */
+export function forecastUpgrade(state: GameState, id: UpgradeId): UpgradeForecast {
   const d = upgradeDef(id);
   const ev = state.pendingEvent;
   switch (id) {
@@ -49,12 +68,46 @@ export function forecastUpgrade(state: GameState, id: UpgradeId): { text: string
       const now = state.flockCap;
       return { text: `Your fields would hold ${now + d.cap} sheep instead of ${now}. More ewes can lamb each season — but every sheep eats ${feedPerHead(state.season)} coins of feed a season.` };
     }
-    case "dog": {
+    case "terrier":
+    case "collie":
+    case "maremma": {
+      const dogs = ownedDogs(state);
+      const plus: DogId[] = dogs.includes(id) ? dogs : [...dogs, id];
+      const fox = { now: predatorRisk(state, "fox", dogs), with: predatorRisk(state, "fox", plus) };
+      const wolf = { now: predatorRisk(state, "wolf", dogs), with: predatorRisk(state, "wolf", plus) };
       const lambs = flockSheep(state).filter((s) => !isAdult(s, state.season)).length;
-      const lost = state.events.filter((e) => e.kind === "fox" && !e.saved && e.sheep).length;
-      const soon = ev?.kind === "fox" ? " A fox has been seen — it comes this winter." : "";
-      const past = lost ? ` Foxes have taken ${lost} lamb${lost === 1 ? "" : "s"} so far.` : "";
-      return { text: `No fox would ever take a lamb. You have ${lambs} lamb${lambs === 1 ? "" : "s"} in the field now.${past}${soon}` };
+      const lost = state.events.filter((e) => (e.kind === "fox" || e.kind === "wolf") && !e.saved && e.sheep).length;
+      const soon = ev?.kind === "fox" ? " A fox has been seen — it comes this winter." : ev?.kind === "wolf" ? " A wolf is coming this winter." : "";
+      const past = lost ? ` Foxes and wolves have taken ${lost} lamb${lost === 1 ? "" : "s"} so far.` : "";
+      const wolves = state.act >= WOLF_MIN_ACT || ev?.kind === "wolf" ? "" : " (Wolves only come in later years.)";
+      const others = dogs.filter((x) => x !== id);
+      const pack = others.length ? ` ${PET_NAME[id]} would keep watch with ${others.map((x) => PET_NAME[x]).join(" and ")}.` : "";
+      const foxLine = fox.now === 0 && fox.with === 0
+        ? "A bold sheep already keeps foxes off."
+        : `If a fox comes, it gets a lamb ${chanceWords(fox.now)} now; with ${PET_NAME[id]}, ${chanceWords(fox.with)}.`;
+      const wolfLine = wolf.with >= wolf.now - 0.001
+        ? ` ${PET_NAME[id]} is no help against a wolf.`
+        : ` A wolf: ${chanceWords(wolf.now)} now, ${chanceWords(wolf.with)} with ${PET_NAME[id]}.`;
+      const eats = ` ${PET_SEX[id] === "she" ? "She" : "He"} eats ${PET_FEED[id]} coin${PET_FEED[id] === 1 ? "" : "s"} of food a season.`;
+      return {
+        text: `${foxLine}${wolfLine}${wolves}${pack} You have ${lambs} lamb${lambs === 1 ? "" : "s"} in the field now.${past}${soon}${eats}`,
+        risk: { fox, wolf },
+      };
+    }
+    case "cat": {
+      const adults = flockSheep(state).filter((s) => isAdult(s, state.season));
+      const shed = hasUpgrade(state, "shearing") ? SHEARING_BONUS : 1;
+      const clip = clipValue(state, shed);
+      const eaters = state.flock.length;
+      const now = miceCost(state, clip, eaters, false);
+      const cat = miceCost(state, clip, eaters, true);
+      const nowT = now.wool + now.feed, withT = cat.wool + cat.feed;
+      const soon = state.mice === state.season + 1 || state.mice === state.season ? " Mice are coming next season." : "";
+      const flockWord = adults.length ? `With your flock today` : "Even before you have wool to spoil";
+      return {
+        text: `${flockWord}, a mouse season would cost about ${nowT} coins of wool and hay; with ${PET_NAME.cat}, about ${withT}.${soon} He eats ${PET_FEED.cat} coin of food a season.`,
+        mice: { now: nowT, with: withT },
+      };
     }
     case "barn": {
       const ill = state.events.filter((e) => e.kind === "hardWinter" && e.sheep).length;
@@ -83,5 +136,10 @@ export function buyUpgrade(state: GameState, id: string): void {
   state.money -= d.price;
   state.upgrades = [...(state.upgrades ?? []), d.id];
   state.flockCap += d.cap;
-  addLog(state, `Farm improvement: ${d.name.toLowerCase()}, for ${d.price} coins.`);
+  if (isPetId(d.id)) {
+    // A new dog or cat is new to you too: it starts a little wary.
+    if (!state.care) state.care = {};
+    delete state.care[d.id];
+  }
+  addLog(state, `Farm improvement: ${isPetId(d.id) ? d.name : d.name.toLowerCase()}, for ${d.price} coins.`);
 }
