@@ -56,6 +56,17 @@ Decisions (user, 2026-09-27, round 2):
   collection (a rainbow of sheep colours, a fantasy wool, a signature knitted
   piece). Blue is one milestone.
 
+Decisions (user, 2026-09-27, round 3):
+
+- **Base wool types / breeds:** breeds are founder lines with different fleece
+  genes; wool type is classified from measured fleece traits (fineness,
+  staple length, crimp, lustre, double coat for Icelandic). Crossbreds give
+  in-between wools. Breeds: Merino, Romney, Corriedale, Perendale, Drysdale,
+  Icelandic (plus a plain 'farm' type for the starter flock).
+- **Wool suits items:** each wool type suits some items (Merino → socks and
+  next-to-skin knits, Icelandic → lopapeysa, Romney → hardy outer knits,
+  Drysdale → rugs). Right wool for the pattern gives better quality and price.
+
 Planned approach: a design pass first (docs/DESIGN-v3.md: genetics model for
 continuous colour, fibre pipeline, item/recipe/pattern tree, market saturation,
 magic + native birds, act structure without blue as the sole goal, migration of
