@@ -29,4 +29,8 @@ export {
   currentAct, actInfo, isEnding, markEndingShown, registryStatus, enterAct, checkActAdvance, checkEnding, type RegistryStatus,
 } from "./acts.js";
 export { oddsText, oddsLabel, fractionWords } from "./words.js";
+export {
+  personalityOf, personalityFromBoldness, personalityLine, flavoursOf, PERSONALITY_WORD, PERSONALITY_ICON,
+  type Personality, type Flavour,
+} from "./personality.js";
 export { EWE_NAMES, RAM_NAMES, VILLAGERS } from "./names.js";

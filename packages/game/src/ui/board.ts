@@ -7,10 +7,12 @@ import { litterWords } from "./forecast.js";
 import { crossCached } from "./cache.js";
 import { dueWords, esc, has, pips, prop, swatch } from "./util.js";
 import type { View } from "./view.js";
+import { actTrack } from "./track.js";
 
 export function goalCard(state: GameState): string {
   const a = currentAct(state);
   return `<div class="goal-card">
+    ${actTrack(state)}
     <div class="act">${a.endless ? "Endless" : `Act ${a.act + 1}`} · ${esc(a.title)}</div>
     <div class="goal">${esc(a.goalText)}</div>
     <div class="bar" role="progressbar" aria-label="Goal progress"><span style="${prop("p", a.progress)}"></span></div>
@@ -48,7 +50,7 @@ export function boardHtml(state: GameState, _view: View): string {
   const orders = accepted.map((o) => {
     let f = { pFill: 0, text: "" };
     try { f = forecastOrderFor(state, o); } catch { /* keep blank */ }
-    return `<li><div>${esc(o.text)}<div class="meta">${esc(dueWords(state, o.deadline))}</div><div class="o-forecast">${pips(state, f.pFill)} <span class="meta">${esc(f.text)}</span></div></div></li>`;
+    return `<li><div>${esc(o.text)}<div class="meta">${esc(dueWords(state, o.deadline))}</div><div class="o-forecast">${pips(state, f.pFill, "", true)} <span class="meta">${esc(f.text)}</span></div></div></li>`;
   }).join("");
   const news = upcoming(state);
   let lastSeason = -Infinity;
@@ -87,7 +89,7 @@ function orderCard(state: GameState, o: Order, mode: "open" | "accepted"): strin
     <div class="o-body">
       <div class="o-text">${esc(o.text)}</div>
       <div class="meta">${esc(dueWords(state, o.deadline))} · reward ${o.reward} coins${o.reputation ? ` and ${"★".repeat(o.reputation)}` : ""}</div>
-      <div class="o-forecast"><span class="lbl">Chance you can fill it</span> ${pips(state, f.pFill)} <span>${esc(f.text)}</span></div>
+      <div class="o-forecast"><span class="lbl">Chance you can fill it</span> ${pips(state, f.pFill)} <div class="meta">${esc(f.text)}</div></div>
     </div>
     <div class="o-actions">${mode === "open"
       ? `<button class="primary" data-accept="${esc(o.id)}" ${full ? "disabled title=\"You can only take two at a time\"" : ""}>Accept</button><button class="secondary" data-decline="${esc(o.id)}">Decline</button>`

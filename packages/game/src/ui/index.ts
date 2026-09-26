@@ -14,12 +14,14 @@ export { PANEL_NAMES, defaultView } from "./view.js";
 export { esc } from "./util.js";
 export { Overlay, toast, delegateActions, type ActionData, type ShowOptions } from "./overlay.js";
 export { hudHtml, titleHtml, helpHtml, settingsHtml, endingHtml } from "./misc.js";
-export { forecastPanelHtml, litterRow, litterWords, rangeBar } from "./forecast.js";
-export { sheepCardHtml, treeHtml } from "./sheep.js";
+export { forecastPanelHtml, litterRow, litterWords, litterLooks, lambTile, rangeBar } from "./forecast.js";
+export { sheepCardHtml, treeHtml, familyTreeHtml } from "./sheep.js";
 export { boardHtml, ordersHtml, goalCard } from "./board.js";
 export { marketHtml, vetHtml, fairHtml } from "./farm.js";
 export { codexHtml, CONCEPTS } from "./codex.js";
 export { reportHtml } from "./report.js";
+export { actTrack, ACT_ICONS } from "./track.js";
+export { oddsMeter, learnMeter, ODDS_SCALE, LEARN_SCALE } from "./util.js";
 
 const RENDER: Record<PanelName, (s: GameState, v: View) => string> = {
   title: titleHtml, help: helpHtml, sheep: sheepCardHtml, forecast: forecastPanelHtml, board: boardHtml,
@@ -28,11 +30,14 @@ const RENDER: Record<PanelName, (s: GameState, v: View) => string> = {
 };
 
 /** Panels that want the wide layout. */
-export const WIDE_PANELS: ReadonlySet<PanelName> = new Set<PanelName>(["forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report", "sheep"]);
+export const WIDE_PANELS: ReadonlySet<PanelName> = new Set<PanelName>(["forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report"]);
+
+/** Panels docked to the right so the farm stays visible beside them (the sheep card: the sheep says hello). */
+export const SIDE_PANELS: ReadonlySet<PanelName> = new Set<PanelName>(["sheep"]);
 
 /** Options for Overlay.show for a panel. The title and ending cannot be dismissed with the backdrop. */
-export function panelOptions(panel: PanelName): { wide: boolean; closable: boolean; name: string } {
-  return { wide: WIDE_PANELS.has(panel), closable: panel !== "title", name: panel };
+export function panelOptions(panel: PanelName): { wide: boolean; closable: boolean; name: string; side: boolean } {
+  return { wide: WIDE_PANELS.has(panel), closable: panel !== "title", name: panel, side: SIDE_PANELS.has(panel) };
 }
 
 /** Render the open panel, or "" when none. */

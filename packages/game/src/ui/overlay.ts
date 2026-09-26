@@ -21,7 +21,7 @@ export function delegateActions(root: HTMLElement, onAction: (data: ActionData) 
   });
 }
 
-export interface ShowOptions { wide?: boolean; closable?: boolean; name?: string }
+export interface ShowOptions { wide?: boolean; closable?: boolean; name?: string; /** dock right, farm visible */ side?: boolean }
 
 export class Overlay {
   readonly el: HTMLElement;
@@ -53,6 +53,7 @@ export class Overlay {
     if (!wasOpen) this.lastFocus = document.activeElement;
     this.el.innerHTML = `<div class="panel ${opts.wide ? "wide" : ""}" role="dialog" aria-modal="true" tabindex="-1" ${opts.name ? `data-panel="${opts.name}"` : ""}>
       ${this.closable ? `<button class="panel-x" data-close aria-label="Close">×</button>` : ""}${html}</div>`;
+    this.el.classList.toggle("side", !!opts.side);
     this.el.hidden = false;
     const panel = this.el.querySelector<HTMLElement>(".panel");
     if (panel && wasOpen) panel.scrollTop = scroll;

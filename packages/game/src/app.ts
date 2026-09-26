@@ -5,7 +5,7 @@
 import {
   acceptOrder, advanceSeason, buySheep, buyUpgrade, hasUpgrade, upgradeDef, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
-  seasonOfYear, serialize, unplanMating, vetTest, yearOf,
+  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf,
   type GameState, type Goal, type Sheep,
 } from "./core/index.js";
 import { WorldView, type Hotspot, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
@@ -57,6 +57,10 @@ export class App {
   private persist: boolean;
   private sleeping = false;
   private closing = false;
+  /** Stops the sheep card's live portrait. */
+  private portraitStop: (() => void) | null = null;
+  /** The sheep the world camera is visiting (sheep card open). */
+  private attendedId: string | null = null;
 
   constructor() {
     const q = new URLSearchParams(location.search);
@@ -66,6 +70,7 @@ export class App {
 
     this.view = defaultView((id) => this.portraitOf(id));
     this.view.reducedMotion = this.reduced;
+    this.view.lambArt = (l) => this.lambArt(l);
 
     // ---- which game?
     let panel: PanelName | null = null;
@@ -106,6 +111,8 @@ export class App {
   // ------------------------------------------------------------------ world
 
   private makeWorld(): void {
+    this.portraitStop = null;
+    this.attendedId = null;
     this.world = new WorldView(this.worldEl, {
       onSheep: (id) => this.guard(() => this.onSheepClick(id)),
       onHotspot: (h) => this.guard(() => this.onHotspot(h)),
@@ -138,6 +145,17 @@ export class App {
     try { return this.world.portrait(this.worldSheep(s, "paddock", null), 96); } catch { return ""; }
   }
 
+  /** A cached portrait of a made-up lamb with this look (forecast litters). */
+  private lambArt(l: { colour: string; pattern: string; horns: string }): string {
+    const colour = (COLOURS.has(l.colour) ? l.colour : "white") as WorldSheep["colour"];
+    const ws: WorldSheep = {
+      id: `lamb-art-${colour}-${l.pattern}-${l.horns}`, name: "lamb", sex: l.horns === "horned" ? "ram" : "ewe", adult: false,
+      colour, pattern: l.pattern === "spotted" ? "spotted" : "solid", horns: l.horns === "horned" ? "horned" : "polled",
+      size: 46, fleeceWeight: 3.8, fineness: 24, crimp: 5, zone: "paddock", marker: null,
+    };
+    try { return this.world.portrait(ws, 72); } catch { return ""; }
+  }
+
   private worldSheep(s: Sheep, zone: Zone, marker: Marker): WorldSheep {
     const p = s.phenotype;
     const colour = String(p["colour"]);
@@ -148,7 +166,7 @@ export class App {
       horns: p["horns"] === "horned" ? "horned" : "polled",
       size: Number(p["size"] ?? 60), fleeceWeight: Number(p["fleeceWeight"] ?? 4),
       fineness: Number(p["fineness"] ?? 26), crimp: Number(p["crimp"] ?? 5),
-      zone, marker,
+      zone, marker, personality: personalityOf(s), dam: s.dam,
     };
   }
 
@@ -196,6 +214,7 @@ export class App {
       paddock2: p2,
       visitorPresent: !!v,
       fairToday: s.unlocks.includes("fair") && s.fair.nextSeason === s.season,
+      upgrades: [...(s.upgrades ?? [])],
     };
   }
 
@@ -212,6 +231,32 @@ export class App {
     }
     document.body.dataset.panel = this.view.panel ?? "";
     this.world.setSnapshot(this.snapshot());
+    this.syncSheepLife();
+  }
+
+  /**
+   * The sheep card makes its sheep feel present: a live portrait in the card, and in the field the camera
+   * glides over while the sheep turns to say hello. Both stop when the card closes.
+   */
+  private syncSheepLife(): void {
+    const id = this.view.panel === "sheep" ? this.view.sheepId : null;
+    const s = id ? this.state.sheep[id] : undefined;
+    const slot = s ? this.overlay.el.querySelector<HTMLElement>("[data-live-portrait-slot]") : null;
+    if (s && slot) {
+      const stop = this.world.mountPortrait(slot, this.worldSheep(s, "paddock", null));
+      this.portraitStop = stop;
+    } else if (this.portraitStop) {
+      this.portraitStop();
+      this.portraitStop = null;
+    }
+    const want = s ? s.id : null;
+    if (want !== this.attendedId) {
+      this.attendedId = want;
+      const panel = this.overlay.el.querySelector<HTMLElement>(".panel");
+      const wide = window.innerWidth > 760;
+      const offsetPx = want && panel && wide ? (panel.getBoundingClientRect().width + 24) / 2 : 0;
+      this.world.attend(want, { offsetPx });
+    }
   }
 
   private onOverlayClosed(): void {
@@ -221,7 +266,7 @@ export class App {
     if (!this.closing && was === "report" && isEnding(this.state)) {
       this.openPanel("ending", undefined);
     }
-    if (this.closing) { document.body.dataset.panel = ""; return; }
+    if (this.closing) { document.body.dataset.panel = ""; this.syncSheepLife(); return; }
     this.render();
   }
 
@@ -244,7 +289,9 @@ export class App {
         // Default to the flock sheep with the most family on record (parents + lambs + grandlambs).
         const all = Object.values(s.sheep);
         const kids = (pid: string) => all.filter((k) => k.dam === pid || k.sire === pid);
-        const family = (x: Sheep) => (x.dam ? 1 : 0) + (x.sire ? 1 : 0) + kids(x.id).reduce((n, k) => n + 1 + kids(k.id).length, 0);
+        const anc = (x: Sheep | undefined, d: number): number => (!x || d <= 0 ? 0 : (x.dam ? 1 + anc(s.sheep[x.dam], d - 1) : 0) + (x.sire ? 1 + anc(s.sheep[x.sire], d - 1) : 0));
+        // A tree that reaches both ways reads best: ancestors count double, a huge brood counts less.
+        const family = (x: Sheep) => 2 * anc(x, 3) + Math.min(6, kids(x.id).reduce((n, k) => n + 1 + kids(k.id).length, 0));
         const best = [...flock].sort((a, b) => family(b) - family(a))[0];
         this.view.sheepId = id ?? best?.id ?? null;
         break;
@@ -453,6 +500,8 @@ export class App {
       act: (a: Action) => this.act(a),
       snapshot: () => this.snapshot(),
       version: VERSION,
+      /** Not part of the contract: render stats (draw calls, live portrait, the dog) for probes. */
+      debug: { world: () => this.world.debugStats() },
       forecast: {
         cross: (ewe: string, ram: string) => forecastCross(this.state, ewe, ram),
         order: (id: string) => forecastOrder(this.state, id),

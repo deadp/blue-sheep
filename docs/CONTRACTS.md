@@ -172,6 +172,8 @@ export interface WorldSheep {
   crimp: number;        // /cm, 2–8 → wool bumpiness
   zone: Zone;
   marker?: "planned" | "new" | "ill" | "rosette" | "selected" | null;
+  personality?: "shy" | "calm" | "curious" | "bold"; // idle behaviour + greeting (default calm)
+  dam?: string | null;  // lambs stay near their mother
 }
 export interface WorldSnapshot {
   season: 0 | 1 | 2 | 3;      // spring..winter: light, foliage colour, snow in winter
@@ -181,6 +183,7 @@ export interface WorldSnapshot {
   paddock2: boolean;          // second paddock fenced & open
   visitorPresent: boolean;    // visiting ram pen occupied
   fairToday: boolean;         // bunting on the fairground
+  upgrades?: string[];        // owned improvements: "dog" (sheepdog), "barn" (snug barn), "shearing" (shed), "meadow"
 }
 export interface WorldHandlers {
   onSheep(id: string): void;
@@ -193,12 +196,26 @@ export class WorldView {
   portrait(sheep: WorldSheep, px?: number): string; // PNG data URL of that sheep on a pastel background
   celebrate(id: string): void;         // sparkles/confetti above a sheep
   focus(id: string | Hotspot): void;   // glide camera
+  attend(id: string | null, opts?: { offsetPx?: number; say?: string }): void;
+    // visit a sheep (its card is open): camera glides in beside it (shifted left by offsetPx for a
+    // right-hand card), it stops, turns to the camera, flicks its ears, hops or tilts its head and
+    // says hello in a speech bubble chosen by personality. null releases it and restores the camera.
+  mountPortrait(el: HTMLElement, sheep: WorldSheep): () => void;
+    // live animated 3D portrait (own small renderer, canvas[data-live-portrait]) inside el; one at a
+    // time; mounting the same sheep again moves the canvas. The disposer stops rendering.
   sleepTransition(): Promise<void>;    // dusk → night → dawn, ~1.5 s, resolves at darkest point? No: resolves when fully dark; call again with dawn(): Promise<void>
   dawn(): Promise<void>;
   resize(): void;
   dispose(): void;
 }
 ```
+
+Personality greetings (`BLEATS`, first line is the greeting): shy "…", calm "Mehh.", curious "Baa!",
+bold "BAA!". In the field shy sheep keep to the fence and hop back from a fuss, bold ones roam wide and
+come to the front, curious ones walk over to the sheep being visited. Everyone grazes, looks about,
+nuzzles, lambs skip after their dam, and the flock lies down at night. Legs, ears and eyes are
+instanced flock-wide (three draw calls). Reduced motion: static poses, instant camera, static bubble.
+`debugStats()` (not contract) reports draw calls, the dog, the visited sheep, the bubble and the portrait.
 
 Visual direction: orthographic isometric camera, flat-shaded low-poly, pastel
 palette, soft shadows, sheep idle animations (breathing, head bob, grazing,
@@ -233,6 +250,16 @@ data-newgame="seed?"      start over
 data-tab="…"              panel-local tab switch (view state kept by controller)
 ```
 
+Presentation rules: one odds meter everywhere (`oddsMeter`/`pips`: ten segments, the odds in words,
+a "long shot · likely · sure" scale, % only with numbers) and the same look for learning
+(`learnMeter`, "little → loads"). Forecast litters draw ten lamb portraits from `view.lambArt`
+(controller → `WorldView.portrait` of a synthetic lamb), CSS blobs without it. Range bars have an axis
+in words, parents' portrait pins, flock and expected-lamb markers and an explained band. The sheep card
+is a right-docked side panel (`SIDE_PANELS`) with a `[data-live-portrait-slot]` the controller mounts
+the live portrait into, plus a personality line (`personalityLine`, core/personality.ts, from boldness
+and looks only). The report flips each born lamb card next to the forecast it matched. The family tree
+is an SVG-connected tree with portrait nodes. `actTrack` draws the five acts in the board and HUD.
+
 Panels: `titleHtml`, `helpHtml`, `sheepCardHtml`, `forecastPanelHtml`
 (existing, extended with visiting ram + rosette + numbers), `boardHtml`
 (goal card, planned matings, diary), `ordersHtml`, `marketHtml` (buy/sell +
@@ -260,6 +287,10 @@ discovery/concept cards.
   `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"newGame", seed} | {type:"open", panel} | {type:"close"}`.
   Also sets `document.body.dataset.ready = "1"` when the first frame has
   rendered and `document.body.dataset.panel = <open panel name or "">`.
+  `window.__game.debug.world()` (not contract) returns `WorldView.debugStats()` for probes.
+- Sheep card life: after every render, if the sheep card is open the controller mounts the live
+  portrait into `[data-live-portrait-slot]` and calls `world.attend(id, {offsetPx})`; otherwise it
+  stops the portrait and calls `world.attend(null)`.
 - Sleep flow: world.sleepTransition() → core.advanceSeason → world.setSnapshot
   → world.dawn() → report panel; celebrate() for blue lambs and discoveries.
 
@@ -278,7 +309,12 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    after each: no console errors, money ≥ 0, flock ≤ cap, every accepted
    order resolves by its deadline, act only increases.
 5. Deep-links every panel and screenshots each for visual review.
-6. Records a 10 s webm of the idle world.
+6. Life (`life.mjs`): the sheep card mounts exactly one live portrait canvas and the world visits that
+   sheep; switching cards moves it; close/Escape unmount it; the forecast never has one. The sheepdog
+   is in the world exactly when the dog improvement is owned. With motion on it saves frame sequences
+   (`life-world-*`, `life-close-*`, `life-sheep-*`, `life-report-*`, `life-night`) and notes fps and
+   draw calls.
+7. Records a 10 s webm of the idle world.
 
 Exit code non-zero on any failure; prints a one-screen summary. Artifacts in
 `packages/game/probe/out/` (gitignored).

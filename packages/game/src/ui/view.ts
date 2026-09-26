@@ -22,6 +22,8 @@ export interface View {
   report: SeasonReport | null;
   /** PNG data URL for a sheep (from WorldView.portrait). */
   portraits: (id: string) => string;
+  /** PNG data URL of a made-up lamb with this look, for forecast litters (optional; CSS blobs without it). */
+  lambArt?: (look: { colour: string; pattern: string; horns: string }) => string;
   /** Settings: current reduced-motion flag (optional). */
   reducedMotion?: boolean;
   /** Title: whether a saved game exists to continue (optional; defaults to "state has been played"). */

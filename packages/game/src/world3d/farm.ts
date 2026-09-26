@@ -52,6 +52,7 @@ const KEEP_OUT: Rect[] = [
   { x0: 9.8, x1: 18.2, z0: 6.8, z1: 15.2 }, // fair
   { x0: 18.8, x1: 23.4, z0: 7.6, z1: 12.8 }, // vet
   { x0: 1.8, x1: 4, z0: 16, z1: 18.8 }, // mailbox
+  { x0: -4.4, x1: 1.2, z0: -15, z1: -11 }, // shearing shed site
 ];
 
 export function freeAt(x: number, z: number, pad = 0): boolean {
@@ -78,6 +79,8 @@ export interface FarmBuild {
   layers: {
     snow: THREE.Object3D; spring: THREE.Object3D; flowers: THREE.Object3D; autumn: THREE.Object3D;
     paddock2: THREE.Object3D; meadow: THREE.Object3D; mainGate: THREE.Object3D; bunting: THREE.Object3D; visitor: THREE.Object3D;
+    /** upgrades */
+    snugBarn: THREE.Object3D; shearing: THREE.Object3D; shearingSnow: THREE.Object3D; longMeadow: THREE.Object3D;
   };
   hotspotMeshes: Record<Hotspot, THREE.Mesh>;
   hotspotPicks: THREE.Mesh[];
@@ -484,6 +487,91 @@ export function buildFarm(rng: Rng, shadows: boolean): FarmBuild {
   snow.ico(C.snow, 0.28, 1, [-20.3, 1.8, -7.7]);
   snow.cone("#f0a53a", 0.06, 0.3, 5, [-20.05, 1.8, -7.55], [0, 0, -Math.PI / 2]);
 
+  // ---------------------------------------------------------------- upgrades (shown when owned)
+  // Snug barn: the lean-to gets a second wall, kick boards, a red door, a lantern and a weathervane.
+  const snugL = layer();
+  {
+    const b = new GeoBatch(0.03, rng);
+    b.box("#a9774f", [0.3, 2.9, 2.8], [-12.05, 1.45, -3.85]);
+    for (const [x0, x1] of [[-22.8, -19.2], [-15.8, -12.2]] as const) {
+      const n = Math.round((x1 - x0) / 0.45);
+      for (let i = 0; i < n; i++) b.box(i % 2 ? "#b98a5e" : "#c69466", [0.44, 0.95, 0.1], [x0 + (i + 0.5) * ((x1 - x0) / n), 0.48, -2.45]);
+    }
+    b.box("#d0574c", [0.08, 1.8, 1.3], [-11.86, 0.9, -3.85]); // door
+    b.box("#f4e9d8", [0.06, 0.1, 1.5], [-11.8, 1.84, -3.85]);
+    b.box("#f4e9d8", [0.06, 2.1, 0.1], [-11.8, 0.9, -3.85], [0.64, 0, 0]); // X brace
+    b.box("#f4e9d8", [0.06, 2.1, 0.1], [-11.8, 0.9, -3.85], [-0.64, 0, 0]);
+    b.box(C.hay, [1.1, 0.7, 0.9], [-13.2, 0.35, -4.5]);
+    b.box(C.hay, [1.1, 0.7, 0.9], [-14.4, 0.35, -4.5]);
+    b.box(C.hay, [1.1, 0.7, 0.9], [-13.8, 1.05, -4.5]);
+    b.box("#8a8f96", [0.06, 1.1, 0.06], [-17.5, 3.6, -4.8]); // weathervane
+    b.box("#8a8f96", [0.7, 0.05, 0.05], [-17.5, 4.05, -4.8]);
+    b.add(triangle(0.32, 0.26).rotateZ(-Math.PI / 2).translate(0.2, 4.2, 0), "#8a8f96", mat([-17.5, 0, -4.8]));
+    b.ico("#f2c257", 0.08, 0, [-17.5, 4.15, -4.8]);
+    mk(b, staticMat, true, true, snugL);
+    const w = new GeoBatch(0, rng);
+    w.box("#ffffff", [0.22, 0.3, 0.22], [-12.5, 2.2, -2.5]);
+    w.box("#ffffff", [0.22, 0.3, 0.22], [-22.5, 2.2, -2.5]);
+    const wm2 = mk(w, windowMat, false, false, snugL);
+    if (wm2) wm2.userData.windows = true;
+  }
+  // Shearing shed: an open-sided shed behind the paddock with a board, shears sign and bales of wool.
+  const shearL = layer();
+  let shearSnow: THREE.Object3D = new THREE.Group();
+  {
+    const b = new GeoBatch(0.03, rng);
+    const cx = -1.6, cz = -13;
+    b.box(C.wood, [4.2, 0.25, 2.6], [cx, 0.13, cz]); // board floor
+    for (const [x, z] of [[-2, -1.2], [2, -1.2], [-2, 1.2], [2, 1.2]] as const) b.cyl(C.woodDark, 0.1, 0.12, 2.3, 6, [cx + x, 1.25, cz + z]);
+    b.box("#b5835a", [4.2, 2.1, 0.14], [cx, 1.3, cz - 1.25]); // back wall
+    b.box("#9aa9b8", [4.8, 0.12, 3.3], [cx, 2.45, cz], [0.14, 0, 0]); // tin roof
+    for (let i = 0; i < 7; i++) b.box("#8394a6", [0.05, 0.05, 3.3], [cx - 2.1 + i * 0.7, 2.53, cz], [0.14, 0, 0]);
+    // wool bales
+    for (const [x, y, z] of [[-1.3, 0.55, -0.55], [-0.5, 0.55, -0.55], [-0.9, 1.15, -0.55], [1.2, 0.55, -0.6]] as const) {
+      b.box("#f3eee2", [0.75, 0.6, 0.7], [cx + x, y, cz + z]);
+      b.box("#c9b89a", [0.77, 0.06, 0.72], [cx + x, y, cz + z]);
+    }
+    b.box(C.woodDark, [0.9, 0.7, 0.6], [cx + 1.2, 0.6, cz + 0.4]); // wool table
+    b.box("#e9dcc2", [0.8, 0.06, 0.5], [cx + 1.2, 0.97, cz + 0.4]);
+    // sign with shears
+    b.box(C.woodDark, [0.1, 1.5, 0.1], [cx + 2.5, 0.75, cz + 1.5]);
+    b.box("#fff6ea", [0.9, 0.6, 0.08], [cx + 2.5, 1.55, cz + 1.52]);
+    b.box("#6f7c8a", [0.5, 0.05, 0.04], [cx + 2.5, 1.58, cz + 1.58], [0, 0, 0.6]);
+    b.box("#6f7c8a", [0.5, 0.05, 0.04], [cx + 2.5, 1.58, cz + 1.58], [0, 0, -0.6]);
+    b.ico(C.red, 0.07, 0, [cx + 2.33, 1.4, cz + 1.6]);
+    b.ico(C.red, 0.07, 0, [cx + 2.67, 1.4, cz + 1.6]);
+    mk(b, staticMat, true, true, shearL);
+    const sn = new GeoBatch(0.02, rng);
+    sn.box(C.snow, [4.85, 0.07, 3.35], [cx, 2.55, cz], [0.14, 0, 0]);
+    const snowG = new THREE.Group();
+    shearL.add(snowG);
+    mk(sn, staticMat, false, false, snowG);
+    shearSnow = snowG;
+  }
+  // Long meadow: a fenced strip of tall grass and wildflowers behind the far paddock.
+  const longL = layer();
+  {
+    const b = new GeoBatch(0.03, rng);
+    fence(b, 8.5, -16.8, 21.5, -16.8, 0.8, C.post, "#d8c6a2");
+    fence(b, 21.5, -16.8, 21.5, -11.4, 0.8, C.post, "#d8c6a2");
+    fence(b, 8.5, -16.8, 8.5, -11.4, 0.8, C.post, "#d8c6a2");
+    b.box(C.woodDark, [0.12, 1.3, 0.12], [21.9, 0.65, -11.6]);
+    b.box("#fff6ea", [0.08, 0.5, 1.1], [21.95, 1.25, -11.6]);
+    b.box("#8fcb66", [0.04, 0.12, 0.7], [22.0, 1.25, -11.6]);
+    mk(b, staticMat, true, true, longL);
+    const g = new GeoBatch(0.12, rng);
+    const f = new GeoBatch(0.05, rng);
+    const cols = ["#f28bb0", "#ffd45c", "#ffffff", "#c79ae8", "#8fc8f0"];
+    for (let i = 0; i < 90; i++) {
+      const x = 9 + rng() * 12, z = -16.4 + rng() * 4.8;
+      const h = 0.4 + rng() * 0.5;
+      g.cone("#ffffff", 0.14 + rng() * 0.1, h, 4, [x, h / 2, z], [0, rng() * 3, 0]);
+      if (i % 2 === 0) f.ico(cols[i % cols.length]!, 0.09, 0, [x + 0.15, h * 0.9, z + 0.1]);
+    }
+    mk(g, meadowMat, false, true, longL);
+    mk(f, staticMat, false, false, longL);
+  }
+
   // ---------------------------------------------------------------- build meshes
   mk(flat, staticMat, false, true);
   mk(st, staticMat);
@@ -530,7 +618,10 @@ export function buildFarm(rng: Rng, shadows: boolean): FarmBuild {
 
   return {
     group, groundMat, foliageMat, meadowMat, pondMat, windowMat, smoke,
-    layers: { snow: snowL, spring: springL, flowers: flowersL, autumn: autumnL, paddock2: pad2, meadow, mainGate, bunting: bunt, visitor: visitorL },
+    layers: {
+      snow: snowL, spring: springL, flowers: flowersL, autumn: autumnL, paddock2: pad2, meadow, mainGate, bunting: bunt, visitor: visitorL,
+      snugBarn: snugL, shearing: shearL, shearingSnow: shearSnow, longMeadow: longL,
+    },
     hotspotMeshes, hotspotPicks,
     dispose() { for (const d of disposables) d.dispose(); },
   };

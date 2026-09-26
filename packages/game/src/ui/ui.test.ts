@@ -1,13 +1,16 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { GOALS, acceptOrder, canBreed, factsFor, forecastOrder, isAdult, seasonLabel, type GameState } from "../core/index.js";
-import { CONCEPTS, PANEL_NAMES, hudHtml, renderPanel, forecastPanelHtml, type View, type PanelName } from "./index.js";
+import { CONCEPTS, ODDS_SCALE, PANEL_NAMES, hudHtml, renderPanel, forecastPanelHtml, type View, type PanelName } from "./index.js";
+import { personalityLine } from "../core/index.js";
 import { fixtures, type Fixture } from "./fixtures.js";
 
 const PORTRAIT = "data:image/png;base64,AAAA";
 const GENOTYPE = /[A-Za-z]\/[A-Za-z]/;
 const VOCAB = new Set([
   "close", "open", "sheep", "findmate", "mate", "goal", "plan", "buy", "sell", "hire", "test", "accept", "decline",
-  "enter", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "sheep-id", "upgrade",
+  "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade",
+  // not actions: the controller's mount point for the sheep card's live portrait
+  "live-portrait-slot",
 ]);
 
 function view(p: Partial<View> = {}): View {
@@ -84,7 +87,7 @@ describe("panel content", () => {
     for (const g of GOALS) expect(h).toContain(`data-goal="${g.id}"`);
     expect(h).toContain("data-mate=");
     expect(h).toContain("data-plan=");
-    expect(h.match(/class="lamb[ "]/g)?.length).toBe(10);
+    expect(h.match(/class="lamb-tile /g)?.length).toBe(10);
     // Act 0: words, no range bars.
     expect(h).not.toContain('class="range"');
     expect(h).toContain("wool-hint");
@@ -160,8 +163,8 @@ describe("panel content", () => {
     const h = renderPanel(s, view({ panel: "orders" }));
     expect(h).toContain(`data-accept="${open[0]!.id}"`);
     expect(h).toContain(`data-decline="${open[0]!.id}"`);
-    expect(h).toContain('class="pips"');
-    expect(h.indexOf('class="pips"')).toBeLessThan(h.indexOf("data-accept"));
+    expect(h).toContain('class="meter2 odds');
+    expect(h.indexOf('class="meter2 odds')).toBeLessThan(h.indexOf("data-accept"));
     const f = forecastOrder(s, open[0]!.id);
     expect(h).toContain(f.text.replace(/'/g, "&#39;"));
     acceptOrder(s, open[0]!.id);
@@ -192,7 +195,7 @@ describe("panel content", () => {
     const s = fx("act2").state;
     const h = renderPanel(s, view({ panel: "fair" }));
     expect(h).toContain("data-enter=");
-    expect(h).toContain('class="pips"');
+    expect(h).toContain('class="meter2 odds');
     expect(renderPanel(fx("fresh").state, view({ panel: "fair" }))).not.toContain("data-enter");
   });
 
@@ -215,7 +218,11 @@ describe("panel content", () => {
     const h = renderPanel(s, view({ panel: "tree", sheepId: lamb }));
     expect(h).toContain(`data-sheep="${s.sheep[lamb]!.dam}"`);
     expect(h).toContain("Grandparents");
-    expect(h).toContain("Descendants");
+    expect(h).toMatch(/>Lambs<|No lambs yet/);
+    // a connected tree: SVG lines and portraits in the nodes
+    expect(h).toContain('<svg class="ftree-lines"');
+    expect(h).toMatch(/<path class="(dam|sire)/);
+    expect(h).toContain('class="t-face"><img');
   });
 
   it("report shows each mating's forecast next to the lambs born", () => {
@@ -292,6 +299,76 @@ describe("panel content", () => {
     for (const panel of ["sheep", "market", "forecast", "vet", "board"] as PanelName[]) {
       const h = renderPanel(s, view({ panel, sheepId: s.flock[0]! }));
       expect(h, panel).not.toContain("<img onerror");
+    }
+  });
+});
+
+describe("presentation", () => {
+  it("the sheep card has a live-portrait slot and a personality line; boldness numbers only with numbers", () => {
+    const early = fx("afterFirst").state;
+    const id = early.flock[0]!;
+    const h = renderPanel(early, view({ panel: "sheep", sheepId: id }));
+    expect(h).toContain(`data-live-portrait-slot="${id}"`);
+    expect(h).toContain(personalityLine(early.sheep[id]!).replace(/'/g, "&#39;"));
+    expect(h).toMatch(/class="persona (shy|calm|curious|bold)"/);
+    expect(h).toContain("click to say hello");
+    expect(visible(h)).not.toContain("boldness");
+    const late = fx("act2").state;
+    const lid = late.flock[0]!;
+    expect(renderPanel(late, view({ panel: "sheep", sheepId: lid }))).toMatch(/boldness \d+\.\d/);
+  });
+
+  it("forecast litters use rendered lamb portraits when the view can draw them, one per chance in ten", () => {
+    const s = fx("fresh").state;
+    const looks: string[] = [];
+    const h = renderPanel(s, view({ panel: "forecast", lambArt: (l) => { looks.push(`${l.colour}/${l.pattern}/${l.horns}`); return PORTRAIT; } }));
+    expect(h.match(/class="lamb-tile art/g)?.length).toBe(10);
+    expect(h).toContain("Each lamb = one chance in ten");
+    expect(looks.length).toBeGreaterThanOrEqual(10);
+    expect(visible(h)).not.toContain("%");
+  });
+
+  it("odds meters share one labelled style with scale words", () => {
+    const s = fx("act2").state;
+    const f = renderPanel(s, view({ panel: "fair" }));
+    for (const w of ODDS_SCALE) expect(f).toContain(`>${w}<`);
+    expect(f).toContain('role="meter"');
+    const vet = renderPanel(fx("afterFirst").state, view({ panel: "vet" }));
+    expect(vet).toContain('class="meter2 learn');
+    expect(vet).toContain(">loads<");
+    const fore = renderPanel(fx("afterFirst").state, view({ panel: "forecast" }));
+    expect(fore).toContain('class="meter2 learn');
+  });
+
+  it("range bars have an axis in words and labelled markers for both parents, the flock and the lamb", () => {
+    const s = fx("act3").state;
+    const h = renderPanel(s, view({ panel: "forecast" }));
+    expect(h).toContain("← finer");
+    expect(h).toContain("coarser →");
+    expect(h).toContain("heavier →");
+    expect(h.match(/class="pin ewe/g)?.length).toBe(2);
+    expect(h.match(/class="pin ram/g)?.length).toBe(2);
+    expect(h).toContain("where most lambs from this pair would land");
+    expect(h).toContain("🐑 lamb");
+  });
+
+  it("the season report flips each born lamb and rings the forecast lamb it matched", () => {
+    const f = fx("afterFirst");
+    const h = renderPanel(f.state, view({ panel: "report", report: f.report }));
+    expect(h.match(/class="born flip/g)?.length).toBe(f.report!.lambs.filter((l) => f.report!.matings[l.dam ?? ""]).length);
+    expect(h).toContain('class="f-back"');
+    expect(h).toMatch(/lamb-tile [a-z]+ hit/);
+  });
+
+  it("the act track shows five milestones in the board and a mini track in the HUD", () => {
+    for (const name of ["fresh", "act3"]) {
+      const s = fx(name).state;
+      const b = renderPanel(s, view({ panel: "board" }));
+      const track = b.slice(b.indexOf('class="act-track'));
+      expect(track.match(/<li class="(done|now|later)"/g)?.length, name).toBe(5);
+      expect(track.match(/<li class="done"/g)?.length ?? 0, name).toBe(s.act);
+      expect(b).toContain(`Story progress: act ${s.act + 1} of 5`);
+      expect(hudHtml(s, view())).toContain('class="act-track mini"');
     }
   });
 });

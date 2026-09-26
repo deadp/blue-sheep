@@ -2,13 +2,19 @@
 // Pure presentation: driven entirely by WorldSnapshot, no game logic imports.
 import * as THREE from "three";
 import { buildFarm, HOTSPOT_DEF, HOTSPOT_LABEL, ZONES, GROUND, type FarmBuild, type Rect } from "./farm.js";
-import { buildRig, buildSheepGeos, disposeGeos, sheepKey, SheepMaterials, type SheepGeos, type SheepRig } from "./sheepMesh.js";
+import { applyPose, buildFullRig, buildRig, buildSheepGeos, disposeGeos, restPose, sheepKey, SheepMaterials } from "./sheepMesh.js";
 import { Markers, type MarkerKind } from "./markers.js";
+import { computePose, FACE_CAMERA, flickEars, newAnimState, startHop, stepSheep, type Ent, type FlockCtx } from "./behave.js";
+import { FlockParts } from "./parts.js";
+import { Bubble, Puffs } from "./fx.js";
+import { Dog } from "./dog.js";
+import { BLEATS, LivePortrait, type PortraitStats } from "./portrait.js";
 import { NIGHT, PORTRAIT_BG, SEASONS } from "./palette.js";
 import { hashString, mulberry32 } from "./rng.js";
-import type { Hotspot, HoverTarget, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
+import type { Hotspot, HoverTarget, Personality, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
 
-export type { Hotspot, HoverTarget, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
+export type { Hotspot, HoverTarget, Personality, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, WorldUpgrade, Zone } from "./types.js";
+export { BLEATS } from "./portrait.js";
 
 const HOTSPOTS: readonly Hotspot[] = ["house", "shed", "market", "vet", "fairground", "mailbox"];
 const CAM_DIR = new THREE.Vector3(1, 0.98, 1).normalize();
@@ -16,31 +22,15 @@ const CAM_DIST = 90;
 const TRANSITION_MS = 1200;
 const FOCUS_MS = 600;
 
-type Mode = "idle" | "walk" | "graze";
+const ATTEND_ZOOM = 2.7;
+const PERSONALITIES = new Set<Personality>(["shy", "calm", "curious", "bold"]);
 
-interface Ent {
-  ws: WorldSheep;
-  key: string;
-  geos: SheepGeos;
-  rig: SheepRig;
-  zone: Zone;
-  x: number;
-  z: number;
-  heading: number;
-  tx: number;
-  tz: number;
-  mode: Mode;
-  timer: number;
-  phase: number;
-  pitch: number;
-  yaw: number;
-  radius: number;
-  spawn: number; // <0 = done, else seconds since spawn
-  removing: number; // <0 = alive, else seconds since removal
-  marker: THREE.Mesh | null;
-  markerKind: MarkerKind | null;
-  ring: THREE.Mesh | null;
-  selected: boolean;
+/** Options for attend(): where the card covers the screen, so the sheep can sit beside it. */
+export interface AttendOptions {
+  /** Screen pixels to shift the sheep left of centre (half the width of a right-hand card). */
+  offsetPx?: number;
+  /** Speech-bubble text; defaults to the sheep's personality greeting. */
+  say?: string;
 }
 
 interface Sparkle {
@@ -52,7 +42,6 @@ interface Sparkle {
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 function backOut(t: number): number {
   const c1 = 2.2, c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
@@ -104,6 +93,16 @@ export class WorldView {
   private readonly pRTs = new Map<number, THREE.WebGLRenderTarget>();
   private readonly pCache = new Map<string, string>();
   private readonly pCanvas = document.createElement("canvas");
+  // life
+  private readonly parts: FlockParts;
+  private readonly puffs: Puffs;
+  private readonly bubble: Bubble;
+  private readonly dog: Dog;
+  private live: LivePortrait | null = null;
+  private attended: string | null = null;
+  private attendSaved: { target: THREE.Vector3; zoom: number } | null = null;
+  private zoomAnim: { from: number; to: number; t0: number } | null = null;
+  private readonly flockCtx: FlockCtx;
 
   constructor(container: HTMLElement, handlers: WorldHandlers, opts: WorldOptions = {}) {
     this.container = container;
@@ -178,6 +177,16 @@ export class WorldView {
     this.pGround.position.y = 0.01;
     this.pScene.add(this.pGround);
 
+    this.parts = new FlockParts(this.scene, this.sheepMats, true);
+    this.puffs = new Puffs(this.scene);
+    this.bubble = new Bubble(container);
+    this.dog = new Dog(this.scene, true);
+    this.flockCtx = {
+      time: 0, night: 0, attended: null, ents: this.ents.values(),
+      insetRect: (zone, r) => this.insetRect(zone, r),
+      puff: (x, z, n, size) => { if (!this.reduced) this.puffs.spawn(x, z, n, size); },
+    };
+
     this.applySeason(0);
 
     // events
@@ -207,6 +216,11 @@ export class WorldView {
     L.mainGate.visible = !s.paddock2;
     L.bunting.visible = !!s.fairToday;
     L.visitor.visible = !!s.visitorPresent;
+    const up = new Set(s.upgrades ?? []);
+    L.snugBarn.visible = up.has("barn");
+    L.shearing.visible = up.has("shearing");
+    L.longMeadow.visible = up.has("meadow");
+    this.dog.show(up.has("dog"), ZONES.paddock);
 
     const seen = new Set<string>();
     for (const ws of s.sheep) {
@@ -230,6 +244,7 @@ export class WorldView {
           if (!this.reduced) e.spawn = 0;
         }
         e.ws = ws;
+        e.personality = personalityOf(ws);
         e.rig.body.material = this.sheepMats.woolFor(ws.fineness);
       }
       this.applyMarker(e, s);
@@ -257,16 +272,21 @@ export class WorldView {
     const ent = this.ents.get(sheep.id);
     const owned = !(ent && ent.key === sheepKey(sheep));
     const geos = owned ? buildSheepGeos(sheep) : ent!.geos;
-    const rig = buildRig(geos, sheep, this.sheepMats, false);
-    rig.root.remove(rig.pick);
-    rig.root.remove(rig.markerAnchor);
+    const faceMat = new THREE.MeshLambertMaterial({ color: geos.parts.face, flatShading: true });
+    const full = buildFullRig(geos, sheep, this.sheepMats, faceMat);
+    const rig = full.rig;
+    const pose = restPose();
+    pose.headYaw = -0.4;
+    pose.headPitch = 0.05;
+    pose.headRoll = 0.1;
+    full.pose(pose);
     rig.root.rotation.y = 0.42;
     this.pScene.add(rig.root);
     rig.root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(rig.root);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    const half = Math.max(size.x, size.y, size.z) * 0.62;
+    const half = Math.max(size.x, size.y * 1.1, size.z) * 0.53;
     const cam = this.pCam;
     cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
     cam.updateProjectionMatrix();
@@ -294,6 +314,7 @@ export class WorldView {
     this.renderer.setRenderTarget(prev);
     this.renderer.shadowMap.autoUpdate = prevShadow;
     this.pScene.remove(rig.root);
+    faceMat.dispose();
     if (owned) disposeGeos(geos);
 
     const c = this.pCanvas;
@@ -345,14 +366,102 @@ export class WorldView {
       to = new THREE.Vector3(a[0], 0, a[2]);
     }
     if (!to) return;
-    this.clampTarget(to);
+    this.glide(to, this.zoom);
+  }
+
+  /**
+   * Visit a sheep (its card is open): the camera glides in beside it, it stops, turns to face you,
+   * flicks its ears, hops or tilts its head and says hello. `null` lets it go back to grazing and
+   * returns the camera to where it was.
+   */
+  attend(id: string | null, opts: AttendOptions = {}): void {
+    if (this.disposed) return;
+    if (id === this.attended) return;
+    const prev = this.attended ? this.ents.get(this.attended) : undefined;
+    this.attended = null;
+    this.flockCtx.attended = null;
+    if (prev) { prev.attendT = -1; this.applyOutline(prev); }
+    if (!id) {
+      this.bubble.hide();
+      if (this.attendSaved) {
+        const s = this.attendSaved;
+        this.attendSaved = null;
+        this.glide(s.target, s.zoom);
+      }
+      return;
+    }
+    const e = this.ents.get(id);
+    if (!e) return;
+    this.attended = id;
+    this.flockCtx.attended = e;
+    this.applyOutline(e);
+    if (!this.attendSaved) this.attendSaved = { target: this.target.clone(), zoom: this.zoom };
+    // camera: zoom in and put the sheep left of the card
+    const zoom = Math.max(this.zoom, ATTEND_ZOOM);
+    const h = this.container.clientHeight || 1;
+    const upp = (this.frustum.half * 2) / zoom / h;
+    const right = new THREE.Vector3(1, 0, -1).normalize();
+    const to = new THREE.Vector3(e.x, 0, e.z).addScaledVector(right, (opts.offsetPx ?? 0) * upp);
+    this.glide(to, zoom, true);
+    // the sheep reacts
+    e.attendT = 0;
+    e.mode = "attend";
+    e.nuzzle = null;
+    const say = opts.say ?? BLEATS[e.personality][0]!;
+    if (this.reduced) {
+      e.heading = FACE_CAMERA;
+      this.bubble.show(id, say, Infinity, false);
+    } else {
+      flickEars(e);
+      const P = e.personality;
+      window.setTimeout(() => {
+        if (this.attended !== id || this.disposed) return;
+        if (P === "bold") startHop(e, 0.42, 0.5);
+        else if (P === "curious") startHop(e, 0.3, 0.42);
+        else if (P === "shy") startHop(e, 0.14, 0.3, 0.9);
+        this.bubble.show(id, say, 2.8, true);
+      }, P === "calm" ? 450 : 320);
+      // shy neighbours shuffle away from the fuss
+      for (const o of this.ents.values()) {
+        if (o === e || o.zone !== e.zone || o.personality !== "shy" || o.fold > 0.1) continue;
+        const d = Math.hypot(o.x - e.x, o.z - e.z);
+        if (d > 4) continue;
+        o.heading = Math.atan2(-(o.z - e.z), o.x - e.x) + Math.PI; // face the fuss…
+        startHop(o, 0.12, 0.28, 1.4); // …and hop back
+        flickEars(o);
+        o.timer = 0.4;
+      }
+    }
+  }
+
+  /**
+   * A live, animated portrait of `sheep` inside `el` (the sheep card). Only one exists at a time; mounting
+   * the same sheep again (the panel re-rendered) just moves the canvas. Returns a disposer that stops it.
+   */
+  mountPortrait(el: HTMLElement, sheep: WorldSheep): () => void {
+    if (this.disposed) return () => {};
+    if (!this.live) this.live = new LivePortrait(this.reduced);
+    return this.live.mount(el, { ...sheep, personality: personalityOf(sheep) });
+  }
+
+  private glide(to: THREE.Vector3, zoom: number, loose = false): void {
+    this.clampTarget(to, loose ? zoom : undefined);
     if (this.reduced) {
       this.target.copy(to);
       this.focusAnim = null;
+      this.zoomAnim = null;
+      this.setZoom(zoom);
       this.placeCamera();
     } else {
       this.focusAnim = { from: this.target.clone(), to, t0: performance.now() };
+      this.zoomAnim = zoom !== this.zoom ? { from: this.zoom, to: zoom, t0: performance.now() } : null;
     }
+  }
+
+  private setZoom(z: number): void {
+    this.zoom = z;
+    this.camera.zoom = z;
+    this.camera.updateProjectionMatrix();
   }
 
   sleepTransition(): Promise<void> {
@@ -388,6 +497,12 @@ export class WorldView {
     this.ents.clear();
     this.dying.length = 0;
     for (const s of [...this.sparkles]) this.removeSparkle(s);
+    this.parts.dispose();
+    this.puffs.dispose();
+    this.bubble.dispose();
+    this.dog.dispose();
+    this.live?.dispose();
+    this.live = null;
     if (this.particles) { this.particles.geometry.dispose(); (this.particles.material as THREE.Material).dispose(); }
     this.farm.dispose();
     this.sheepMats.dispose();
@@ -402,9 +517,13 @@ export class WorldView {
   }
 
   /** Not part of the contract: render stats for the dev harness. */
-  debugStats(): { calls: number; triangles: number; sheep: number; geometries: number } {
+  debugStats(): { calls: number; triangles: number; sheep: number; geometries: number; dog: boolean; attended: string | null; bubble: string | null; portrait: PortraitStats } {
     const i = this.renderer.info;
-    return { calls: i.render.calls, triangles: i.render.triangles, sheep: this.ents.size, geometries: i.memory.geometries };
+    return {
+      calls: i.render.calls, triangles: i.render.triangles, sheep: this.ents.size, geometries: i.memory.geometries,
+      dog: this.dog.visible, attended: this.attended, bubble: this.bubble.id ? this.bubble.el.textContent : null,
+      portrait: this.live?.stats() ?? { mounted: false, id: null, calls: 0, frames: 0 },
+    };
   }
 
   // ------------------------------------------------------------------ sheep entities
@@ -414,11 +533,12 @@ export class WorldView {
     const rig = buildRig(geos, ws, this.sheepMats, true);
     const rng = mulberry32(hashString(ws.id) ^ this.seed);
     const e: Ent = {
-      ws, key: geos.key, geos, rig, zone, x: 0, z: 0,
+      ws, key: geos.key, geos, rig, zone, personality: personalityOf(ws), x: 0, z: 0,
       heading: Math.PI / 4 + (rng() < 0.5 ? 0 : Math.PI) + (rng() - 0.5) * 1.1,
-      tx: 0, tz: 0, mode: "idle", timer: rng() * 3, phase: rng() * 10, pitch: 0, yaw: 0,
+      tx: 0, tz: 0, mode: "idle", timer: rng() * 3, phase: rng() * 10,
       radius: geos.dims.L * geos.dims.rootScale * 0.95 + 0.12,
       spawn: pop ? 0 : -1, removing: -1, marker: null, markerKind: null, ring: null, selected: false,
+      ...newAnimState(), faceColor: new THREE.Color(geos.parts.face),
     };
     const p = this.findSpot(zone, ws.id, e);
     e.x = e.tx = p[0];
@@ -434,6 +554,7 @@ export class WorldView {
     e.geos = buildSheepGeos(ws);
     e.key = e.geos.key;
     e.rig = buildRig(e.geos, ws, this.sheepMats, true);
+    e.faceColor.set(e.geos.parts.face);
     e.radius = e.geos.dims.L * e.geos.dims.rootScale * 0.95 + 0.12;
     if (e.marker) { e.rig.markerAnchor.add(e.marker); }
     if (e.ring) { e.rig.root.add(e.ring); e.ring.scale.setScalar(e.geos.dims.L * 1.25 + 0.2); }
@@ -472,7 +593,8 @@ export class WorldView {
 
   private applyOutline(e: Ent): void {
     const hovered = this.hover?.kind === "sheep" && this.hover.id === e.ws.id;
-    e.rig.outline.visible = e.selected || hovered;
+    // the sheep you're visiting keeps its ring but loses the outline, so its face reads up close
+    e.rig.outline.visible = (e.selected && this.attended !== e.ws.id) || hovered;
     e.rig.outline.material = e.selected ? this.sheepMats.outlineSel : this.sheepMats.outlineHover;
   }
 
@@ -503,47 +625,6 @@ export class WorldView {
     return best;
   }
 
-  private stepSheep(e: Ent, dt: number): void {
-    e.timer -= dt;
-    if (e.timer <= 0) {
-      const r = Math.random();
-      if (r < 0.38) { e.mode = "graze"; e.timer = 3 + Math.random() * 5; }
-      else if (r < 0.62) { e.mode = "idle"; e.timer = 2 + Math.random() * 3; }
-      else {
-        const rect = this.insetRect(e.zone, e.radius);
-        const reach = 3.5;
-        e.tx = clamp(e.x + (Math.random() - 0.5) * 2 * reach, rect.x0, rect.x1);
-        e.tz = clamp(e.z + (Math.random() - 0.5) * 2 * reach, rect.z0, rect.z1);
-        e.mode = "walk";
-        e.timer = 9;
-      }
-    }
-    let pitch = 0, yaw = 0;
-    const t = this.time + e.phase;
-    if (e.mode === "walk") {
-      const dx = e.tx - e.x, dz = e.tz - e.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < 0.15) { e.mode = "idle"; e.timer = 1.5 + Math.random() * 2; }
-      else {
-        const desired = Math.atan2(-dz, dx);
-        const turn = wrapAngle(desired - e.heading);
-        e.heading += clamp(turn, -2.2 * dt, 2.2 * dt);
-        const speed = (e.ws.adult ? 0.6 : 0.8) * (Math.abs(turn) < 0.6 ? 1 : 0.15);
-        e.x += Math.cos(e.heading) * speed * dt;
-        e.z -= Math.sin(e.heading) * speed * dt;
-      }
-      pitch = -0.08 + 0.05 * Math.sin(t * 8);
-    } else if (e.mode === "graze") {
-      pitch = -0.8 + 0.07 * Math.sin(t * 9);
-    } else {
-      pitch = 0.06 * Math.sin(t * 1.3);
-      yaw = 0.4 * Math.sin(t * 0.45);
-    }
-    const k = 1 - Math.exp(-dt * 5);
-    e.pitch += (pitch - e.pitch) * k;
-    e.yaw += (yaw - e.yaw) * k;
-  }
-
   private separate(list: Ent[]): void {
     for (let i = 0; i < list.length; i++) {
       const a = list[i]!;
@@ -552,7 +633,7 @@ export class WorldView {
         if (a.zone !== b.zone) continue;
         const dx = b.x - a.x, dz = b.z - a.z;
         const d = Math.hypot(dx, dz);
-        const min = a.radius + b.radius;
+        const min = (a.radius + b.radius) * (a.nuzzle === b ? 0.8 : 1);
         if (d >= min) continue;
         const push = (min - d) * 0.5 * 0.5;
         const nx = d > 1e-4 ? dx / d : 1, nz = d > 1e-4 ? dz / d : 0;
@@ -568,31 +649,30 @@ export class WorldView {
   }
 
   private syncTransforms(): void {
-    for (const e of this.ents.values()) this.poseEnt(e);
-    for (const e of this.dying) this.poseEnt(e);
+    const list: Ent[] = [];
+    for (const e of this.ents.values()) { this.poseEnt(e); list.push(e); }
+    for (const e of this.dying) { this.poseEnt(e); list.push(e); }
+    this.parts.update(list);
   }
 
   private poseEnt(e: Ent): void {
     const { rig, geos } = e;
     const d = geos.dims;
-    const t = this.time + e.phase;
     rig.root.position.set(e.x, 0, e.z);
     rig.root.rotation.y = e.heading;
     let s = d.rootScale;
     if (e.spawn >= 0) s *= backOut(clamp(e.spawn / 0.45, 0, 1));
     if (e.removing >= 0) s *= 1 - ease(clamp(e.removing / 0.35, 0, 1));
     rig.root.scale.setScalar(Math.max(0.001, s));
-    if (!this.reduced) {
-      const walking = e.mode === "walk";
-      rig.bob.position.y = walking ? Math.abs(Math.sin(t * 8)) * 0.05 : 0;
-      const br = Math.sin(t * 2.2) * 0.018;
-      rig.body.scale.set(1, 1 + br, 1 + br * 0.7);
-      rig.headPivot.rotation.z = e.pitch;
-      rig.headPivot.rotation.y = e.yaw;
+    if (this.reduced) {
+      e.fold = this.night > 0.5 ? 1 : 0;
+      if (this.attended === e.ws.id) { e.mode = "attend"; e.heading = FACE_CAMERA; rig.root.rotation.y = e.heading; }
+      else if (e.mode === "attend") e.mode = "idle";
     }
+    applyPose(rig, geos, computePose(e, this.time, this.reduced));
     if (e.marker) {
       const bobY = this.reduced ? 0 : Math.sin(this.time * 2.4 + e.phase) * 0.08;
-      e.marker.position.y = bobY;
+      e.marker.position.y = bobY - d.legLen * 0.85 * e.fold;
       // counter the body heading so the marker faces the camera, with a slow sway
       e.marker.rotation.y = -e.heading + Math.PI / 4 + (this.reduced ? 0 : Math.sin(this.time * 1.2 + e.phase) * 0.5);
       e.marker.scale.setScalar(0.66 / (e.ws.adult ? 1 : 0.7));
@@ -614,6 +694,7 @@ export class WorldView {
     this.farm.meadowMat.color.set(L.meadow);
     this.farm.pondMat.color.set(L.pond);
     this.farm.layers.snow.visible = s === 3;
+    this.farm.layers.shearingSnow.visible = s === 3;
     this.farm.layers.spring.visible = s === 0;
     this.farm.layers.flowers.visible = s <= 1;
     this.farm.layers.autumn.visible = s === 2;
@@ -786,9 +867,9 @@ export class WorldView {
     this.placeCamera();
   }
 
-  private clampTarget(t: THREE.Vector3): void {
-    const k = 1 - 1 / this.zoom;
-    const lx = 5 + 18 * k, lz = 4 + 14 * k;
+  private clampTarget(t: THREE.Vector3, looseZoom?: number): void {
+    const k = 1 - 1 / (looseZoom ?? this.zoom);
+    const lx = looseZoom ? 22 : 5 + 18 * k, lz = looseZoom ? 16 : 4 + 14 * k;
     t.x = clamp(t.x, -lx, lx);
     t.z = clamp(t.z, -lz, lz);
     t.y = 0;
@@ -905,9 +986,8 @@ export class WorldView {
     if (z === this.zoom) return;
     // zoom towards the cursor
     const before = this.groundAt(this.ndc(ev));
-    this.zoom = z;
-    this.camera.zoom = z;
-    this.camera.updateProjectionMatrix();
+    this.zoomAnim = null;
+    this.setZoom(z);
     const after = this.groundAt(this.ndc(ev));
     if (before && after) this.target.add(before.sub(after));
     this.clampTarget(this.target);
@@ -946,15 +1026,26 @@ export class WorldView {
       this.placeCamera();
       if (p >= 1) this.focusAnim = null;
     }
+    if (this.zoomAnim) {
+      const z = this.zoomAnim;
+      const p = clamp((now - z.t0) / (FOCUS_MS * 1.3), 0, 1);
+      this.setZoom(z.from + (z.to - z.from) * ease(p));
+      if (p >= 1) this.zoomAnim = null;
+    }
+    this.flockCtx.night = this.night;
 
     if (!this.reduced) {
       this.time += dt;
       const live = [...this.ents.values()];
+      this.flockCtx.time = this.time;
+      this.flockCtx.ents = live;
       for (const e of live) {
         if (e.spawn >= 0) { e.spawn += dt; if (e.spawn > 0.45) e.spawn = -1; }
-        this.stepSheep(e, dt);
+        stepSheep(e, dt, this.flockCtx);
       }
       this.separate(live);
+      this.puffs.step(dt);
+      this.bubble.step(dt);
       for (let i = this.dying.length - 1; i >= 0; i--) {
         const e = this.dying[i]!;
         e.removing += dt;
@@ -974,6 +1065,8 @@ export class WorldView {
       }
     }
     this.syncTransforms();
+    this.stepDog(dt);
+    this.placeBubble();
 
     if (this.hoverDirty && this.pointer && !this.drag?.moved) {
       this.hoverDirty = false;
@@ -984,7 +1077,34 @@ export class WorldView {
     this.render();
   };
 
+  private stepDog(dt: number): void {
+    if (!this.dog.visible) return;
+    const pad: { x: number; z: number; radius: number }[] = [];
+    let att: { x: number; z: number } | null = null;
+    for (const e of this.ents.values()) {
+      if (e.zone !== "paddock") continue;
+      pad.push(e);
+      if (e.ws.id === this.attended) att = e;
+    }
+    this.dog.update(this.reduced ? 0 : dt, { time: this.time, night: this.night, zone: ZONES.paddock, sheep: pad, attended: att, still: this.reduced });
+  }
+
+  private placeBubble(): void {
+    const id = this.bubble.id;
+    if (!id) return;
+    const e = this.ents.get(id);
+    if (!e) { this.bubble.hide(); return; }
+    const d = e.geos.dims;
+    const v = new THREE.Vector3(e.x, (d.top - 0.25) * d.rootScale + e.pose.bob * d.rootScale, e.z).project(this.camera);
+    this.bubble.place(((v.x + 1) / 2) * this.container.clientWidth, ((1 - v.y) / 2) * this.container.clientHeight);
+  }
+
   private render(): void {
     this.renderer.render(this.scene, this.camera);
   }
+}
+
+/** The personality a WorldSheep carries, defaulting to calm. */
+function personalityOf(w: WorldSheep): Personality {
+  return w.personality && PERSONALITIES.has(w.personality) ? w.personality : "calm";
 }

@@ -5,7 +5,7 @@ import {
 } from "../core/index.js";
 import type { QuantForecast } from "@blue-sheep/inference";
 import {
-  esc, hex, numbersOn, portrait, prop, sexMark, swatch,
+  esc, hex, learnMeter, learnWord, numbersOn, portrait, prop, sexMark, swatch,
 } from "./util.js";
 import type { View } from "./view.js";
 import { rankCached } from "./cache.js";
@@ -20,27 +20,58 @@ export function tenths(dist: Record<string, number>): { key: string; p: number; 
   return counts.map(({ key, p, n }) => ({ key, p, n }));
 }
 
-/** Ten lamb icons coloured by probability, with a legend. `small` for inline use (report, market). */
-export function litterRow(state: GameState, f: Pick<CrossForecast, "colour" | "horns" | "pattern">, small = false): string {
+export interface LambLook { colour: string; pattern: string; horns: string }
+
+/** The ten lambs of a forecast, most likely colour first. Horns and spots are spread across them in proportion. */
+export function litterLooks(f: Pick<CrossForecast, "colour" | "horns" | "pattern">): LambLook[] {
   const counts = tenths(f.colour);
   const hornedN = Math.round((f.horns["horned"] ?? 0) * 10);
   const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10);
-  let icons = "";
+  const out: LambLook[] = [];
   let k = 0;
   for (const e of counts) for (let i = 0; i < e.n; i++, k++) {
-    const horned = k < hornedN, spotted = !small && 9 - k < spottedN;
-    icons += `<span class="lamb ${spotted ? "spot" : ""}" style="--wool:${hex(e.key)}" title="${esc(e.key)}${horned ? ", horned" : ""}${spotted ? ", spotted" : ""}">${horned ? "<i></i>" : ""}</span>`;
+    out.push({ colour: e.key, horns: k < hornedN ? "horned" : "polled", pattern: 9 - k < spottedN ? "spotted" : "solid" });
   }
+  return out;
+}
+
+function lookWords(l: LambLook): string {
+  return `${l.colour}${l.pattern === "spotted" ? ", spotted" : ""}${l.horns === "horned" ? ", horned" : ""}`;
+}
+
+/** One lamb tile: a rendered lamb portrait when the view can draw one, a wool-coloured blob otherwise. */
+export function lambTile(view: Pick<View, "lambArt"> | null, l: LambLook, i = 0, extra = "", d?: number): string {
+  let src = "";
+  try { src = view?.lambArt?.(l) ?? ""; } catch { src = ""; }
+  const badges = `${l.horns === "horned" ? `<b class="lb horn" aria-hidden="true">♈</b>` : ""}${l.pattern === "spotted" ? `<b class="lb spot" aria-hidden="true"></b>` : ""}`;
+  return `<span class="lamb-tile ${src ? "art" : "blob"} ${extra}" style="--i:${i};${d !== undefined ? `--d:${d};` : ""}--wool:${hex(l.colour)}" title="${esc(lookWords(l))}">${src ? `<img src="${esc(src)}" alt="">` : `<span class="lamb ${l.pattern === "spotted" ? "spot" : ""}">${l.horns === "horned" ? "<i></i>" : ""}</span>`}${badges}</span>`;
+}
+
+/**
+ * The litter: ten lamb portraits (one per "one in ten"), filling in one by one, with a legend in words.
+ * `small` for inline use (report, market): tiles only.
+ */
+export function litterRow(state: GameState, f: Pick<CrossForecast, "colour" | "horns" | "pattern">, small = false, view: Pick<View, "lambArt"> | null = null): string {
+  const counts = tenths(f.colour);
+  const looks = litterLooks(f);
+  const tiles = looks.map((l, i) => lambTile(view, l, i)).join("");
   const nums = numbersOn(state);
   const rare = counts.filter((e) => e.n === 0).map((e) => e.key);
+  const keyArt = (c: string) => {
+    let src = "";
+    try { src = view?.lambArt?.({ colour: c, pattern: "solid", horns: "polled" }) ?? ""; } catch { src = ""; }
+    return src ? `<img class="k-art" src="${esc(src)}" alt="">` : `<b style="--wool:${hex(c)}"></b>`;
+  };
   const legend = counts.filter((e) => e.n > 0 || nums).map((e) =>
-    `<span class="key"><b style="--wool:${hex(e.key)}"></b>${esc(e.key)}${nums ? ` ${e.p < 0.01 ? "<1" : Math.round(e.p * 100)}%` : ` ×${e.n}`}</span>`).join("");
-  const rareNote = rare.length && !nums ? `<span class="meta">(a ${esc(orList(rare))} lamb could happen, but rarely)</span>` : "";
+    `<span class="key">${keyArt(e.key)}<span><span class="k-name">${esc(e.key)}</span> <span class="k-n">${nums ? `${e.p < 0.01 ? "<1" : Math.round(e.p * 100)}%` : e.n === 10 ? "every lamb" : `${e.n} in 10`}</span></span></span>`).join("");
+  const rareNote = rare.length && !nums ? `<div class="meta rare">A ${esc(orList(rare))} lamb could happen, but rarely.</div>` : "";
+  const hornedN = Math.round((f.horns["horned"] ?? 0) * 10);
+  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10);
   const extras: string[] = [];
-  if (hornedN > 0) extras.push(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`);
-  if (spottedN > 0) extras.push(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`);
-  return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f.colour))}">${icons}</div>
-    ${small ? "" : `<div class="legend">${legend}${rareNote}</div>${extras.length ? `<div class="meta extras">Also: ${esc(extras.join(", "))}.</div>` : ""}`}`;
+  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">♈</b> ${esc(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`)}</span>`);
+  if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);
+  return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f.colour))}">${tiles}</div>
+    ${small ? "" : `<div class="legend"><span class="meta each">Each lamb = one chance in ten:</span>${legend}</div>${extras.length ? `<div class="legend extras">${extras.join("")}</div>` : ""}${rareNote}`}`;
 }
 
 function orList(xs: string[]): string {
@@ -61,26 +92,49 @@ export function litterWords(state: GameState, colour: Record<string, number>): s
   return [head, ...tail].join(", ");
 }
 
-/** Range bar: band = expected lamb ± spread; ticks for ewe, ram, flock average and expected value. */
+export interface RangeMarks {
+  ewe: { value: number; art: string; name: string };
+  ram: { value: number; art: string; name: string };
+  flock: number;
+}
+
+/**
+ * Range bar with a proper axis: end words (finer ← → coarser), pins with the parents' faces above the track,
+ * flock average and the expected lamb below it, and the shaded band where most lambs would land.
+ * Numbers (axis values, the parents' measurements) only with the numbers unlock.
+ */
 export function rangeBar(
   state: GameState, label: string, unit: string, f: QuantForecast, lo: number, hi: number,
-  ewe: number, ram: number, flock: number, lowerIsBetter: boolean,
+  marks: RangeMarks, words: [string, string],
 ): string {
-  const pos = (v: number) => (v - lo) / (hi - lo);
-  const bL = Math.max(0, pos(f.mean - f.sd)), bR = Math.min(1, pos(f.mean + f.sd));
+  const pos = (v: number) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+  const bL = pos(f.mean - f.sd), bR = pos(f.mean + f.sd);
   const nums = numbersOn(state);
   const vague = f.h2.pairs < 4;
+  const fmt = (v: number) => `${v.toFixed(1)} ${unit}`;
   const note = nums
-    ? `expected ${f.mean.toFixed(1)} ${unit} ± ${f.sd.toFixed(1)} · heritability ${f.h2.h2.toFixed(2)} from ${f.h2.pairs} families`
+    ? `Expected lamb ${fmt(f.mean)} ± ${f.sd.toFixed(1)} · heritability ${f.h2.h2.toFixed(2)} from ${f.h2.pairs} families`
     : vague ? "Only a rough guess — more lambs on record will sharpen this." : `Based on ${f.h2.pairs} families on your farm.`;
+  const ex = pos(marks.ewe.value), rx = pos(marks.ram.value);
+  const close = Math.abs(ex - rx) < 0.14;
+  const pin = (who: "ewe" | "ram", m: RangeMarks["ewe"], x: number, high: boolean) =>
+    `<span class="pin ${who} ${high ? "high" : ""}" style="${prop("x", x)}" title="${esc(`${m.name}${nums ? ` · ${fmt(m.value)}` : ""}`)}">${m.art ? `<img src="${esc(m.art)}" alt="">` : `<span class="pin-dot"></span>`}<span class="pin-lbl">${esc(m.name)}${nums ? ` <span class="num">${m.value.toFixed(1)}</span>` : ""}</span></span>`;
+  const fx = pos(marks.flock), mx = pos(f.mean);
+  const below = (cls: string, x: number, text: string, high: boolean) =>
+    `<span class="bpin ${cls} ${high ? "low2" : ""}" style="${prop("x", x)}"><span class="b-mark"></span><span class="b-lbl">${text}</span></span>`;
   return `<div class="range">
-    <div class="rlabel">${esc(label)} <span class="meta">${lowerIsBetter ? "finer ←" : "lighter ←"} → ${lowerIsBetter ? "coarser" : "heavier"}</span></div>
-    <div class="track">
-      <div class="band" style="${prop("l", bL)};${prop("w", Math.max(0.01, bR - bL))}"></div>
-      <div class="tick flock" style="${prop("x", pos(flock))}" title="flock average"></div>
-      <div class="tick ewe" style="${prop("x", pos(ewe))}" title="ewe"></div>
-      <div class="tick ram" style="${prop("x", pos(ram))}" title="ram"></div>
-      <div class="tick mean" style="${prop("x", pos(f.mean))}" title="expected lamb"></div>
+    <div class="rlabel">${esc(label)}</div>
+    <div class="rgraph">
+      <div class="pins">${pin("ewe", marks.ewe, ex, false)}${pin("ram", marks.ram, rx, close)}</div>
+      <div class="track">
+        <div class="band" style="${prop("l", bL)};${prop("w", Math.max(0.012, bR - bL))}"></div>
+        <div class="tick flock" style="${prop("x", fx)}"></div>
+        <div class="tick ewe" style="${prop("x", ex)}"></div>
+        <div class="tick ram" style="${prop("x", rx)}"></div>
+        <div class="tick mean" style="${prop("x", mx)}"></div>
+      </div>
+      <div class="bpins">${below("flock", fx, `flock${nums ? ` ${marks.flock.toFixed(1)}` : ""}`, false)}${below("mean", mx, `🐑 lamb${nums ? ` ${f.mean.toFixed(1)}` : ""}`, Math.abs(fx - mx) < 0.16)}</div>
+      <div class="axis"><span>← ${esc(words[0])}${nums ? ` · ${lo.toFixed(0)} ${esc(unit)}` : ""}</span><span>${nums ? `${hi.toFixed(0)} ${esc(unit)} · ` : ""}${esc(words[1])} →</span></div>
     </div>
     <div class="meta">${esc(note)}</div></div>`;
 }
@@ -110,13 +164,6 @@ function hintFor(state: GameState, f: CrossForecast, goal: Goal): string {
     case "fine": return nums ? `${f.fineness.mean.toFixed(1)} µm` : "";
     case "heavy": return nums ? `${f.fleeceWeight.mean.toFixed(1)} kg` : "";
   }
-}
-
-function learnMeter(bits: number, text: string): string {
-  const n = Math.min(5, Math.round(bits * 2.5));
-  let seg = "";
-  for (let i = 0; i < 5; i++) seg += `<i class="${i < n ? "on" : ""}"></i>`;
-  return `<div class="learn"><span class="learn-label">🔍 Learn</span><span class="meter">${seg}</span><span>${esc(text)}</span></div>`;
 }
 
 /** Which sheep the forecast is "for": the view's sheep, else the first adult ewe, else any adult. */
@@ -175,10 +222,16 @@ export function forecastPanelHtml(state: GameState, view: View): string {
   const hired = isVisitor && state.hiredRam === ramId;
   const rel = relationText(f.relatedness, f.inbreeding);
   const fin = flockStats(state, "fineness"), fw = flockStats(state, "fleeceWeight");
+  const art = (x: Sheep) => { try { return view.portraits(x.id) || ""; } catch { return ""; } };
+  const marks = (trait: string, flockMean: number): RangeMarks => ({
+    ewe: { value: Number(ewe.phenotype[trait]), art: art(ewe), name: ewe.name },
+    ram: { value: Number(ram.phenotype[trait]), art: art(ram), name: ram.name },
+    flock: flockMean,
+  });
   const bars = state.act >= 2
-    ? rangeBar(state, "Fibre fineness", "µm", f.fineness, fin.mean - 3 * fin.sd, fin.mean + 3 * fin.sd, Number(ewe.phenotype["fineness"]), Number(ram.phenotype["fineness"]), fin.mean, true)
-      + rangeBar(state, "Fleece weight", "kg", f.fleeceWeight, fw.mean - 3 * fw.sd, fw.mean + 3 * fw.sd, Number(ewe.phenotype["fleeceWeight"]), Number(ram.phenotype["fleeceWeight"]), fw.mean, false)
-      + `<div class="ticks-key meta"><span class="k ewe"></span>ewe <span class="k ram"></span>ram <span class="k flock"></span>flock <span class="k mean"></span>expected lamb</div>`
+    ? `<div class="ranges">${rangeBar(state, "Fibre fineness", "µm", f.fineness, fin.mean - 3 * fin.sd, fin.mean + 3 * fin.sd, marks("fineness", fin.mean), ["finer", "coarser"])}
+      ${rangeBar(state, "Fleece weight", "kg", f.fleeceWeight, fw.mean - 3 * fw.sd, fw.mean + 3 * fw.sd, marks("fleeceWeight", fw.mean), ["lighter", "heavier"])}
+      <div class="ticks-key meta"><span class="k band"></span>where most lambs from this pair would land <span class="k flock"></span>flock average <span class="k mean"></span>the lamb you'd most expect</div></div>`
     : `<p class="wool-hint">${esc(woolHint(state, f))}</p>`;
   const nPlanned = Object.keys(state.plans).length;
   const room = lambRoom(state);
@@ -200,11 +253,11 @@ export function forecastPanelHtml(state: GameState, view: View): string {
       <h3>${esc(ewe.name)} × ${esc(ram.name)}${planned ? ` <span class="star">★ planned</span>` : ""}</h3>
       ${isVisitor ? `<div class="note-line visitor">Visiting — nothing known about his family, so this forecast is only a wide guess.</div>` : ""}
       <div class="meta">If they had ten lambs…</div>
-      ${litterRow(state, f)}
+      ${litterRow(state, f, false, view)}
       <p class="blue-line">${swatch("blue")} ${esc(f.blueText)}</p>
       ${bars}
       <div class="row rel"><span class="tag">${esc(rel.text)}</span>${rel.warn ? `<span class="tag warn">⚠ ${esc(rel.warn)}</span>` : ""}${numbersOn(state) && f.inbreeding > 0 ? `<span class="meta">inbreeding ${f.inbreeding.toFixed(3)}</span>` : ""}</div>
-      ${learnMeter(f.learnBits, f.learnText)}
+      <div class="learn"><span class="learn-label">🔍 What you'd learn</span>${learnMeter(Math.min(1, f.learnBits * 0.8), learnWord(Math.min(1, f.learnBits * 0.8)))}<span class="meta">${esc(f.learnText)}</span></div>
       <div class="row commit">${commit}</div>
     </div>
   </div>`;

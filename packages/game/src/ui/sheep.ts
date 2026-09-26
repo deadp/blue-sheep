@@ -1,9 +1,13 @@
 /** Sheep card and family tree. */
 import {
-  FAIR_LABEL, canBreed, factsFor, familyTree, isAdult, isIll, sheepValue,
+  FAIR_LABEL, PERSONALITY_ICON, PERSONALITY_WORD, canBreed, factsFor, familyTree, flavoursOf, isAdult, isIll, personalityLine, personalityOf, sheepValue,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
 import { ageWords, chip, dot, esc, has, hex, numbersOn, portrait, sexMark, swatch, traitWords } from "./util.js";
+
+/** Pastel backdrop per wool colour for the live portrait (matches the world's portrait backgrounds). */
+const PORTRAIT_BG: Record<string, string> = { white: "#bfdcec", black: "#f5dcc4", brown: "#d4e9c6", blue: "#f7e2c2", fawn: "#cfdcf2" };
+const FLAVOUR_ICON: Record<string, string> = { fluffy: "☁️", stocky: "🪨", dainty: "🌼", curly: "➰", silky: "✨" };
 import type { View } from "./view.js";
 
 export function cardSubject(state: GameState, view: View): Sheep | null {
@@ -43,15 +47,24 @@ export function sheepCardHtml(state: GameState, view: View): string {
     forSale ? `<span class="tag">for sale</span>` : "",
     !own && !forSale && !visitor ? `<span class="tag">no longer on the farm</span>` : "",
   ].join("");
+  const pers = personalityOf(s);
+  const flav = flavoursOf(s);
+  const colour = String(s.phenotype["colour"]);
   return `<div class="sheep-card">
-    <div class="sc-portrait">${portrait(view, s, "lg")}</div>
+    <div class="sc-stage" style="--bg:${PORTRAIT_BG[colour] ?? "#dde8f0"}">
+      <div class="sc-portrait" data-live-portrait-slot="${esc(s.id)}">${portrait(view, s, "lg")}</div>
+      <div class="sc-hello meta" aria-hidden="true">click to say hello</div>
+    </div>
     <div class="sc-main">
       <div class="sc-name"><h2>${esc(s.name)} ${sexMark(s)}</h2>${own ? `<button class="icon" data-rename="${esc(s.id)}" title="Rename" aria-label="Rename ${esc(s.name)}">✎</button>` : ""}</div>
+      <div class="sc-persona"><span class="persona ${pers}">${PERSONALITY_ICON[pers]} ${esc(PERSONALITY_WORD[pers])}</span>${flav.map((f) => `<span class="sc-flav">${FLAVOUR_ICON[f] ?? ""} ${esc(f)}</span>`).join("")}</div>
+      <p class="sc-line">${esc(personalityLine(s))}</p>
       <div class="meta">${esc(s.sex)} · ${esc(ageWords(state, s))}${numbersOn(state) && s.inbreeding > 0 ? ` · inbreeding ${s.inbreeding.toFixed(3)}` : s.inbreeding >= 0.125 ? " · parents were close kin" : ""}</div>
-      <div class="tags"><span class="tag">${swatch(String(s.phenotype["colour"]))}${esc(s.phenotype["colour"])}</span><span class="tag">${esc(s.phenotype["pattern"])}</span><span class="tag">${esc(s.phenotype["horns"])}</span>${status}</div>
+      <div class="tags"><span class="tag">${swatch(colour)}${esc(colour)}</span><span class="tag">${esc(s.phenotype["pattern"])}</span><span class="tag">${esc(s.phenotype["horns"])}</span>${status}</div>
       ${rosettes}
       <dl class="traits">${traits}</dl>
     </div>
+    ${buttons.length || planText ? `<div class="row actions">${buttons.join("")}${planText ? `<span class="meta">${planText}</span>` : ""}</div>` : ""}
     <div class="sc-family">
       <div><span class="lbl">Parents</span> ${parents}</div>
       <div><span class="lbl">Lambs</span> ${kids.length ? kids.map((k) => chip(state, k)).join(" ") : `<span class="meta">none yet</span>`}</div>
@@ -61,52 +74,132 @@ export function sheepCardHtml(state: GameState, view: View): string {
       <div class="meta legend-dots">${dot(1, true)} certain ${dot(0.9, false)} almost certain ${dot(0.7, false)} probably ${dot(0.3, false)} unknown</div>
       <ul class="facts">${factList || `<li class="meta">Nothing hidden to know yet.</li>`}</ul>
     </div>
-    ${buttons.length || planText ? `<div class="row actions">${buttons.join("")}${planText ? `<span class="meta">${planText}</span>` : ""}</div>` : ""}
   </div>`;
 }
 
 // ---- Family tree ------------------------------------------------------------
 
-function nodeChip(state: GameState, n: TreeNode | null, self = false): string {
-  if (!n) return `<span class="tchip empty">unknown</span>`;
-  return `<button class="tchip ${n.inFlock ? "" : "gone"} ${self ? "self" : ""}" data-sheep="${esc(n.id)}" title="${n.inFlock ? "in your flock" : "no longer on the farm"}">
-    <span class="swatch" style="--wool:${hex(n.colour)}"></span><span>${esc(n.name)} ${n.sex === "ewe" ? "♀" : "♂"}</span>${n.rosettes ? `<span class="ros">🏵${n.rosettes > 1 ? n.rosettes : ""}</span>` : ""}${n.inbreeding >= 0.125 ? `<span class="inb" title="inbred">⚠</span>` : ""}</button>`;
+const NODE_W = 92, NODE_H = 76, GAP_X = 12, ROW_H = 118, KID_W = 86;
+
+interface Placed { n: TreeNode | null; x: number; y: number; kind: "anc" | "self" | "kid" | "mate" }
+
+function nodeHtml(state: GameState, view: View, p: Placed): string {
+  const n = p.n;
+  const left = Math.round(p.x - (p.kind === "kid" ? KID_W : NODE_W) / 2), top = Math.round(p.y);
+  if (!n) return `<span class="tnode empty" style="left:${left}px;top:${top}px">unknown</span>`;
+  const s = state.sheep[n.id];
+  let img = "";
+  if (s) { try { img = view.portraits(s.id) || ""; } catch { img = ""; } }
+  const ring = hex(n.colour);
+  return `<button class="tnode ${p.kind} ${n.inFlock ? "" : "gone"}" data-sheep="${esc(n.id)}" style="left:${left}px;top:${top}px;--ring:${ring}" title="${esc(`${n.name} — ${n.colour}${n.inFlock ? "" : ", no longer on the farm"}${n.inbreeding >= 0.125 ? ", lamb of close kin" : ""}`)}">
+    <span class="t-face">${img ? `<img src="${esc(img)}" alt="">` : `<span class="t-blob"></span>`}</span>
+    <span class="t-name">${esc(n.name)} ${n.sex === "ewe" ? "♀" : "♂"}</span>${n.rosettes ? `<span class="ros" title="rosettes">🏵${n.rosettes > 1 ? n.rosettes : ""}</span>` : ""}${n.inbreeding >= 0.125 ? `<span class="inb" title="lamb of close kin">⚠</span>` : ""}</button>`;
 }
 
-function ancestorsCols(state: GameState, a: { dam: AncestorNode | null; sire: AncestorNode | null }): string {
-  // Columns from the oldest generation (left) to parents (right).
-  const gen: (AncestorNode | null)[][] = [[a.dam, a.sire]];
-  for (let g = 1; g < 3; g++) gen.push(gen[g - 1]!.flatMap((n) => [n?.dam ?? null, n?.sire ?? null]));
-  if (gen[2]!.every((n) => !n)) gen.pop();
-  if (gen[1] && gen[1].every((n) => !n)) gen.pop();
-  const label = ["Parents", "Grandparents", "Great-grandparents"];
-  return gen.map((col, i) => `<div class="tcol"><div class="tlabel">${label[i]}</div><div class="tcol-chips">${col.map((n) => nodeChip(state, n)).join("")}</div></div>`).reverse().join("");
-}
-
-function descendantsList(state: GameState, ds: DescendantNode[], depth = 0): string {
-  if (!ds.length) return depth === 0 ? `<p class="meta">No lambs yet.</p>` : "";
-  if (depth >= 1) {
-    // Grandchildren and below: a wrapped row of chips, so big families stay compact.
-    const flat: DescendantNode[] = [];
-    const walk = (xs: DescendantNode[]) => { for (const x of xs) { flat.push(x); walk(x.children); } };
-    walk(ds);
-    return `<div class="tgrand">${flat.map((d) => nodeChip(state, d)).join("")}</div>`;
+/**
+ * A connected family tree: ancestors fan out above (parents, grandparents, great-grandparents), the sheep in
+ * the middle, lambs below grouped by the other parent, with SVG elbow lines and portraits in every node.
+ * Grandlambs show as a count on each lamb.
+ */
+export function familyTreeHtml(state: GameState, view: View, s: Sheep): string {
+  const t = familyTree(state, s.id, 3);
+  // ancestor generations: gen[0] = parents
+  const gens: (AncestorNode | null)[][] = [[t.ancestors.dam, t.ancestors.sire]];
+  for (let g = 1; g < 3; g++) gens.push(gens[g - 1]!.flatMap((n) => [n?.dam ?? null, n?.sire ?? null]));
+  while (gens.length && gens[gens.length - 1]!.every((n) => !n)) gens.pop();
+  // lambs grouped by mate
+  const MAX_KIDS = 14;
+  const groups = new Map<string, { mate: TreeNode | null; kids: DescendantNode[] }>();
+  for (const d of t.descendants) {
+    const k = d.mate?.id ?? "?";
+    if (!groups.has(k)) groups.set(k, { mate: d.mate, kids: [] });
+    groups.get(k)!.kids.push(d);
   }
-  return `<ul class="tdesc">${ds.map((d) => `<li><div class="tkid">${nodeChip(state, d)}${d.mate ? `<span class="meta"> with ${esc(d.mate.name)}</span>` : ""}</div>${descendantsList(state, d.children, depth + 1)}</li>`).join("")}</ul>`;
+  let shown = 0;
+  const glist = [...groups.values()].map((g) => { const kids = g.kids.slice(0, Math.max(0, MAX_KIDS - shown)); shown += kids.length; return { ...g, kids }; }).filter((g) => g.kids.length);
+  const hidden = t.descendants.length - shown;
+  const GROUP_GAP = 26;
+  const kidsW = glist.reduce((w, g) => w + g.kids.length * (KID_W + GAP_X), 0) + Math.max(0, glist.length - 1) * GROUP_GAP;
+  const topSlots = gens.length ? 2 ** gens.length : 1;
+  const ancW = gens.length ? topSlots * (NODE_W + GAP_X) : 0;
+  const GUTTER = 28; // row labels
+  const W = Math.max(ancW, kidsW, NODE_W + 40) + 40 + GUTTER;
+  const cx = GUTTER + (W - GUTTER) / 2;
+  const rowLabels: string[] = [];
+  const GEN_LABEL = ["Parents", "Grandparents", "Great-grandparents"];
+  const nodes: Placed[] = [];
+  const lines: string[] = [];
+  const H0 = gens.length ? 14 : 34;
+  const selfY = H0 + gens.length * ROW_H;
+  // ancestors: row r (0 = oldest shown generation) at the top
+  const pos = new Map<string, { x: number; y: number }>();
+  gens.forEach((row, g) => {
+    const y = selfY - (g + 1) * ROW_H;
+    rowLabels.push(`<span class="t-row" style="top:${Math.round(y)}px">${GEN_LABEL[g]}</span>`);
+    const slotW = ancW / row.length;
+    row.forEach((n, j) => {
+      const x = cx - ancW / 2 + slotW * (j + 0.5);
+      pos.set(`${g}:${j}`, { x, y });
+      if (n || g === 0) nodes.push({ n, x, y, kind: "anc" });
+    });
+  });
+  // lines from each child up to its two parents
+  const elbow = (x1: number, y1: number, x2: number, y2: number, cls: string) => {
+    const my = (y1 + y2) / 2;
+    lines.push(`<path class="${cls}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} V${my.toFixed(1)} H${x2.toFixed(1)} V${y2.toFixed(1)}"/>`);
+  };
+  gens.forEach((row, g) => {
+    row.forEach((n, j) => {
+      if (!n && g > 0) return;
+      const child = g === 0 ? { x: cx, y: selfY } : pos.get(`${g - 1}:${Math.floor(j / 2)}`)!;
+      const me = pos.get(`${g}:${j}`)!;
+      elbow(child.x, child.y, me.x, me.y + NODE_H, `${j % 2 === 0 ? "dam" : "sire"} ${n ? "" : "faint"}`);
+    });
+  });
+  nodes.push({ n: t.self, x: cx, y: selfY, kind: "self" });
+  // lambs
+  const kidY = selfY + ROW_H + 18;
+  if (glist.length) rowLabels.push(`<span class="t-row" style="top:${Math.round(kidY)}px">Lambs</span>`);
+  let x = cx - kidsW / 2;
+  for (const g of glist) {
+    const gx0 = x + KID_W / 2;
+    for (const k of g.kids) {
+      const kx = x + KID_W / 2;
+      nodes.push({ n: k, x: kx, y: kidY, kind: "kid" });
+      elbow(cx, selfY + NODE_H, kx, kidY, "kid");
+      x += KID_W + GAP_X;
+    }
+    const gx1 = x - GAP_X - KID_W / 2;
+    const gname = g.mate ? `with ${g.mate.name}` : "other parent unknown";
+    lines.push(`<text class="mate-lbl" x="${((gx0 + gx1) / 2).toFixed(1)}" y="${(kidY - 8).toFixed(1)}" text-anchor="middle">${esc(gname)}</text>`);
+    x += GROUP_GAP;
+  }
+  const H = (glist.length ? kidY + NODE_H + 30 : selfY + NODE_H + 16);
+  if (!glist.length) rowLabels.push(`<span class="t-row nolambs" style="top:${Math.round(selfY)}px">No lambs yet</span>`);
+  const grand = (d: DescendantNode) => { let n = 0; const walk = (xs: DescendantNode[]) => { for (const c of xs) { n++; walk(c.children); } }; walk(d.children); return n; };
+  const nodeMarkup = nodes.map((p) => {
+    let h = nodeHtml(state, view, p);
+    if (p.kind === "kid" && p.n) {
+      const g = grand(p.n as DescendantNode);
+      if (g) h = h.replace("</button>", `<span class="t-grand" title="grandlambs">+${g} lamb${g === 1 ? "" : "s"}</span></button>`);
+    }
+    return h;
+  }).join("");
+  return `<div class="ftree-scroll"><div class="ftree" style="width:${Math.round(W)}px;height:${Math.round(H)}px">
+    <svg class="ftree-lines" width="${Math.round(W)}" height="${Math.round(H)}" viewBox="0 0 ${Math.round(W)} ${Math.round(H)}" aria-hidden="true">${lines.join("")}</svg>
+    ${gens.length ? "" : `<div class="t-note meta" style="left:${Math.round(cx - 120)}px;top:8px">${esc(s.name)} came with no pedigree.</div>`}
+    ${rowLabels.join("")}
+    ${nodeMarkup}
+  </div></div>${hidden > 0 ? `<p class="meta">…and ${hidden} more lamb${hidden === 1 ? "" : "s"}. Open one of them to see their own family.</p>` : ""}`;
 }
 
 export function treeHtml(state: GameState, view: View): string {
   const s = cardSubject(state, view);
   if (!s) return `<h2>Family tree</h2><p>No sheep yet.</p>`;
   if (!has(state, "tree")) return `<h2>Family tree</h2><p>The family book is still in the attic. It turns up later in the story.</p>`;
-  const t = familyTree(state, s.id, 3);
-  const noAnc = !t.ancestors.dam && !t.ancestors.sire;
   return `<h2>${esc(s.name)}'s family</h2>
-    <div class="meta">Faded names have left the farm. ⚠ marks lambs of close kin. Click a name to open its card.</div>
-    <h3>Ancestors</h3>
-    ${noAnc ? `<p class="meta">${esc(s.name)} came with no pedigree.</p>` : `<div class="tree-up">${ancestorsCols(state, t.ancestors)}<div class="tcol"><div class="tlabel">&nbsp;</div><div class="tcol-chips">${nodeChip(state, t.self, true)}</div></div></div>`}
-    <h3>Descendants</h3>
-    <div class="tree-down">${nodeChip(state, t.self, true)}${descendantsList(state, t.descendants)}</div>
+    <div class="meta tree-key"><span class="k-dam"></span> mother's side &nbsp;<span class="k-sire"></span> father's side · the ring shows wool colour · faded cards have left the farm · ⚠ lamb of close kin · click anyone to open their card</div>
+    ${familyTreeHtml(state, view, s)}
     <div class="row"><button class="secondary" data-sheep="${esc(s.id)}">Back to ${esc(s.name)}</button></div>`;
 }
 

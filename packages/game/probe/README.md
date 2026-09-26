@@ -8,7 +8,7 @@ passing unit tests do not prove the game runs. Spec: `docs/CONTRACTS.md` §7.
 
 | Command | What it does |
 |---|---|
-| `npm run probe` | build, then smoke → play → panels → video; summary table; exit 1 on any failure |
+| `npm run probe` | build, then smoke → play → panels → life → video; summary table; exit 1 on any failure |
 | `npm run probe:quick` | build, then smoke only |
 | `node packages/game/probe/run.mjs play panels` | build, then just the named steps |
 | `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, video) |
@@ -37,6 +37,13 @@ screenshots of old code.
 - **panels.mjs**: deep-links each panel in `PANELS` (`?panel=<name>`, plus
   `&act=N` for gated panels), waits for `body[data-panel=<name>]`, and
   screenshots `panel-<name>.png`. Fails on console errors.
+- **life.mjs**: the sheep card's live portrait and the world's visit. Asserts one
+  `canvas[data-live-portrait]` in the open sheep card, that switching cards moves
+  it, that closing (button, `close` action, Escape) removes it and releases the
+  sheep, and that the sheepdog is drawn exactly when the dog improvement is owned
+  (`__game.debug.world()`). With motion on it saves 6-frame sequences 300 ms
+  apart (`life-world-*`, `life-close-*` zoomed in, `life-sheep-*`,
+  `life-sheep-bleat`, `life-night`, `life-report-*`) and notes fps and draw calls.
 - **video.mjs**: records 10 s of the idle world with motion on to `idle.webm`.
   Watch it for flicker and jitter.
 

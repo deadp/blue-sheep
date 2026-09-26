@@ -2,38 +2,67 @@
 import {
   FAIR_LABEL, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
-import { litterRow, litterWords } from "./forecast.js";
+import { lambTile, litterLooks, litterWords } from "./forecast.js";
 import { cap, discoveryText, discoveryTitle, esc, hex, portrait, UNLOCK_WORDS } from "./util.js";
 import type { View } from "./view.js";
 
 const SURPRISE = 0.2;
 const MAX_CARDS = 4;
 
-function lambReveal(state: GameState, view: View, l: Sheep, f: CrossForecast | undefined): string {
+function lambReveal(state: GameState, view: View, l: Sheep, f: CrossForecast | undefined, k: number, inTen: boolean): string {
   const colour = String(l.phenotype["colour"]);
   const p = f ? f.colour[colour] ?? 0 : 1;
   const surprise = !!f && p < SURPRISE;
   const blue = colour === "blue";
-  return `<button class="born ${surprise ? "surprise" : ""} ${blue ? "blue" : ""}" data-sheep="${esc(l.id)}">
-    ${portrait(view, l, "sm")}
-    <span><b>${esc(l.name)}</b> <span class="meta">${l.sex === "ewe" ? "♀" : "♂"}</span><br>
-    <span class="swatch" style="--wool:${hex(colour)}"></span>${esc(colour)}${l.phenotype["pattern"] === "spotted" ? ", spotted" : ""}${l.phenotype["horns"] === "horned" ? ", horned" : ""}${blue ? " — blue!" : ""}
-    ${surprise ? `<br><span class="surprise-tag">✨ Surprise! Only a long shot</span>` : ""}${l.inbreeding >= 0.125 ? `<br><span class="meta">a little small — close kin</span>` : ""}</span>
+  const words = `${colour}${l.phenotype["pattern"] === "spotted" ? ", spotted" : ""}${l.phenotype["horns"] === "horned" ? ", horned" : ""}`;
+  const why = surprise ? (inTen ? "Only a long shot!" : "Not even one of your ten!") : "";
+  return `<button class="born flip ${surprise ? "surprise" : ""} ${blue ? "blue" : ""}" data-sheep="${esc(l.id)}" style="--d:${k}" aria-label="${esc(`${l.name}, ${words}`)}">
+    <span class="flip-inner">
+      <span class="f-back" aria-hidden="true"><span class="q">?</span></span>
+      <span class="f-front">
+        ${portrait(view, l, "sm")}
+        <span><b>${esc(l.name)}</b> <span class="meta">${l.sex === "ewe" ? "♀" : "♂"}</span><br>
+        <span class="swatch" style="--wool:${hex(colour)}"></span>${esc(words)}${blue ? " — blue!" : ""}
+        ${surprise ? `<br><span class="surprise-tag">✨ Surprise! ${esc(why)}</span>` : ""}${l.inbreeding >= 0.125 ? `<br><span class="meta">a little small — close kin</span>` : ""}</span>
+      </span>
+    </span>
+    ${surprise ? `<span class="burst" aria-hidden="true"><i>✦</i><i>✧</i><i>★</i><i>✦</i><i>✧</i><i>★</i></span>` : ""}
   </button>`;
+}
+
+/** The ten lambs the player saw, with the ones that came true ringed (after their card flips). */
+function expectedRow(state: GameState, view: View, f: CrossForecast, lambs: Sheep[]): { html: string; inTen: boolean[] } {
+  const looks = litterLooks(f);
+  const used = new Set<number>();
+  const hit = new Map<number, number>();
+  const inTen = lambs.map((l, k) => {
+    const c = String(l.phenotype["colour"]);
+    const idx = looks.findIndex((x, i) => !used.has(i) && x.colour === c);
+    if (idx < 0) return false;
+    used.add(idx);
+    hit.set(idx, k);
+    return true;
+  });
+  const html = looks.map((l, i) => {
+    const k = hit.get(i);
+    return k === undefined ? lambTile(view, l, i) : lambTile(view, l, i, "hit", k);
+  }).join("");
+  return { html: `<div class="litter small">${html}</div>`, inTen };
 }
 
 function matingRows(state: GameState, view: View, r: SeasonReport): string {
   const ewes = Object.keys(r.matings);
   if (!ewes.length) return "";
-  return ewes.map((e) => {
+  return ewes.map((e, row) => {
     const ewe = state.sheep[e], ram = state.sheep[r.matings[e]!];
     const f = r.forecastsSeen[e];
     const lambs = r.lambs.filter((l) => l.dam === e);
-    return `<div class="reveal">
+    const ex = f ? expectedRow(state, view, f, lambs) : { html: "", inTen: lambs.map(() => true) };
+    return `<div class="reveal" style="--row:${row}">
       <div class="r-pair"><b>${esc(ewe?.name ?? "?")} × ${esc(ram?.name ?? "?")}</b></div>
-      <div class="r-fore"><div class="lbl">You expected</div>${f ? litterRow(state, f, true) : ""}<div class="meta">${f ? esc(litterWords(state, f.colour)) : ""}</div></div>
+      <div class="r-fore"><div class="lbl">You expected</div>${ex.html}<div class="meta">${f ? esc(litterWords(state, f.colour)) : ""}</div></div>
       <div class="r-arrow" aria-hidden="true">→</div>
-      <div class="r-born"><div class="lbl">Born</div>${lambs.length ? lambs.map((l) => lambReveal(state, view, l, f)).join("") : `<span class="meta">${esc(ewe?.name ?? "She")} was too poorly to lamb.</span>`}</div>
+      <div class="r-born"><div class="lbl">Born</div>${lambs.length ? lambs.map((l, k) => lambReveal(state, view, l, f, k, ex.inTen[k] ?? true)).join("") : `<span class="meta">${esc(ewe?.name ?? "She")} was too poorly to lamb.</span>`}</div>
     </div>`;
   }).join("");
 }

@@ -4,6 +4,7 @@ import {
 } from "../core/index.js";
 import { esc, has, prop, stars } from "./util.js";
 import type { View } from "./view.js";
+import { actTrack } from "./track.js";
 
 const FLAVOUR = [
   "Somewhere in this flock, a blue lamb is waiting to be born.",
@@ -137,7 +138,7 @@ export function hudHtml(state: GameState, view: View): string {
       <span class="pill" title="Flock size">🐑 ${state.flock.length}<span class="dim">/${state.flockCap}</span></span>
       ${has(state, "orders") ? `<span class="pill">${stars(state.reputation)}</span>` : ""}
       </div>
-      <button class="pill goal" data-open="board" title="${esc(a.progressText)}"><span class="g-act">${a.endless ? "Endless" : `Act ${a.act + 1}`} · ${esc(a.title)}</span><span class="g-text">${esc(a.goalText)}</span><span class="bar"><span style="${prop("p", a.progress)}"></span></span></button>
+      <button class="pill goal" data-open="board" title="${esc(a.progressText)}"><span class="g-top">${actTrack(state, true)}<span class="g-act">${a.endless ? "Endless" : `Act ${a.act + 1}`} · ${esc(a.title)}</span></span><span class="g-text">${esc(a.goalText)}</span><span class="bar"><span style="${prop("p", a.progress)}"></span></span></button>
     </div>
     <div class="hud-btns">
       ${btn("board", "Board", "📋")}

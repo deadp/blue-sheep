@@ -1,6 +1,6 @@
 /** Small shared bits for panel HTML: escaping, swatches, dots, pips, words. No DOM. */
 import {
-  ageOf, isAdult, oddsLabel, seasonLabel, type GameState, type Sheep, type Unlock,
+  ageOf, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, type GameState, type Sheep, type Unlock,
 } from "../core/index.js";
 
 export function esc(s: unknown): string {
@@ -51,12 +51,54 @@ export function dot(confidence: number, certain: boolean): string {
   return `<span class="dot c${certain ? 4 : confidence > 0.85 ? 3 : confidence > 0.6 ? 2 : 1}" title="${w}">${g}</span>`;
 }
 
-/** Ten-pip meter for a probability. Pips always; the percentage only with numbers. */
-export function pips(state: GameState, p: number, label = ""): string {
-  const n = Math.max(0, Math.min(10, Math.round(p * 10)));
+/** Words under every odds meter, left to right. */
+export const ODDS_SCALE = ["long shot", "likely", "sure"] as const;
+/** Words under every "how much you'd learn" meter. */
+export const LEARN_SCALE = ["little", "loads"] as const;
+
+export interface MeterOptions {
+  /** Headline word next to the bar (defaults to the odds word). */
+  word?: string;
+  /** Tooltip. */
+  label?: string;
+  /** Hide the scale words (tight lists). */
+  compact?: boolean;
+}
+
+function segments(n: number, kind: string): string {
   let out = "";
-  for (let i = 0; i < 10; i++) out += `<i class="${i < n ? "on" : ""}"></i>`;
-  return `<span class="pips" title="${esc(label || oddsLabel(p))}">${out}</span>${numbersOn(state) ? `<span class="num">${Math.round(p * 100)}%</span>` : ""}`;
+  for (let i = 0; i < 10; i++) out += `<i class="${i < n ? `on s${i}` : ""}"></i>`;
+  return `<span class="m-bar ${kind}">${out}</span>`;
+}
+
+/**
+ * The one odds meter used everywhere (orders, fair, visitor): ten segments filling warm → green, the odds
+ * in words, a "long shot · even · likely · sure" scale underneath, and the percentage only with numbers.
+ */
+export function oddsMeter(state: GameState, p: number, o: MeterOptions = {}): string {
+  const n = Math.max(0, Math.min(10, Math.round(p * 10)));
+  const word = o.word ?? oddsLabel(p);
+  const scale = o.compact ? "" : `<span class="m-scale odds">${ODDS_SCALE.map((w, i) => `<span class="w${i}">${w}</span>`).join("")}</span>`; // long shot · likely · sure
+  return `<span class="meter2 odds ${o.compact ? "compact" : ""}" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="${n}" aria-label="${esc(o.label ?? word)}" title="${esc(o.label ?? word)}">
+    <span class="m-row">${segments(n, "odds")}<span class="m-word">${esc(word)}${numbersOn(state) ? ` <span class="num">${Math.round(p * 100)}%</span>` : ""}</span></span>${scale}</span>`;
+}
+
+/** Same look for "how much would this teach you" (forecast, vet): 0..1, blue segments, "a little → a lot". */
+export function learnMeter(v: number, word: string, o: MeterOptions = {}): string {
+  const n = Math.max(0, Math.min(10, Math.round(v * 10)));
+  const scale = o.compact ? "" : `<span class="m-scale learn"><span class="w0">${LEARN_SCALE[0]}</span><span class="w2">${LEARN_SCALE[1]}</span></span>`;
+  return `<span class="meter2 learn ${o.compact ? "compact" : ""}" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="${n}" aria-label="${esc(o.label ?? word)}" title="${esc(o.label ?? "how much you'd learn")}">
+    <span class="m-row">${segments(n, "learn")}<span class="m-word">${esc(word)}</span></span>${scale}</span>`;
+}
+
+/** A word for a learn-meter value. */
+export function learnWord(v: number): string {
+  return v <= 0.02 ? "nothing new" : v < 0.25 ? "a little" : v < 0.55 ? "a fair bit" : v < 0.85 ? "a lot" : "loads";
+}
+
+/** Odds meter (kept name): segments always, the percentage only with numbers. */
+export function pips(state: GameState, p: number, label = "", compact = false): string {
+  return oddsMeter(state, p, { label: label || oddsLabel(p), compact });
 }
 
 /** Portrait image, or a wool-coloured placeholder circle when no portrait is available. */
@@ -112,7 +154,8 @@ export function traitWords(state: GameState, s: Sheep): { label: string; text: s
   const finW = fin < 20 ? "very fine" : fin < 23.5 ? "fine" : fin < 27.5 ? "medium" : "coarse";
   const fwW = fw < 3.2 ? "light" : fw < 4.8 ? "average" : "heavy";
   const sizeW = size < 50 ? "small" : size < 68 ? "medium-sized" : "big";
-  const boldW = bold < 4 ? "shy" : bold < 7 ? "calm" : "bold — foxes keep away";
+  const pers = personalityOf(s);
+  const boldW = `${PERSONALITY_WORD[pers].toLowerCase()}${pers === "bold" ? " — foxes keep away" : ""}${nums && Number.isFinite(bold) ? ` (boldness ${bold.toFixed(1)})` : ""}`;
   const young = !isAdult(s, state.season);
   return [
     { label: "Wool", text: young ? "not shorn yet" : `${finW}${nums ? ` (${fin.toFixed(1)} µm)` : ""}` },

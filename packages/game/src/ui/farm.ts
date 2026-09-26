@@ -5,7 +5,7 @@ import {
   type CrossForecast, type GameState, type Sheep,
 } from "../core/index.js";
 import { litterRow, litterWords } from "./forecast.js";
-import { ageWords, chip, dot, esc, has, numbersOn, pips, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, chip, dot, esc, has, learnMeter, learnWord, numbersOn, pips, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
 import type { View } from "./view.js";
 import { crossCached } from "./cache.js";
 
@@ -22,10 +22,10 @@ function bestMatch(state: GameState, s: Sheep): { mate: Sheep; f: CrossForecast 
   return best;
 }
 
-function wouldAdd(state: GameState, s: Sheep): string {
+function wouldAdd(state: GameState, view: View, s: Sheep): string {
   const b = bestMatch(state, s);
   if (!b) return `<div class="meta">No ${s.sex === "ram" ? "ewes" : "rams"} in your flock to pair with yet.</div>`;
-  return `<div class="adds"><div class="meta">Best pairing: with ${esc(b.mate.name)} — ${esc(litterWords(state, b.f.colour))}</div>${litterRow(state, b.f, true)}</div>`;
+  return `<div class="adds"><div class="meta">Best pairing: with ${esc(b.mate.name)} — ${esc(litterWords(state, b.f.colour))}</div>${litterRow(state, b.f, true, view)}</div>`;
 }
 
 function marketCard(state: GameState, view: View, s: Sheep): string {
@@ -39,7 +39,7 @@ function marketCard(state: GameState, view: View, s: Sheep): string {
       <div class="m-name"><b>${esc(s.name)}</b> ${sexMark(s)} <span class="tag">${swatch(String(s.phenotype["colour"]))}${esc(s.phenotype["colour"])}</span> <span class="meta">${esc(s.phenotype["horns"])} · ${esc(ageWords(state, s))}</span></div>
       <div class="meta">${esc(traits)}</div>
       <div class="meta">What we know: nothing but looks — bought in, no pedigree.</div>
-      ${wouldAdd(state, s)}
+      ${wouldAdd(state, view, s)}
     </div>
     <div class="m-buy"><div class="price">${price} coins</div>
       <button class="primary" data-buy="${esc(s.id)}" ${full || poor ? "disabled" : ""}>Buy</button>
@@ -89,7 +89,7 @@ export function marketHtml(state: GameState, view: View): string {
         <div class="m-body"><div class="m-name"><b>${esc(vr.name)}</b> ${sexMark(vr)} <span class="tag">${swatch(String(vr.phenotype["colour"]))}${esc(vr.phenotype["colour"])}</span></div>
           <div class="meta">From over the hills, here this season only. Nothing is known about his family, so forecasts with him are wide — fresh blood, though, and no shared kin.</div>
           <div class="visitor-fore">${esc(forecastVisitor(state).text)}</div>
-          ${wouldAdd(state, vr)}</div>
+          ${wouldAdd(state, view, vr)}</div>
         <div class="m-buy"><div class="price">${v.fee} coins</div>
           ${hired ? `<span class="tag ok">Hired ✓</span>` : `<button class="primary" data-hire="1" ${state.money < v.fee ? "disabled" : ""}>Hire</button>`}</div>
       </div>`;
@@ -126,11 +126,10 @@ export function vetHtml(state: GameState, view: View): string {
     try { fv = forecastVet(state, chosen.id, l); } catch { /* skip */ }
     const fact = facts.get(l);
     const tested = !!chosen.tested[l];
-    const n = Math.min(5, Math.round(fv.gainBits * 3.2));
-    let seg = ""; for (let i = 0; i < 5; i++) seg += `<i class="${i < n ? "on" : ""}"></i>`;
+    const v = Math.min(1, fv.gainBits * 0.64);
     return `<div class="vet-row ${tested ? "done" : ""}">
       <div class="v-label"><b>${esc(LOCUS_FRIENDLY[l] ?? l)}</b>${fact ? `<div class="meta">${dot(fact.confidence, fact.certain)} ${esc(fact.text.replace(/^[^:]+: /, ""))}</div>` : ""}</div>
-      <div class="v-fore"><span class="meter" title="how much you'd learn">${seg}</span> ${esc(fv.text)}</div>
+      <div class="v-fore">${learnMeter(v, learnWord(v), { label: "how much you'd learn" })}<div class="meta">${esc(fv.text)}</div></div>
       <div class="v-act">${tested ? `<span class="tag ok">Tested ✓</span>` : `<button class="primary" data-test="${esc(chosen.id)}:${l}" ${state.money < VET_FEE ? "disabled" : ""}>Test · ${VET_FEE}</button>`}</div>
     </div>`;
   }).join("");
@@ -155,7 +154,7 @@ export function fairHtml(state: GameState, view: View): string {
     return `<div class="fair-row ${on ? "on" : ""}">
       ${portrait(view, s, "sm")}
       <div class="f-name">${chip(state, s)}<div class="meta">${esc(traitWords(state, s).find((t) => (cat === "fine" ? t.label === "Wool" : cat === "heavy" ? t.label === "Fleece" : cat === "big" ? t.label === "Build" : false))?.text ?? `${s.phenotype["colour"]}${s.phenotype["pattern"] === "spotted" ? ", spotted" : ""}`)}</div></div>
-      <div class="f-odds"><div><span class="lbl">Rosette</span> ${pips(state, f.pWin, oddsLabel(f.pWin))}</div><div><span class="lbl">Placed</span> ${pips(state, f.pPlace, oddsLabel(f.pPlace))}</div><div class="meta">${esc(f.text)}</div></div>
+      <div class="f-odds"><div class="f-odd"><span class="f-lbl">🏵 Win</span> ${pips(state, f.pWin, `First place: ${oddsLabel(f.pWin)}`, true)}</div><div class="f-odd"><span class="f-lbl">🎗 Top three</span> ${pips(state, f.pPlace, `Top three: ${oddsLabel(f.pPlace)}`)}</div><div class="meta">${esc(f.text)}</div></div>
       <div class="f-act">${on ? `<button class="secondary" data-enter="none">Withdraw</button>` : `<button class="primary" data-enter="${esc(s.id)}">Enter</button>`}</div>
     </div>`;
   }).join("");
