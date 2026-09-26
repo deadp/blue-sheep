@@ -49,7 +49,7 @@ export function jointTransmission(child: Joint, dam: Joint, sire: Joint): number
   return p;
 }
 
-/** Find one fully consistent assignment by backtracking over the support (parents before children). */
+/** Find one fully consistent assignment over the support (parents before children), with conflict-directed backjumping. */
 function initialAssignment(inds: Individual[], support: Support, rng: Rng): number[] {
   const { all, cand } = support;
   const index = new Map(all.map((j, i) => [j, i]));
@@ -58,37 +58,48 @@ function initialAssignment(inds: Individual[], support: Support, rng: Rng): numb
   const kidsOf = new Map<string, Individual[]>();
   for (const ind of inds) for (const p of [ind.dam, ind.sire]) if (p && pos.has(p)) kidsOf.set(p, [...(kidsOf.get(p) ?? []), ind]);
 
-  const consistent = (i: number, j: Joint): boolean => {
+  /** Positions of already-assigned relatives that rule out joint `j` for individual i (empty = consistent). */
+  const conflicts = (i: number, j: Joint): number[] => {
     const ind = inds[i]!;
-    const parentJ = (id: string | null): Joint | null => { if (!id || !pos.has(id)) return null; const a = assign[pos.get(id)!]!; return a < 0 ? null : all[a]!; };
-    const d = parentJ(ind.dam), s = parentJ(ind.sire);
-    if (d && s && jointTransmission(j, d, s) === 0) return false;
+    const at = (id: string | null): number => (id && pos.has(id) ? pos.get(id)! : -1);
+    const J = (p: number): Joint | null => (p < 0 || assign[p]! < 0 ? null : all[assign[p]!]!);
+    const dp = at(ind.dam), sp = at(ind.sire);
+    const d = J(dp), s = J(sp);
+    if (d && s && jointTransmission(j, d, s) === 0) return [dp, sp];
     for (const kid of kidsOf.get(ind.id) ?? []) {
-      const kj = parentJ(kid.id);
+      const kp = at(kid.id), kj = J(kp);
       if (!kj) continue;
-      const mateId = kid.dam === ind.id ? kid.sire : kid.dam;
-      const m = parentJ(mateId);
+      const mp = at(kid.dam === ind.id ? kid.sire : kid.dam), m = J(mp);
       if (!m) continue;
       const ok = kid.dam === ind.id ? jointTransmission(kj, j, m) : jointTransmission(kj, m, j);
-      if (ok === 0) return false;
+      if (ok === 0) return [kp, mp];
     }
-    return true;
+    return [];
   };
-  const order = inds.map((_, i) => i);
-  const rec = (k: number): boolean => {
-    if (k === order.length) return true;
-    const i = order[k]!;
-    const options = [...cand.get(inds[i]!.id)!];
+  // Conflict-directed backjumping: on a dead end, jump straight back to the most recent
+  // relative involved, instead of chronological backtracking (exponential on deep pedigrees).
+  const conf: Set<number>[] = inds.map(() => new Set<number>());
+  const SUCCESS = -1, NONE = -2;
+  const rec = (k: number): number => {
+    if (k === inds.length) return SUCCESS;
+    conf[k] = new Set<number>();
+    const options = [...cand.get(inds[k]!.id)!];
     for (let n = options.length - 1; n > 0; n--) { const m = rng.int(n + 1); [options[n], options[m]] = [options[m]!, options[n]!]; }
     for (const j of options) {
-      if (!consistent(i, j)) continue;
-      assign[i] = index.get(j)!;
-      if (rec(k + 1)) return true;
-      assign[i] = -1;
+      const c = conflicts(k, j);
+      if (c.length) { for (const x of c) conf[k]!.add(x); continue; }
+      assign[k] = index.get(j)!;
+      const r = rec(k + 1);
+      if (r === SUCCESS) return SUCCESS;
+      assign[k] = -1;
+      if (r !== k) return r;
     }
-    return false;
+    if (conf[k]!.size === 0) return NONE;
+    const h = Math.max(...conf[k]!);
+    for (const x of conf[k]!) if (x !== h) conf[h]!.add(x);
+    return h;
   };
-  if (!rec(0)) throw new Error("no consistent genotype assignment exists");
+  if (rec(0) !== SUCCESS) throw new Error("no consistent genotype assignment exists");
   return assign;
 }
 

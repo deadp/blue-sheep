@@ -1,0 +1,73 @@
+/** Prices, wool income, buying and selling, and the money floor. */
+import { BUY_MARKUP, COLOUR_VALUE, LAMB_PRICE_FACTOR, SHEEP_BASE_PRICE, WOOL_PRICE } from "./config.js";
+import { addLog, flockSheep, isAdult } from "./state.js";
+import type { GameState, Sheep } from "./types.js";
+
+export { WOOL_PRICE };
+
+/** What the trader pays for a sheep. Pass the current season to value lambs at their lower price. */
+export function sheepValue(s: Sheep, season?: number): number {
+  const colour = String(s.phenotype["colour"]);
+  const fine = Math.max(0, 26 - Number(s.phenotype["fineness"])) * 2;
+  const heavy = Math.max(0, Number(s.phenotype["fleeceWeight"]) - 4) * 3;
+  const v = SHEEP_BASE_PRICE + (COLOUR_VALUE[colour] ?? 0) + fine + heavy + s.rosettes.length * 10;
+  const lamb = season !== undefined && !isAdult(s, season) ? LAMB_PRICE_FACTOR : 1;
+  return Math.max(5, Math.round(v * lamb));
+}
+
+/** What the trader asks for a sheep on the market. */
+export function buyPrice(s: Sheep): number {
+  return Math.round(sheepValue(s) * BUY_MARKUP) + (s.sex === "ram" ? 10 : 0);
+}
+
+/** @deprecated v1 name; use buyPrice. */
+export const ramPrice = buyPrice;
+
+/** Fibre-diameter multiplier on wool price: 20 µm → 2×, 30 µm → 1×. */
+export function finenessMultiplier(microns: number): number {
+  return Math.max(0.5, Math.min(2, (30 - microns) / 10 + 1));
+}
+
+/** Coins from one adult's fleece this season. */
+export function woolIncome(s: Sheep, boomColour: string | null = null): number {
+  const colour = String(s.phenotype["colour"]);
+  const kg = Number(s.phenotype["fleeceWeight"]);
+  const boom = boomColour !== null && colour === boomColour ? 2 : 1;
+  return Math.round(kg * (WOOL_PRICE[colour] ?? 2) * finenessMultiplier(Number(s.phenotype["fineness"])) * boom);
+}
+
+/** Remove a sheep from the flock and every plan / entry that mentions it. */
+export function removeFromFlock(state: GameState, id: string): void {
+  state.flock = state.flock.filter((x) => x !== id);
+  for (const [ewe, ram] of Object.entries(state.plans)) if (ewe === id || ram === id) delete state.plans[ewe];
+  if (state.fair.entry === id) state.fair.entry = null;
+}
+
+export function sellSheep(state: GameState, id: string): number {
+  const s = state.sheep[id];
+  if (!s || !state.flock.includes(id)) throw new Error("That sheep isn't in your flock.");
+  const price = sheepValue(s, state.season);
+  removeFromFlock(state, id);
+  state.money += price;
+  addLog(state, `Sold ${s.name} for ${price} coins.`);
+  return price;
+}
+
+export function buySheep(state: GameState, id: string): void {
+  const s = state.sheep[id];
+  if (!s || !state.market.includes(id)) throw new Error("That sheep isn't for sale any more.");
+  const price = buyPrice(s);
+  if (state.money < price) throw new Error(`${s.name} costs ${price} coins — you have ${state.money}.`);
+  if (state.flock.length >= state.flockCap) throw new Error("Your fields are full. Sell a sheep first.");
+  state.money -= price;
+  state.market = state.market.filter((x) => x !== id);
+  state.flock.push(id);
+  addLog(state, `Bought ${s.name} for ${price} coins.`);
+}
+
+/** The sheep the trader takes first when coins or room run out: lowest value, then oldest. */
+export function cheapestSheep(state: GameState, exclude: Set<string> = new Set()): Sheep | null {
+  const pool = flockSheep(state).filter((s) => !exclude.has(s.id));
+  if (!pool.length) return null;
+  return pool.sort((a, b) => sheepValue(a, state.season) - sheepValue(b, state.season) || a.born - b.born || Number(a.id.slice(1)) - Number(b.id.slice(1)))[0]!;
+}

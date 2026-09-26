@@ -8,7 +8,11 @@
     "test:watch": "vitest",
     "dev": "npm run dev -w @blue-sheep/game",
     "build": "npm run build -w @blue-sheep/game",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "probe": "node packages/game/probe/run.mjs",
+    "probe:quick": "node packages/game/probe/run.mjs smoke",
+    "probe:shot": "node packages/game/probe/shot.mjs",
+    "serve": "node packages/game/probe/serve.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

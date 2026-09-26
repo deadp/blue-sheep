@@ -1,0 +1,175 @@
+/** The season turn: events, shearing, lambing, fair, feed, ageing, orders, discoveries, acts. */
+import { mate } from "@blue-sheep/genetics";
+import { checkActAdvance, checkEnding } from "./acts.js";
+import { plannedPairings } from "./breeding.js";
+import { FEED_COST, MAX_AGE } from "./config.js";
+import { cheapestSheep, removeFromFlock, sheepValue, woolIncome } from "./economy.js";
+import { announceEvent, applyEvent } from "./events.js";
+import { judgeFair } from "./fair.js";
+import { forecastCross } from "./forecast.js";
+import { updateDiscoveries } from "./knowledge.js";
+import { generateOrders, settleOrders, shearForOrders } from "./orders.js";
+import {
+  addLog, addSheep, ageOf, flockSheep, genomeOf, isAdult, isIll, nextFairSeason, fairCategoryFor, pedigreeOf,
+  restockMarket, rngOf, saveRng, seasonLabel, seasonOfYear, species,
+} from "./state.js";
+import type { CrossForecast, GameState, SeasonReport, Sheep } from "./types.js";
+import { departVisitingRam, offerVisitingRam } from "./visitor.js";
+
+/** Chance of twins for a mating whose lambs would have inbreeding f. */
+export function twinChance(f: number): number {
+  return Math.max(0.05, 0.25 - f * 0.5);
+}
+
+/** Advance one season. Mutates state; deterministic for a given serialized state. */
+export function advanceSeason(state: GameState): SeasonReport {
+  const t = state.season;
+  const rng = rngOf(state);
+  const pairings = plannedPairings(state);
+  const forecastsSeen: Record<string, CrossForecast> = {};
+  const matings: Record<string, string> = {};
+  for (const p of pairings) { forecastsSeen[p.ewe] = forecastCross(state, p.ewe, p.ram); matings[p.ewe] = p.ram; }
+  const report: SeasonReport = {
+    season: t, endedSeason: t, lambs: [], income: 0, feed: 0, deaths: [], autoSold: [], discoveries: [], orderResults: [],
+    newOrders: [], fairResult: null, event: null, announced: null, actAdvanced: null, endingReached: false, messages: [],
+    forecastsSeen, matings,
+  };
+  const say = (m: string) => { report.messages.push(m); };
+  const wasIll = flockSheep(state).filter((s) => s.ill);
+  const baseline = { ordersFilled: state.stats.ordersFilled, fairsWon: state.stats.fairsWon };
+
+  // 1. Winter event (announced last season).
+  const ev = applyEvent(state, rng);
+  if (ev) { report.event = ev.record; say(ev.record.text); if (ev.lost) report.deaths.push(state.sheep[ev.lost]!); }
+
+  // 2. Shearing: accepted wool orders first, the rest goes to market.
+  const shorn = shearForOrders(state);
+  report.orderResults.push(...shorn.results);
+  for (const r of shorn.results) say(r.text);
+  for (const s of flockSheep(state)) {
+    if (isAdult(s, t) && !shorn.used.has(s.id)) report.income += woolIncome(s, ev?.boomColour ?? null);
+  }
+  state.money += report.income;
+  state.stats.coinsEarned += report.income;
+
+  // 3. Lambing. A valid planned mating always gives at least one lamb unless the ewe is ill.
+  const ped = pedigreeOf(state);
+  for (const p of pairings) {
+    const ewe = state.sheep[p.ewe]!, ram = state.sheep[p.ram]!;
+    if (!state.flock.includes(ewe.id)) continue;
+    if (isIll(ewe, t)) { say(`${ewe.name} was too poorly to lamb this season.`); continue; }
+    const f = ped.offspringInbreeding(ewe.id, ram.id);
+    const litter = rng.chance(twinChance(f)) ? 2 : 1;
+    const born: Sheep[] = [];
+    for (let i = 0; i < litter; i++) {
+      const genome = mate(genomeOf(ewe), genomeOf(ram), species.map, rng);
+      const lamb = addSheep(state, rng, {
+        sex: rng.chance(0.5) ? "ewe" : "ram", born: t + 1, dam: ewe.id, sire: ram.id, genome, inbreeding: f, origin: "bred",
+      });
+      state.flock.push(lamb.id);
+      report.lambs.push(lamb);
+      born.push(lamb);
+      state.stats.lambsBorn += 1;
+      if (lamb.phenotype["colour"] === "blue") {
+        state.stats.bluesBorn += 1;
+        if (!state.achievements.includes("blue")) {
+          state.achievements.push("blue");
+          say(`${lamb.name} is BLUE! The first blue lamb on the farm.`);
+        }
+      }
+    }
+    say(litter === 2
+      ? `${ewe.name} had twins by ${ram.name}: ${born.map((b) => b.name).join(" and ")}.`
+      : `${ewe.name} had a ${String(born[0]!.phenotype["colour"])} ${born[0]!.sex} lamb by ${ram.name}: ${born[0]!.name}.`);
+    if (f >= 0.125) say(`${born.map((b) => b.name).join(" and ")} ${born.length > 1 ? "are" : "is"} a little small — the parents are close kin.`);
+  }
+
+  // 4. The fair.
+  if (state.unlocks.includes("fair")) {
+    if (t === state.fair.nextSeason) {
+      report.fairResult = judgeFair(state, rng);
+      say(report.fairResult.text);
+    } else if (t > state.fair.nextSeason) {
+      state.fair.nextSeason = nextFairSeason(t + 1);
+      state.fair.category = fairCategoryFor(state.fair.nextSeason);
+      state.fair.entry = null;
+    }
+  }
+
+  // 5. Feed. Coins never go below zero: the trader takes the cheapest sheep instead.
+  const perHead = FEED_COST * (ev?.feedMultiplier ?? 1);
+  const newborn = new Set(report.lambs.map((l) => l.id));
+  const eaters = () => state.flock.filter((id) => !newborn.has(id)).length;
+  while (state.money < eaters() * perHead) {
+    const s = cheapestSheep(state, newborn) ?? cheapestSheep(state);
+    if (!s) break;
+    const price = sheepValue(s, state.season);
+    removeFromFlock(state, s.id);
+    state.money += price;
+    report.autoSold.push({ id: s.id, name: s.name, price, reason: "feed" });
+    say(`There wasn't enough for feed, so the trader took ${s.name} for ${price} coins.`);
+  }
+  report.feed = Math.min(state.money, eaters() * perHead);
+  state.money -= report.feed;
+
+  // 6. Ageing.
+  state.season = t + 1;
+  report.season = state.season;
+  for (const s of flockSheep(state)) {
+    if (ageOf(s, state.season) >= MAX_AGE) {
+      removeFromFlock(state, s.id);
+      report.deaths.push(s);
+      say(`${s.name} passed away peacefully of old age.`);
+    }
+  }
+
+  // 7. Room: the flock may not stay over its cap.
+  while (state.flock.length > state.flockCap) {
+    const s = cheapestSheep(state)!;
+    const price = sheepValue(s, state.season);
+    removeFromFlock(state, s.id);
+    state.money += price;
+    report.autoSold.push({ id: s.id, name: s.name, price, reason: "room" });
+    say(`There wasn't room for everyone, so the trader took ${s.name} for ${price} coins.`);
+  }
+
+  // 8. Plans resolve; last season's invalids are well again.
+  state.plans = {};
+  for (const s of wasIll) { s.ill = false; if (state.flock.includes(s.id)) say(`${s.name} is feeling better.`); }
+
+  // 9. Orders: hand over matching sheep, fail overdue ones.
+  const settled = settleOrders(state);
+  report.orderResults.push(...settled);
+  for (const r of settled) say(r.text);
+
+  // 10. What did we learn?
+  report.discoveries = updateDiscoveries(state);
+
+  // 11. Acts and the ending.
+  report.actAdvanced = checkActAdvance(state, baseline);
+  if (report.actAdvanced) say(`“${report.actAdvanced.line}”`);
+  report.endingReached = checkEnding(state);
+
+  // 12. Visitors, events, market, new orders for the new season.
+  departVisitingRam(state);
+  if (state.unlocks.includes("visitor") && seasonOfYear(state.season) === 0) offerVisitingRam(state, rng);
+  report.announced = announceEvent(state, rng);
+  if (report.announced) say(report.announced.text);
+  restockMarket(state, rng);
+  report.newOrders = generateOrders(state, rng);
+
+  saveRng(state, rng);
+  addLog(state, `${seasonLabel(state.season)}: ${report.lambs.length} lamb(s), +${report.income} coins from wool, ${report.feed} on feed.`);
+  for (const m of report.messages) addLog(state, m);
+  return report;
+}
+
+export function renameSheep(state: GameState, id: string, name: string): void {
+  const s = state.sheep[id];
+  if (!s || (!state.flock.includes(id) && !state.market.includes(id))) throw new Error("I can't find that sheep.");
+  const clean = name.replace(/\s+/g, " ").trim().slice(0, 24);
+  if (!clean) throw new Error("A sheep needs a name.");
+  const old = s.name;
+  s.name = clean;
+  addLog(state, `${old} is now called ${clean}.`);
+}

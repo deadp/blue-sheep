@@ -1,0 +1,990 @@
+// WorldView — Three.js isometric farm diorama (CONTRACTS.md §4).
+// Pure presentation: driven entirely by WorldSnapshot, no game logic imports.
+import * as THREE from "three";
+import { buildFarm, HOTSPOT_DEF, HOTSPOT_LABEL, ZONES, GROUND, type FarmBuild, type Rect } from "./farm.js";
+import { buildRig, buildSheepGeos, disposeGeos, sheepKey, SheepMaterials, type SheepGeos, type SheepRig } from "./sheepMesh.js";
+import { Markers, type MarkerKind } from "./markers.js";
+import { NIGHT, PORTRAIT_BG, SEASONS } from "./palette.js";
+import { hashString, mulberry32 } from "./rng.js";
+import type { Hotspot, HoverTarget, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
+
+export type { Hotspot, HoverTarget, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
+
+const HOTSPOTS: readonly Hotspot[] = ["house", "shed", "market", "vet", "fairground", "mailbox"];
+const CAM_DIR = new THREE.Vector3(1, 0.98, 1).normalize();
+const CAM_DIST = 90;
+const TRANSITION_MS = 1200;
+const FOCUS_MS = 600;
+
+type Mode = "idle" | "walk" | "graze";
+
+interface Ent {
+  ws: WorldSheep;
+  key: string;
+  geos: SheepGeos;
+  rig: SheepRig;
+  zone: Zone;
+  x: number;
+  z: number;
+  heading: number;
+  tx: number;
+  tz: number;
+  mode: Mode;
+  timer: number;
+  phase: number;
+  pitch: number;
+  yaw: number;
+  radius: number;
+  spawn: number; // <0 = done, else seconds since spawn
+  removing: number; // <0 = alive, else seconds since removal
+  marker: THREE.Mesh | null;
+  markerKind: MarkerKind | null;
+  ring: THREE.Mesh | null;
+  selected: boolean;
+}
+
+interface Sparkle {
+  mesh: THREE.InstancedMesh;
+  vel: Float32Array;
+  origin: THREE.Vector3;
+  t: number;
+}
+
+const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+function backOut(t: number): number {
+  const c1 = 2.2, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+export class WorldView {
+  private readonly container: HTMLElement;
+  private readonly handlers: WorldHandlers;
+  private readonly reduced: boolean;
+  private readonly seed: number;
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene = new THREE.Scene();
+  private readonly camera: THREE.OrthographicCamera;
+  private readonly sun: THREE.DirectionalLight;
+  private readonly hemi: THREE.HemisphereLight;
+  private readonly farm: FarmBuild;
+  private readonly sheepMats = new SheepMaterials();
+  private readonly markers = new Markers();
+  private readonly ents = new Map<string, Ent>();
+  private readonly dying: Ent[] = [];
+  private readonly sparkles: Sparkle[] = [];
+  private readonly label: HTMLDivElement;
+  private readonly skyCanvas: HTMLCanvasElement;
+  private readonly skyTex: THREE.CanvasTexture;
+  private readonly stars: [number, number, number][] = [];
+  private particles: THREE.InstancedMesh | null = null;
+  private particleData: Float32Array = new Float32Array(0);
+  private snap: WorldSnapshot | null = null;
+  private season = -1;
+  private night = 0;
+  private nightAnim: { from: number; to: number; t0: number; resolve: () => void } | null = null;
+  private target = new THREE.Vector3(0, 0, 0);
+  private focusAnim: { from: THREE.Vector3; to: THREE.Vector3; t0: number } | null = null;
+  private zoom = 1;
+  private hover: HoverTarget = null;
+  private pointer: { x: number; y: number } | null = null;
+  private hoverDirty = false;
+  private drag: { x: number; y: number; tx: number; tz: number; moved: boolean; id: number } | null = null;
+  private readonly raycaster = new THREE.Raycaster();
+  private lastT = -1;
+  private time = 0;
+  private disposed = false;
+  private readonly resizeObs: ResizeObserver | null;
+  private readonly frustum = { cx: 0, cy: 0, half: 20 };
+  // portrait
+  private readonly pScene = new THREE.Scene();
+  private readonly pCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 50);
+  private readonly pGround: THREE.Mesh;
+  private readonly pRTs = new Map<number, THREE.WebGLRenderTarget>();
+  private readonly pCache = new Map<string, string>();
+  private readonly pCanvas = document.createElement("canvas");
+
+  constructor(container: HTMLElement, handlers: WorldHandlers, opts: WorldOptions = {}) {
+    this.container = container;
+    this.handlers = handlers;
+    this.reduced = !!opts.reducedMotion;
+    this.seed = opts.seed ?? 7;
+
+    if (getComputedStyle(container).position === "static") container.style.position = "relative";
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: false, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    const cv = this.renderer.domElement;
+    cv.style.display = "block";
+    cv.style.width = "100%";
+    cv.style.height = "100%";
+    cv.style.touchAction = "none";
+    cv.dataset.world3d = "1";
+    container.appendChild(cv);
+
+    this.label = document.createElement("div");
+    Object.assign(this.label.style, {
+      position: "absolute", left: "0", top: "0", pointerEvents: "none", display: "none",
+      transform: "translate(-50%, -100%)", padding: "3px 10px", borderRadius: "10px",
+      background: "rgba(255, 250, 240, 0.94)", color: "#4a3b35", font: "600 13px system-ui, sans-serif",
+      boxShadow: "0 2px 6px rgba(60, 40, 30, 0.25)", whiteSpace: "nowrap", zIndex: "2",
+    } satisfies Partial<CSSStyleDeclaration>);
+    this.label.className = "w3d-label";
+    container.appendChild(this.label);
+
+    // camera
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 260);
+    this.placeCamera();
+
+    // lights
+    this.hemi = new THREE.HemisphereLight("#ffffff", "#88aa77", 1.2);
+    this.scene.add(this.hemi);
+    this.sun = new THREE.DirectionalLight("#ffffff", 2.4);
+    this.sun.position.set(-16, 34, 16);
+    this.sun.castShadow = true;
+    const sc = this.sun.shadow.camera;
+    sc.left = -32; sc.right = 32; sc.top = 28; sc.bottom = -28; sc.near = 1; sc.far = 110;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -0.0008;
+    this.sun.shadow.normalBias = 0.04;
+    this.sun.shadow.radius = 3;
+    this.scene.add(this.sun, this.sun.target);
+
+    // sky
+    this.skyCanvas = document.createElement("canvas");
+    this.skyCanvas.width = 1024;
+    this.skyCanvas.height = 512;
+    this.skyTex = new THREE.CanvasTexture(this.skyCanvas);
+    this.skyTex.colorSpace = THREE.SRGBColorSpace;
+    this.scene.background = this.skyTex;
+    const srng = mulberry32(this.seed ^ 0x51a7);
+    for (let i = 0; i < 160; i++) this.stars.push([srng() * 1024, srng() * 330, 0.6 + srng() * 0.9]);
+
+    // farm
+    this.farm = buildFarm(mulberry32(this.seed), true);
+    this.scene.add(this.farm.group);
+
+    // portrait scene
+    this.pScene.add(new THREE.HemisphereLight("#fffaf0", "#b8a890", 1.5));
+    const pl = new THREE.DirectionalLight("#fff4e4", 2.2);
+    pl.position.set(3, 6, 5);
+    this.pScene.add(pl);
+    this.pGround = new THREE.Mesh(new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: "#000000", transparent: true, opacity: 0.08, depthWrite: false }));
+    this.pGround.position.y = 0.01;
+    this.pScene.add(this.pGround);
+
+    this.applySeason(0);
+
+    // events
+    cv.addEventListener("pointermove", this.onPointerMove);
+    cv.addEventListener("pointerdown", this.onPointerDown);
+    cv.addEventListener("pointerup", this.onPointerUp);
+    cv.addEventListener("pointerleave", this.onPointerLeave);
+    cv.addEventListener("pointercancel", this.onPointerLeave);
+    cv.addEventListener("wheel", this.onWheel, { passive: false });
+    this.resizeObs = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => this.resize()) : null;
+    this.resizeObs?.observe(container);
+
+    this.resize();
+    this.renderer.setAnimationLoop(this.frame);
+  }
+
+  // ------------------------------------------------------------------ public API
+
+  setSnapshot(s: WorldSnapshot): void {
+    if (this.disposed) return;
+    const first = this.snap === null;
+    this.snap = s;
+    if (s.season !== this.season) this.applySeason(s.season);
+    const L = this.farm.layers;
+    L.paddock2.visible = !!s.paddock2;
+    L.meadow.visible = !s.paddock2;
+    L.mainGate.visible = !s.paddock2;
+    L.bunting.visible = !!s.fairToday;
+    L.visitor.visible = !!s.visitorPresent;
+
+    const seen = new Set<string>();
+    for (const ws of s.sheep) {
+      if (seen.has(ws.id)) continue;
+      seen.add(ws.id);
+      let e = this.ents.get(ws.id);
+      const zone: Zone = ZONES[ws.zone] ? ws.zone : "paddock";
+      if (!e) {
+        e = this.createEnt(ws, zone, !first && !this.reduced);
+        this.ents.set(ws.id, e);
+      } else {
+        const key = sheepKey(ws);
+        if (key !== e.key) this.rebuildEnt(e, ws);
+        if (zone !== e.zone) {
+          e.zone = zone;
+          const p = this.findSpot(zone, ws.id, e);
+          e.x = e.tx = p[0];
+          e.z = e.tz = p[1];
+          e.mode = "idle";
+          e.timer = 1 + Math.random();
+          if (!this.reduced) e.spawn = 0;
+        }
+        e.ws = ws;
+        e.rig.body.material = this.sheepMats.woolFor(ws.fineness);
+      }
+      this.applyMarker(e, s);
+    }
+    for (const [id, e] of this.ents) {
+      if (seen.has(id)) continue;
+      this.ents.delete(id);
+      if (this.hover?.kind === "sheep" && this.hover.id === id) this.setHover(null);
+      if (this.reduced) this.destroyEnt(e);
+      else {
+        e.removing = 0;
+        this.dying.push(e);
+      }
+    }
+    this.syncTransforms();
+  }
+
+  portrait(sheep: WorldSheep, px = 96): string {
+    if (this.disposed) return "";
+    px = Math.max(16, Math.min(512, Math.round(px)));
+    const key = `${sheepKey(sheep)}|${sheep.fineness < 21 ? 0 : sheep.fineness < 28 ? 1 : 2}|${px}`;
+    const hit = this.pCache.get(key);
+    if (hit) return hit;
+
+    const ent = this.ents.get(sheep.id);
+    const owned = !(ent && ent.key === sheepKey(sheep));
+    const geos = owned ? buildSheepGeos(sheep) : ent!.geos;
+    const rig = buildRig(geos, sheep, this.sheepMats, false);
+    rig.root.remove(rig.pick);
+    rig.root.remove(rig.markerAnchor);
+    rig.root.rotation.y = 0.42;
+    this.pScene.add(rig.root);
+    rig.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(rig.root);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const half = Math.max(size.x, size.y, size.z) * 0.62;
+    const cam = this.pCam;
+    cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
+    cam.updateProjectionMatrix();
+    cam.position.copy(center).add(new THREE.Vector3(0.25, 0.42, 1).normalize().multiplyScalar(20));
+    cam.lookAt(center);
+    this.pGround.scale.set(size.x * 0.6, 1, size.z * 0.7);
+    this.pGround.position.x = center.x;
+    this.pGround.position.z = center.z;
+
+    let rt = this.pRTs.get(px);
+    if (!rt) {
+      rt = new THREE.WebGLRenderTarget(px, px, { samples: 4 });
+      rt.texture.colorSpace = THREE.SRGBColorSpace;
+      this.pRTs.set(px, rt);
+    }
+    const bg = PORTRAIT_BG[sheep.colour] ?? "#dde8f0";
+    this.pScene.background = new THREE.Color(bg);
+    const prev = this.renderer.getRenderTarget();
+    const prevShadow = this.renderer.shadowMap.autoUpdate;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.setRenderTarget(rt);
+    this.renderer.render(this.pScene, cam);
+    const buf = new Uint8Array(px * px * 4);
+    this.renderer.readRenderTargetPixels(rt, 0, 0, px, px, buf);
+    this.renderer.setRenderTarget(prev);
+    this.renderer.shadowMap.autoUpdate = prevShadow;
+    this.pScene.remove(rig.root);
+    if (owned) disposeGeos(geos);
+
+    const c = this.pCanvas;
+    if (c.width !== px) { c.width = px; c.height = px; }
+    const ctx = c.getContext("2d")!;
+    const img = ctx.createImageData(px, px);
+    const row = px * 4;
+    for (let y = 0; y < px; y++) img.data.set(buf.subarray((px - 1 - y) * row, (px - y) * row), y * row);
+    ctx.putImageData(img, 0, 0);
+    const url = c.toDataURL("image/png");
+    if (this.pCache.size > 300) this.pCache.clear();
+    this.pCache.set(key, url);
+    return url;
+  }
+
+  celebrate(id: string): void {
+    const e = this.ents.get(id);
+    if (!e || this.disposed) return;
+    const n = 34;
+    const mesh = new THREE.InstancedMesh(this.markers.sparkGeo, this.markers.sparkMat, n);
+    const cols = ["#ffd257", "#ff9cc2", "#ffffff", "#8fd0ff", "#b9f09a"];
+    const c = new THREE.Color();
+    const vel = new Float32Array(n * 3);
+    const rng = mulberry32(hashString(id) + Math.floor(this.time * 1000));
+    for (let i = 0; i < n; i++) {
+      c.set(cols[i % cols.length]!);
+      mesh.setColorAt(i, c);
+      const a = rng() * Math.PI * 2, sp = 0.8 + rng() * 1.6;
+      vel[i * 3] = Math.cos(a) * sp;
+      vel[i * 3 + 1] = 2.5 + rng() * 2.5;
+      vel[i * 3 + 2] = Math.sin(a) * sp;
+    }
+    const origin = new THREE.Vector3(e.x, e.geos.dims.top * e.geos.dims.rootScale, e.z);
+    const sp: Sparkle = { mesh, vel, origin, t: this.reduced ? 0.45 : 0 };
+    this.updateSparkle(sp);
+    this.scene.add(mesh);
+    this.sparkles.push(sp);
+    if (this.reduced) {
+      window.setTimeout(() => this.removeSparkle(sp), 1200);
+    }
+  }
+
+  focus(id: string | Hotspot): void {
+    let to: THREE.Vector3 | null = null;
+    const e = this.ents.get(id);
+    if (e) to = new THREE.Vector3(e.x, 0, e.z);
+    else if ((HOTSPOTS as readonly string[]).includes(id)) {
+      const a = HOTSPOT_DEF[id as Hotspot].anchor;
+      to = new THREE.Vector3(a[0], 0, a[2]);
+    }
+    if (!to) return;
+    this.clampTarget(to);
+    if (this.reduced) {
+      this.target.copy(to);
+      this.focusAnim = null;
+      this.placeCamera();
+    } else {
+      this.focusAnim = { from: this.target.clone(), to, t0: performance.now() };
+    }
+  }
+
+  sleepTransition(): Promise<void> {
+    return this.animateNight(1);
+  }
+
+  dawn(): Promise<void> {
+    return this.animateNight(0);
+  }
+
+  resize(): void {
+    if (this.disposed) return;
+    const w = Math.max(1, this.container.clientWidth);
+    const h = Math.max(1, this.container.clientHeight);
+    this.renderer.setSize(w, h, false);
+    this.fitFrustum(w / h);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.renderer.setAnimationLoop(null);
+    this.resizeObs?.disconnect();
+    const cv = this.renderer.domElement;
+    cv.removeEventListener("pointermove", this.onPointerMove);
+    cv.removeEventListener("pointerdown", this.onPointerDown);
+    cv.removeEventListener("pointerup", this.onPointerUp);
+    cv.removeEventListener("pointerleave", this.onPointerLeave);
+    cv.removeEventListener("pointercancel", this.onPointerLeave);
+    cv.removeEventListener("wheel", this.onWheel);
+    for (const e of this.ents.values()) this.destroyEnt(e);
+    for (const e of this.dying) this.destroyEnt(e);
+    this.ents.clear();
+    this.dying.length = 0;
+    for (const s of [...this.sparkles]) this.removeSparkle(s);
+    if (this.particles) { this.particles.geometry.dispose(); (this.particles.material as THREE.Material).dispose(); }
+    this.farm.dispose();
+    this.sheepMats.dispose();
+    this.markers.dispose();
+    this.skyTex.dispose();
+    for (const rt of this.pRTs.values()) rt.dispose();
+    this.pGround.geometry.dispose();
+    (this.pGround.material as THREE.Material).dispose();
+    this.renderer.dispose();
+    cv.remove();
+    this.label.remove();
+  }
+
+  /** Not part of the contract: render stats for the dev harness. */
+  debugStats(): { calls: number; triangles: number; sheep: number; geometries: number } {
+    const i = this.renderer.info;
+    return { calls: i.render.calls, triangles: i.render.triangles, sheep: this.ents.size, geometries: i.memory.geometries };
+  }
+
+  // ------------------------------------------------------------------ sheep entities
+
+  private createEnt(ws: WorldSheep, zone: Zone, pop: boolean): Ent {
+    const geos = buildSheepGeos(ws);
+    const rig = buildRig(geos, ws, this.sheepMats, true);
+    const rng = mulberry32(hashString(ws.id) ^ this.seed);
+    const e: Ent = {
+      ws, key: geos.key, geos, rig, zone, x: 0, z: 0,
+      heading: Math.PI / 4 + (rng() < 0.5 ? 0 : Math.PI) + (rng() - 0.5) * 1.1,
+      tx: 0, tz: 0, mode: "idle", timer: rng() * 3, phase: rng() * 10, pitch: 0, yaw: 0,
+      radius: geos.dims.L * geos.dims.rootScale * 0.95 + 0.12,
+      spawn: pop ? 0 : -1, removing: -1, marker: null, markerKind: null, ring: null, selected: false,
+    };
+    const p = this.findSpot(zone, ws.id, e);
+    e.x = e.tx = p[0];
+    e.z = e.tz = p[1];
+    this.scene.add(rig.root);
+    return e;
+  }
+
+  private rebuildEnt(e: Ent, ws: WorldSheep): void {
+    const old = e.rig;
+    this.scene.remove(old.root);
+    disposeGeos(e.geos);
+    e.geos = buildSheepGeos(ws);
+    e.key = e.geos.key;
+    e.rig = buildRig(e.geos, ws, this.sheepMats, true);
+    e.radius = e.geos.dims.L * e.geos.dims.rootScale * 0.95 + 0.12;
+    if (e.marker) { e.rig.markerAnchor.add(e.marker); }
+    if (e.ring) { e.rig.root.add(e.ring); e.ring.scale.setScalar(e.geos.dims.L * 1.25 + 0.2); }
+    this.scene.add(e.rig.root);
+    if (!this.reduced) e.spawn = 0;
+  }
+
+  private destroyEnt(e: Ent): void {
+    this.scene.remove(e.rig.root);
+    disposeGeos(e.geos);
+  }
+
+  private applyMarker(e: Ent, s: WorldSnapshot): void {
+    const m = e.ws.marker ?? null;
+    const kind: MarkerKind | null = m === "planned" || m === "new" || m === "ill" || m === "rosette" ? m : null;
+    if (kind !== e.markerKind) {
+      if (e.marker) e.marker.removeFromParent();
+      e.marker = kind ? this.markers.make(kind) : null;
+      if (e.marker) e.rig.markerAnchor.add(e.marker);
+      e.markerKind = kind;
+    }
+    const sel = s.selected === e.ws.id || m === "selected";
+    if (sel && !e.ring) {
+      e.ring = new THREE.Mesh(this.markers.ringGeo, this.markers.ringMat);
+      e.ring.position.y = 0.05;
+      e.ring.scale.setScalar(e.geos.dims.L * 1.25 + 0.2);
+      e.ring.renderOrder = 1;
+      e.rig.root.add(e.ring);
+    } else if (!sel && e.ring) {
+      e.ring.removeFromParent();
+      e.ring = null;
+    }
+    e.selected = sel;
+    this.applyOutline(e);
+  }
+
+  private applyOutline(e: Ent): void {
+    const hovered = this.hover?.kind === "sheep" && this.hover.id === e.ws.id;
+    e.rig.outline.visible = e.selected || hovered;
+    e.rig.outline.material = e.selected ? this.sheepMats.outlineSel : this.sheepMats.outlineHover;
+  }
+
+  private insetRect(zone: Zone, r: number): Rect {
+    const z = ZONES[zone];
+    const cx = (z.x0 + z.x1) / 2, cz = (z.z0 + z.z1) / 2;
+    return {
+      x0: Math.min(cx, z.x0 + r), x1: Math.max(cx, z.x1 - r),
+      z0: Math.min(cz, z.z0 + r), z1: Math.max(cz, z.z1 - r),
+    };
+  }
+
+  /** Best-candidate spot in a zone: far from the sheep already there. Deterministic per id. */
+  private findSpot(zone: Zone, id: string, self: Ent): [number, number] {
+    const r = this.insetRect(zone, self.radius);
+    const rng = mulberry32(hashString(id) ^ (this.seed * 7919) ^ hashString(zone));
+    const others: Ent[] = [];
+    for (const e of this.ents.values()) if (e !== self && e.zone === zone && e.removing < 0) others.push(e);
+    let best: [number, number] = [(r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2];
+    let bestD = -Infinity;
+    for (let i = 0; i < 24; i++) {
+      const x = r.x0 + (r.x1 - r.x0) * rng();
+      const z = r.z0 + (r.z1 - r.z0) * rng();
+      let d = Infinity;
+      for (const o of others) d = Math.min(d, Math.hypot(o.x - x, o.z - z) - o.radius - self.radius);
+      if (d > bestD) { bestD = d; best = [x, z]; }
+    }
+    return best;
+  }
+
+  private stepSheep(e: Ent, dt: number): void {
+    e.timer -= dt;
+    if (e.timer <= 0) {
+      const r = Math.random();
+      if (r < 0.38) { e.mode = "graze"; e.timer = 3 + Math.random() * 5; }
+      else if (r < 0.62) { e.mode = "idle"; e.timer = 2 + Math.random() * 3; }
+      else {
+        const rect = this.insetRect(e.zone, e.radius);
+        const reach = 3.5;
+        e.tx = clamp(e.x + (Math.random() - 0.5) * 2 * reach, rect.x0, rect.x1);
+        e.tz = clamp(e.z + (Math.random() - 0.5) * 2 * reach, rect.z0, rect.z1);
+        e.mode = "walk";
+        e.timer = 9;
+      }
+    }
+    let pitch = 0, yaw = 0;
+    const t = this.time + e.phase;
+    if (e.mode === "walk") {
+      const dx = e.tx - e.x, dz = e.tz - e.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 0.15) { e.mode = "idle"; e.timer = 1.5 + Math.random() * 2; }
+      else {
+        const desired = Math.atan2(-dz, dx);
+        const turn = wrapAngle(desired - e.heading);
+        e.heading += clamp(turn, -2.2 * dt, 2.2 * dt);
+        const speed = (e.ws.adult ? 0.6 : 0.8) * (Math.abs(turn) < 0.6 ? 1 : 0.15);
+        e.x += Math.cos(e.heading) * speed * dt;
+        e.z -= Math.sin(e.heading) * speed * dt;
+      }
+      pitch = -0.08 + 0.05 * Math.sin(t * 8);
+    } else if (e.mode === "graze") {
+      pitch = -0.8 + 0.07 * Math.sin(t * 9);
+    } else {
+      pitch = 0.06 * Math.sin(t * 1.3);
+      yaw = 0.4 * Math.sin(t * 0.45);
+    }
+    const k = 1 - Math.exp(-dt * 5);
+    e.pitch += (pitch - e.pitch) * k;
+    e.yaw += (yaw - e.yaw) * k;
+  }
+
+  private separate(list: Ent[]): void {
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i]!;
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j]!;
+        if (a.zone !== b.zone) continue;
+        const dx = b.x - a.x, dz = b.z - a.z;
+        const d = Math.hypot(dx, dz);
+        const min = a.radius + b.radius;
+        if (d >= min) continue;
+        const push = (min - d) * 0.5 * 0.5;
+        const nx = d > 1e-4 ? dx / d : 1, nz = d > 1e-4 ? dz / d : 0;
+        a.x -= nx * push; a.z -= nz * push;
+        b.x += nx * push; b.z += nz * push;
+      }
+    }
+    for (const e of list) {
+      const r = this.insetRect(e.zone, e.radius);
+      e.x = clamp(e.x, r.x0, r.x1);
+      e.z = clamp(e.z, r.z0, r.z1);
+    }
+  }
+
+  private syncTransforms(): void {
+    for (const e of this.ents.values()) this.poseEnt(e);
+    for (const e of this.dying) this.poseEnt(e);
+  }
+
+  private poseEnt(e: Ent): void {
+    const { rig, geos } = e;
+    const d = geos.dims;
+    const t = this.time + e.phase;
+    rig.root.position.set(e.x, 0, e.z);
+    rig.root.rotation.y = e.heading;
+    let s = d.rootScale;
+    if (e.spawn >= 0) s *= backOut(clamp(e.spawn / 0.45, 0, 1));
+    if (e.removing >= 0) s *= 1 - ease(clamp(e.removing / 0.35, 0, 1));
+    rig.root.scale.setScalar(Math.max(0.001, s));
+    if (!this.reduced) {
+      const walking = e.mode === "walk";
+      rig.bob.position.y = walking ? Math.abs(Math.sin(t * 8)) * 0.05 : 0;
+      const br = Math.sin(t * 2.2) * 0.018;
+      rig.body.scale.set(1, 1 + br, 1 + br * 0.7);
+      rig.headPivot.rotation.z = e.pitch;
+      rig.headPivot.rotation.y = e.yaw;
+    }
+    if (e.marker) {
+      const bobY = this.reduced ? 0 : Math.sin(this.time * 2.4 + e.phase) * 0.08;
+      e.marker.position.y = bobY;
+      // counter the body heading so the marker faces the camera, with a slow sway
+      e.marker.rotation.y = -e.heading + Math.PI / 4 + (this.reduced ? 0 : Math.sin(this.time * 1.2 + e.phase) * 0.5);
+      e.marker.scale.setScalar(0.66 / (e.ws.adult ? 1 : 0.7));
+    }
+    if (e.ring && !this.reduced) {
+      const p = 1 + Math.sin(this.time * 3) * 0.04;
+      e.ring.scale.setScalar((d.L * 1.25 + 0.2) * p);
+    }
+  }
+
+  // ------------------------------------------------------------------ season / night
+
+  private applySeason(season: number): void {
+    const s = clamp(Math.round(season), 0, 3);
+    this.season = s;
+    const L = SEASONS[s]!;
+    this.farm.groundMat.color.set(L.grass);
+    this.farm.foliageMat.color.set(L.foliage);
+    this.farm.meadowMat.color.set(L.meadow);
+    this.farm.pondMat.color.set(L.pond);
+    this.farm.layers.snow.visible = s === 3;
+    this.farm.layers.spring.visible = s === 0;
+    this.farm.layers.flowers.visible = s <= 1;
+    this.farm.layers.autumn.visible = s === 2;
+    this.buildParticles(L.particles, s);
+    this.updateLighting();
+  }
+
+  private updateLighting(): void {
+    const L = SEASONS[this.season] ?? SEASONS[0]!;
+    const n = this.night;
+    const lerpC = (a: string, b: string) => new THREE.Color(a).lerp(new THREE.Color(b), n);
+    this.sun.color.copy(lerpC(L.sun, NIGHT.sun));
+    this.sun.intensity = L.sunI + (NIGHT.sunI - L.sunI) * n;
+    this.hemi.color.copy(lerpC(L.hemiSky, NIGHT.hemiSky));
+    this.hemi.groundColor.copy(lerpC(L.hemiGround, NIGHT.hemiGround));
+    this.hemi.intensity = L.hemiI + (NIGHT.hemiI - L.hemiI) * n;
+    this.farm.windowMat.emissiveIntensity = n * 1.4;
+    this.drawSky(lerpC(L.skyTop, NIGHT.skyTop), lerpC(L.skyBottom, NIGHT.skyBottom), n);
+  }
+
+  private drawSky(top: THREE.Color, bottom: THREE.Color, n: number): void {
+    const ctx = this.skyCanvas.getContext("2d")!;
+    const g = ctx.createLinearGradient(0, 0, 0, 512);
+    g.addColorStop(0, `#${top.getHexString(THREE.SRGBColorSpace)}`);
+    g.addColorStop(1, `#${bottom.getHexString(THREE.SRGBColorSpace)}`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 1024, 512);
+    if (n > 0.02) {
+      ctx.fillStyle = `rgba(255, 250, 225, ${(n * 0.9).toFixed(3)})`;
+      for (const [x, y, r] of this.stars) {
+        ctx.fillRect(x, y, r, r * 1.6);
+      }
+    }
+    this.skyTex.needsUpdate = true;
+  }
+
+  private animateNight(to: number): Promise<void> {
+    if (this.nightAnim) {
+      this.nightAnim.resolve();
+      this.nightAnim = null;
+    }
+    if (this.reduced || this.disposed) {
+      this.night = to;
+      this.updateLighting();
+      if (!this.disposed) this.render();
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.nightAnim = { from: this.night, to, t0: performance.now(), resolve };
+    });
+  }
+
+  private buildParticles(cols: string[], season: number): void {
+    if (this.particles) {
+      this.scene.remove(this.particles);
+      this.particles.geometry.dispose();
+      (this.particles.material as THREE.Material).dispose();
+      this.particles = null;
+    }
+    if (!cols.length) return;
+    const snow = season === 3;
+    const n = snow ? 70 : season === 2 ? 34 : 22;
+    const geo = snow ? new THREE.OctahedronGeometry(0.07, 0) : new THREE.PlaneGeometry(0.24, 0.16);
+    const mat = snow
+      ? new THREE.MeshBasicMaterial({ color: "#ffffff" })
+      : new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+    const mesh = new THREE.InstancedMesh(geo, mat, n);
+    mesh.frustumCulled = false;
+    const rng = mulberry32(this.seed * 31 + season);
+    const c = new THREE.Color();
+    // per particle: x, y, z, fall speed, sway phase, spin
+    this.particleData = new Float32Array(n * 6);
+    for (let i = 0; i < n; i++) {
+      c.set(cols[i % cols.length]!);
+      mesh.setColorAt(i, c);
+      const o = i * 6;
+      this.particleData[o] = GROUND.x0 + rng() * (GROUND.x1 - GROUND.x0);
+      this.particleData[o + 1] = rng() * 9;
+      this.particleData[o + 2] = GROUND.z0 + rng() * (GROUND.z1 - GROUND.z0);
+      this.particleData[o + 3] = snow ? 0.7 + rng() * 0.5 : 0.35 + rng() * 0.35;
+      this.particleData[o + 4] = rng() * 10;
+      this.particleData[o + 5] = 0.5 + rng() * 2;
+    }
+    this.particles = mesh;
+    this.scene.add(mesh);
+    this.stepParticles(0);
+  }
+
+  private readonly _m = new THREE.Matrix4();
+  private readonly _q = new THREE.Quaternion();
+  private readonly _e = new THREE.Euler();
+  private readonly _p = new THREE.Vector3();
+  private readonly _s = new THREE.Vector3(1, 1, 1);
+
+  private stepParticles(dt: number): void {
+    const mesh = this.particles;
+    if (!mesh) return;
+    const D = this.particleData;
+    for (let i = 0; i < mesh.count; i++) {
+      const o = i * 6;
+      D[o + 1]! -= D[o + 3]! * dt;
+      if (D[o + 1]! < 0) D[o + 1] = 9;
+      const ph = D[o + 4]! + this.time * 0.9;
+      this._p.set(D[o]! + Math.sin(ph) * 0.6, D[o + 1]!, D[o + 2]! + Math.cos(ph * 0.7) * 0.4);
+      this._e.set(ph * D[o + 5]!, ph * 0.5, ph * 0.3);
+      this._q.setFromEuler(this._e);
+      this._m.compose(this._p, this._q, this._s);
+      mesh.setMatrixAt(i, this._m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // ------------------------------------------------------------------ sparkles
+
+  private updateSparkle(sp: Sparkle): void {
+    const t = sp.t;
+    const life = clamp(t / 1.2, 0, 1);
+    const scale = life < 0.15 ? life / 0.15 : 1 - ease((life - 0.15) / 0.85);
+    for (let i = 0; i < sp.mesh.count; i++) {
+      const vx = sp.vel[i * 3]!, vy = sp.vel[i * 3 + 1]!, vz = sp.vel[i * 3 + 2]!;
+      this._p.set(sp.origin.x + vx * t * 0.8, sp.origin.y + vy * t - 2.6 * t * t, sp.origin.z + vz * t * 0.8);
+      this._e.set(t * 6 + i, t * 4, 0);
+      this._q.setFromEuler(this._e);
+      const s = Math.max(0.001, scale * (0.7 + (i % 3) * 0.3));
+      this._m.compose(this._p, this._q, new THREE.Vector3(s, s, s));
+      sp.mesh.setMatrixAt(i, this._m);
+    }
+    sp.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  private removeSparkle(sp: Sparkle): void {
+    const i = this.sparkles.indexOf(sp);
+    if (i >= 0) this.sparkles.splice(i, 1);
+    this.scene.remove(sp.mesh);
+    sp.mesh.dispose();
+  }
+
+  // ------------------------------------------------------------------ camera
+
+  private placeCamera(): void {
+    this.camera.position.copy(this.target).addScaledVector(CAM_DIR, CAM_DIST);
+    this.camera.lookAt(this.target);
+    this.camera.updateMatrixWorld();
+  }
+
+  private fitFrustum(aspect: number): void {
+    const saved = this.target.clone();
+    this.target.set(0, 0, 0);
+    this.placeCamera();
+    const inv = this.camera.matrixWorldInverse;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const v = new THREE.Vector3();
+    for (const x of [GROUND.x0, GROUND.x1]) for (const z of [GROUND.z0, GROUND.z1]) for (const y of [-1.8, 4.6]) {
+      v.set(x, y, z).applyMatrix4(inv);
+      minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
+      minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+    }
+    const half = Math.max((maxY - minY) / 2, (maxX - minX) / 2 / aspect) * 1.04;
+    this.frustum.cx = (minX + maxX) / 2;
+    this.frustum.cy = (minY + maxY) / 2;
+    this.frustum.half = half;
+    const c = this.camera;
+    c.left = this.frustum.cx - half * aspect;
+    c.right = this.frustum.cx + half * aspect;
+    c.top = this.frustum.cy + half;
+    c.bottom = this.frustum.cy - half;
+    c.zoom = this.zoom;
+    c.updateProjectionMatrix();
+    this.target.copy(saved);
+    this.placeCamera();
+  }
+
+  private clampTarget(t: THREE.Vector3): void {
+    const k = 1 - 1 / this.zoom;
+    const lx = 5 + 18 * k, lz = 4 + 14 * k;
+    t.x = clamp(t.x, -lx, lx);
+    t.z = clamp(t.z, -lz, lz);
+    t.y = 0;
+  }
+
+  // ------------------------------------------------------------------ input
+
+  private ndc(ev: PointerEvent | WheelEvent): THREE.Vector2 {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  }
+
+  private pick(ndc: THREE.Vector2): HoverTarget {
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const list: THREE.Object3D[] = [];
+    for (const e of this.ents.values()) list.push(e.rig.pick);
+    for (const p of this.farm.hotspotPicks) list.push(p);
+    const hits = this.raycaster.intersectObjects(list, false);
+    for (const h of hits) {
+      const sid = h.object.userData.sheepId as string | undefined;
+      if (sid && this.ents.has(sid)) return { kind: "sheep", id: sid };
+      const hs = h.object.userData.hotspot as Hotspot | undefined;
+      if (hs) return { kind: "hotspot", id: hs };
+    }
+    return null;
+  }
+
+  private setHover(t: HoverTarget): void {
+    const same = (a: HoverTarget, b: HoverTarget) => (a === null && b === null) || (!!a && !!b && a.kind === b.kind && a.id === b.id);
+    if (same(t, this.hover)) return;
+    const prev = this.hover;
+    this.hover = t;
+    if (prev?.kind === "sheep") { const e = this.ents.get(prev.id); if (e) this.applyOutline(e); }
+    if (prev?.kind === "hotspot") (this.farm.hotspotMeshes[prev.id].material as THREE.MeshLambertMaterial).emissiveIntensity = 0;
+    if (t?.kind === "sheep") { const e = this.ents.get(t.id); if (e) this.applyOutline(e); }
+    if (t?.kind === "hotspot") (this.farm.hotspotMeshes[t.id].material as THREE.MeshLambertMaterial).emissiveIntensity = 0.28;
+    this.renderer.domElement.style.cursor = t ? "pointer" : "";
+    if (t) {
+      this.label.textContent = t.kind === "sheep" ? this.ents.get(t.id)?.ws.name ?? "" : HOTSPOT_LABEL[t.id];
+      this.label.style.display = "block";
+    } else this.label.style.display = "none";
+    this.handlers.onHover?.(t);
+  }
+
+  private updateLabel(): void {
+    const t = this.hover;
+    if (!t) return;
+    const v = new THREE.Vector3();
+    if (t.kind === "sheep") {
+      const e = this.ents.get(t.id);
+      if (!e) return;
+      const d = e.geos.dims;
+      v.set(e.x, (d.top + (e.marker ? 0.7 : 0.1)) * d.rootScale + 0.2, e.z);
+    } else {
+      const a = HOTSPOT_DEF[t.id].anchor;
+      v.set(a[0], a[1], a[2]);
+    }
+    v.project(this.camera);
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    this.label.style.left = `${((v.x + 1) / 2) * w}px`;
+    this.label.style.top = `${((1 - v.y) / 2) * h}px`;
+  }
+
+  private readonly onPointerMove = (ev: PointerEvent): void => {
+    this.pointer = { x: ev.clientX, y: ev.clientY };
+    this.hoverDirty = true;
+    const d = this.drag;
+    if (d && d.id === ev.pointerId) {
+      const dx = ev.clientX - d.x, dy = ev.clientY - d.y;
+      if (!d.moved && Math.hypot(dx, dy) > 5) d.moved = true;
+      if (d.moved) {
+        const h = this.container.clientHeight || 1;
+        const upp = (this.frustum.half * 2) / this.camera.zoom / h; // world units per px
+        const right = new THREE.Vector3(1, 0, -1).normalize();
+        const fwd = new THREE.Vector3(-1, 0, -1).normalize();
+        const sinE = CAM_DIR.y;
+        const t = new THREE.Vector3(d.tx, 0, d.tz)
+          .addScaledVector(right, -dx * upp)
+          .addScaledVector(fwd, (dy * upp) / sinE);
+        this.clampTarget(t);
+        this.target.copy(t);
+        this.focusAnim = null;
+        this.placeCamera();
+      }
+    }
+  };
+
+  private readonly onPointerDown = (ev: PointerEvent): void => {
+    if (ev.button !== 0) return;
+    this.drag = { x: ev.clientX, y: ev.clientY, tx: this.target.x, tz: this.target.z, moved: false, id: ev.pointerId };
+    try { this.renderer.domElement.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
+  };
+
+  private readonly onPointerUp = (ev: PointerEvent): void => {
+    const d = this.drag;
+    this.drag = null;
+    try { this.renderer.domElement.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
+    if (!d || d.moved || ev.button !== 0) return;
+    const hit = this.pick(this.ndc(ev));
+    if (!hit) return;
+    if (hit.kind === "sheep") this.handlers.onSheep(hit.id);
+    else this.handlers.onHotspot(hit.id);
+  };
+
+  private readonly onPointerLeave = (): void => {
+    this.pointer = null;
+    this.drag = null;
+    this.setHover(null);
+  };
+
+  private readonly onWheel = (ev: WheelEvent): void => {
+    ev.preventDefault();
+    const z = clamp(this.zoom * Math.exp(-ev.deltaY * 0.0015), 1, 3.2);
+    if (z === this.zoom) return;
+    // zoom towards the cursor
+    const before = this.groundAt(this.ndc(ev));
+    this.zoom = z;
+    this.camera.zoom = z;
+    this.camera.updateProjectionMatrix();
+    const after = this.groundAt(this.ndc(ev));
+    if (before && after) this.target.add(before.sub(after));
+    this.clampTarget(this.target);
+    this.focusAnim = null;
+    this.placeCamera();
+  };
+
+  private groundAt(ndc: THREE.Vector2): THREE.Vector3 | null {
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const out = new THREE.Vector3();
+    return this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out);
+  }
+
+  // ------------------------------------------------------------------ loop
+
+  private readonly frame = (): void => {
+    if (this.disposed) return;
+    const now = performance.now();
+    const dt = this.lastT < 0 ? 0 : Math.min(0.05, (now - this.lastT) / 1000);
+    this.lastT = now;
+
+    if (this.nightAnim) {
+      const a = this.nightAnim;
+      const p = clamp((now - a.t0) / TRANSITION_MS, 0, 1);
+      this.night = a.from + (a.to - a.from) * ease(p);
+      this.updateLighting();
+      if (p >= 1) {
+        this.nightAnim = null;
+        a.resolve();
+      }
+    }
+    if (this.focusAnim) {
+      const f = this.focusAnim;
+      const p = clamp((now - f.t0) / FOCUS_MS, 0, 1);
+      this.target.lerpVectors(f.from, f.to, ease(p));
+      this.placeCamera();
+      if (p >= 1) this.focusAnim = null;
+    }
+
+    if (!this.reduced) {
+      this.time += dt;
+      const live = [...this.ents.values()];
+      for (const e of live) {
+        if (e.spawn >= 0) { e.spawn += dt; if (e.spawn > 0.45) e.spawn = -1; }
+        this.stepSheep(e, dt);
+      }
+      this.separate(live);
+      for (let i = this.dying.length - 1; i >= 0; i--) {
+        const e = this.dying[i]!;
+        e.removing += dt;
+        if (e.removing > 0.35) { this.destroyEnt(e); this.dying.splice(i, 1); }
+      }
+      this.stepParticles(dt);
+      for (let i = 0; i < this.farm.smoke.length; i++) {
+        const m = this.farm.smoke[i]!;
+        const p = (this.time * 0.25 + i / this.farm.smoke.length) % 1;
+        m.position.set(-14.8 + p * 0.9 + Math.sin(this.time + i) * 0.1, 6.0 + p * 3.2, -12.9 - p * 0.4);
+        m.scale.setScalar(0.6 + p * 1.2 - (p > 0.75 ? (p - 0.75) * 5.2 : 0));
+      }
+      for (const sp of [...this.sparkles]) {
+        sp.t += dt;
+        if (sp.t >= 1.2) this.removeSparkle(sp);
+        else this.updateSparkle(sp);
+      }
+    }
+    this.syncTransforms();
+
+    if (this.hoverDirty && this.pointer && !this.drag?.moved) {
+      this.hoverDirty = false;
+      const r = this.renderer.domElement.getBoundingClientRect();
+      this.setHover(this.pick(new THREE.Vector2(((this.pointer.x - r.left) / r.width) * 2 - 1, -((this.pointer.y - r.top) / r.height) * 2 + 1)));
+    }
+    this.updateLabel();
+    this.render();
+  };
+
+  private render(): void {
+    this.renderer.render(this.scene, this.camera);
+  }
+}
