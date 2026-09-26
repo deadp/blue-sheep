@@ -5,9 +5,12 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-1. **Care mechanics** (playtester, 2026-09-27). Familiarity/happiness per animal
-   that grows with interaction and raises wool quality and price; dog tiers with
-   different protection per predator (fox, wolf); farm cat vs a mice problem.
+Nothing in progress. Next: the v3 design pass below.
+
+Follow-ups noticed during the care pass (not started):
+- The blind farmer's blue hunt (act 1) now takes a median of 10 seasons, up from 8.
+  Early lamb losses to foxes, mice and the RNG shift play a part. Worth a look in the
+  next balance pass.
 
 ## After that: v3 direction (user, 2026-09-27)
 
@@ -77,6 +80,11 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- Care mechanics (abffc28): fondness hearts per sheep, dog and cat (greet once a
+  season, 1-coin treats, slow fade; up to +15% wool); three dogs (terrier,
+  collie, Maremma) against foxes and the new wolf; Mog the cat against mice;
+  animal card; predator and mice forecasts; save migration (dog becomes collie).
 
 - Cute sheep + unique procedural voices (dce5d99).
 - Tutorial with two sheep and Old Tom (ad84ef4).
