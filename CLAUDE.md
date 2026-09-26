@@ -5,6 +5,7 @@ Blue Sheep is a cozy, turn-based sheep-breeding game built on realistic genetics
 ## Docs: read before you edit
 
 - `docs/DESIGN.md`: design intent and the validated forecast-panel pattern. Read it before changing gameplay or UI.
+- `docs/DESIGN-v3.md`: the v3 design (pigment colours, breeds, woolshed crafting, market demand, native birds, river valley, Golden Fleece) and its phased plan. Read it before any v3 phase; it is the target where it and CONTRACTS.md disagree.
 - `docs/CONTRACTS.md`: the v1 build contracts, including the core API, world API, panel names, deep links, `window.__game` and the probe spec. Read the section for the path you are about to touch.
 - `docs/AGENT-WORKFLOW.md`: why verification works the way it does here.
 - `packages/game/probe/README.md`: the probe harness, and how to add a probe.

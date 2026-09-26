@@ -5,7 +5,10 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-Nothing in progress. Next: the v3 design pass below.
+Nothing in progress. The v3 design pass is written: **`docs/DESIGN-v3.md`** (pigment genetics,
+breeds and wool types, fantasy wools, woolshed pipeline, items, demand meters, birds, river
+valley, chapters and the Golden Fleece, save migration, ten implementation phases, open
+questions). Next: the user answers its §14 open questions, then Phase 1.
 
 Follow-ups noticed during the care pass (not started):
 - The blind farmer's blue hunt (act 1) now takes a median of 10 seasons, up from 8.
@@ -70,7 +73,7 @@ Decisions (user, 2026-09-27, round 3):
   next-to-skin knits, Icelandic → lopapeysa, Romney → hardy outer knits,
   Drysdale → rugs). Right wool for the pattern gives better quality and price.
 
-Planned approach: a design pass first (docs/DESIGN-v3.md: genetics model for
+Design written: `docs/DESIGN-v3.md` (2026-09-27). Planned approach: a design pass first (docs/DESIGN-v3.md: genetics model for
 continuous colour, fibre pipeline, item/recipe/pattern tree, market saturation,
 magic + native birds, act structure without blue as the sole goal, migration of
 existing saves), then implementation in phases, each probe-verified.
