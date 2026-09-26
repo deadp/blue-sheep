@@ -29,10 +29,41 @@ User's words, lightly edited:
 - **Map:** not a square. Organic island/valley shape.
 - **3D models:** refresh later, possibly via Blender (MCP or scripted).
 
+Decisions (user, 2026-09-27, round 1):
+
+- **Colour genetics:** pigment genes. A few loci each add a dose of red,
+  yellow or blue pigment; plus a white-masking locus and a dilution locus.
+  Colours blend like paint; hidden white still teaches carriers; intensity is
+  continuous.
+- **Magic:** befriended native bird helpers via the trust system, each with one
+  gentle power (e.g. kākā scouts the market, ruru guards at night, tūī makes
+  sheep happier, kiwi finds rare plants).
+- **Crafting:** seasonal workshop queue in the woolshed (card → spin → knit
+  over seasons), each job showing a forecast of quality and price.
+- **Tone:** warm kiwiana humour (gumboots, woolsheds, A&P show, pavlova,
+  chatty neighbours). Māori words used respectfully for birds and places; no
+  retelling of sacred stories.
+
+Decisions (user, 2026-09-27, round 2):
+
+- **Fantasy wools:** rare recessive/mutation genes, detected via the vet or
+  surprise lambs, then bred into lines (like blue).
+- **Market:** per-item demand meter; selling lowers it, it refills each
+  season; villager orders and the fair spike demand.
+- **Map:** river valley — rolling hills, a creek, a native-bush edge where the
+  birds live, paddocks expanding up the slopes.
+- **Long-term goal:** win the Golden Fleece at the A&P show by completing a
+  collection (a rainbow of sheep colours, a fantasy wool, a signature knitted
+  piece). Blue is one milestone.
+
 Planned approach: a design pass first (docs/DESIGN-v3.md: genetics model for
 continuous colour, fibre pipeline, item/recipe/pattern tree, market saturation,
 magic + native birds, act structure without blue as the sole goal, migration of
 existing saves), then implementation in phases, each probe-verified.
+
+## Later
+
+- **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
 
