@@ -1,0 +1,78 @@
+/* Style lab round 2: base, felt textures and the map overlay. Throwaway. */
+html, body { margin: 0; padding: 0; }
+body.r2 { width: 1280px; height: 800px; overflow: hidden; font: 600 16px/1.25 Nunito, sans-serif; color: #5b4f4b; }
+#app { position: relative; width: 1280px; height: 800px; overflow: hidden; }
+#stage { position: absolute; inset: 0; background: linear-gradient(180deg, #dde9ee 0%, #eef2ec 45%, #f6f1e6 100%); }
+#world { position: absolute; inset: 0; width: 1280px; height: 800px; display: block; }
+.fx { position: absolute; inset: 0; pointer-events: none; }
+/* rim mist only: a soft frame at the very edges, clear in the middle */
+.fx.rim { background: radial-gradient(ellipse 72% 70% at 50% 54%, transparent 70%, rgba(246, 244, 238, .7) 100%); }
+#ui { position: absolute; inset: 0; }
+#ui * { box-sizing: border-box; }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; }
+.ic { width: 1em; height: 1em; flex: none; overflow: visible; }
+.ic .l { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
+.ic .f, .ic .f2 { fill: var(--fill, currentColor); }
+.ic .f2 { fill: var(--fill2, #f0a9a0); }
+.ic .d { fill: currentColor; }
+.idx { padding: 30px; font: 16px/1.8 Nunito, sans-serif; }
+
+/* felt: a warm wool base with fibre speckle (procedural SVG noise) */
+.felt {
+  --felt-c: #f7efe2;
+  background-color: var(--felt-c);
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .28  0 0 0 0 .24  0 0 0 1.1 -.5'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.02 .09' numOctaves='2' seed='9' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 -.35'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>");
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 3px 0 rgba(120, 95, 80, .12), 0 8px 18px rgba(80, 70, 60, .18);
+}
+.stitch { outline: 2px dashed rgba(140, 110, 95, .55); outline-offset: -7px; }
+
+/* ---------------------------------------------------------------- map overlay */
+.mplaque { position: absolute; left: 26px; bottom: 22px; width: 330px; padding: 16px 22px 16px; border-radius: 22px; }
+.mplaque small { font: 800 12px/1 Nunito, sans-serif; letter-spacing: .14em; opacity: .65; }
+.mplaque h1 { margin: 4px 0 2px; font: 400 36px/1 "Patrick Hand", cursive; color: #4f4441; }
+.mplaque p { margin: 0 0 10px; font-size: 14px; line-height: 1.3; opacity: .85; }
+.steps { display: flex; gap: 14px; font: 800 13px/1 Nunito, sans-serif; text-transform: uppercase; letter-spacing: .06em; }
+.step { display: inline-flex; align-items: center; gap: 6px; opacity: .45; }
+.step i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; }
+.step.done { opacity: .7; } .step.done i { background: #b9d7a9; border-color: #8fb77e; }
+.step.on { opacity: 1; color: #4f4441; } .step.on i { background: #f0a9a0; border-color: #d98b7c; box-shadow: 0 0 0 3px rgba(240, 169, 160, .3); }
+
+.ptag { position: absolute; transform: translate(-50%, -100%) rotate(var(--r)); display: flex; flex-direction: column; align-items: center; }
+.ptag .string { width: 2px; height: 0; }
+.ptag-in { --felt-c: #fbf4e6; position: relative; display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; align-items: center; column-gap: 8px;
+  padding: 8px 14px 8px 24px; border-radius: 6px 14px 14px 6px; clip-path: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 50%);
+  outline: 1.5px dashed rgba(194, 87, 74, .5); outline-offset: -4px; }
+.ptag-in .hole { position: absolute; left: 9px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: #d7cbb8; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .25); }
+.ptag-in .how { grid-row: 1 / span 2; font-size: 30px; color: #6b5a55; --fill: #f1d36e; --fill2: #d98b7c; }
+.ptag-in .pr { display: inline-flex; align-items: center; gap: 4px; font: 800 19px/1 Nunito, sans-serif; color: #b24f43; }
+.ptag-in .pr .ic { font-size: 18px; --fill: #f1d36e; color: #8a6d3b; }
+.ptag-in small { font: 700 12px/1.1 Nunito, sans-serif; opacity: .8; white-space: nowrap; }
+.ptag:not(.soon) { opacity: .88; }
+.ptag:not(.soon) .ptag-in { --felt-c: #efe8dc; }
+
+.ntag2, .btag, .pl { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; }
+.ntag2 .felt { --felt-c: #e2f0d6; display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px 6px 10px; border-radius: 20px; outline: 1.5px dashed rgba(100, 140, 90, .6); outline-offset: -4px; }
+.ntag2 b { font: 400 20px/1 "Patrick Hand", cursive; color: #466b3e; }
+.ntag2 .ic { font-size: 20px; --fill: #f1d36e; color: #8a6d3b; }
+.btag .felt { --felt-c: #dcebd8; display: inline-flex; align-items: center; gap: 7px; padding: 6px 14px 6px 9px; border-radius: 20px; font: 700 14px/1 Nunito, sans-serif; color: #3f6547; outline: 1.5px dashed rgba(80, 130, 90, .55); outline-offset: -4px; }
+.btag .ic { font-size: 20px; --fill: #8fbf8f; color: #3f6547; }
+.pl .felt { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; font-size: 24px; outline: 1.5px dashed rgba(140, 110, 95, .55); outline-offset: -4px; --fill: #f0a9a0; color: #6b5a55; }
+
+/* ---------------------------------------------------------------- sheep compare */
+body.scene-sheep { height: auto; }
+.scene-sheep #app { height: auto; }
+.sheep-sheet { width: 1280px; padding: 10px 12px 12px; background: linear-gradient(180deg, #e7eff0, #f6f1e6); }
+.sheep-sheet h1 { margin: 2px 4px 6px; font: 400 32px/1 "Patrick Hand", cursive; color: #4f4441; }
+.srow, .farm { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.shead { width: 110px; flex: none; padding-left: 6px; }
+.shead h2 { margin: 0; font: 400 22px/1 "Patrick Hand", cursive; color: #4f4441; }
+.shead small { font-size: 12px; opacity: .75; }
+.sheep-sheet figure { position: relative; margin: 0; }
+.srow figure { width: 224px; height: 190px; overflow: hidden; border-radius: 16px; background: rgba(255, 255, 255, .45); }
+.srow img { width: 224px; height: 190px; object-fit: cover; display: block; }
+.farm figure { border-radius: 16px; overflow: hidden; background: #cfe3c0; }
+.farm img { display: block; width: 564px; height: 212px; object-fit: cover; }
+.sheep-sheet figcaption { position: absolute; left: 8px; bottom: 7px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; border-radius: 14px; background: rgba(251, 246, 236, .92); font: 700 13px/1.2 Nunito, sans-serif; }
+.sheep-sheet figcaption i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15); }

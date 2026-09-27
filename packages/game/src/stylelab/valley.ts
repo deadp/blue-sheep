@@ -9,11 +9,11 @@ import { mesh, type Mats } from "./render.js";
 import { buildSheep, type LabSheep } from "./sheep.js";
 import type { Direction } from "./styles.js";
 
-const smoothstep = (a: number, b: number, x: number) => {
+export const smoothstep = (a: number, b: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 // ---------------------------------------------------------------- layout (u, v)
 
@@ -124,7 +124,7 @@ export interface Valley {
   toWorld(u: number, v: number, y?: number): THREE.Vector3;
 }
 
-function hex(c: string | THREE.Color): THREE.Color {
+export function hex(c: string | THREE.Color): THREE.Color {
   return c instanceof THREE.Color ? c.clone() : new THREE.Color(c);
 }
 
@@ -306,7 +306,7 @@ function tileTerrain(dir: Direction, mats: Mats, rng: Rng): THREE.Object3D[] {
 
 // ---------------------------------------------------------------- props
 
-interface Kit {
+export interface Kit {
   dir: Direction;
   mats: Mats;
   rng: Rng;
@@ -314,10 +314,10 @@ interface Kit {
   add(o: THREE.Object3D): void;
 }
 
-const seg = (k: Kit, base: number) => Math.max(3, Math.round((base * k.dir.seg) / 8));
+export const seg = (k: Kit, base: number) => Math.max(3, Math.round((base * k.dir.seg) / 8));
 
 /** Place a batch built in a local frame at (u, v) facing angle `rot` (radians about Y). */
-function place(k: Kit, b: GeoBatch, u: number, v: number, rot = 0, opts: { kind?: "world" | "water"; outline?: number; y?: number } = {}): THREE.Mesh | null {
+export function place(k: Kit, b: GeoBatch, u: number, v: number, rot = 0, opts: { kind?: "world" | "water"; outline?: number; y?: number } = {}): THREE.Mesh | null {
   const geo = b.build();
   if (!geo) return null;
   const m = mesh(k.mats, geo, opts.kind ?? "world", { outline: opts.outline ?? 1 });
@@ -327,15 +327,15 @@ function place(k: Kit, b: GeoBatch, u: number, v: number, rot = 0, opts: { kind?
   return m;
 }
 
-function batch(k: Kit): GeoBatch {
+export function batch(k: Kit): GeoBatch {
   return new GeoBatch(k.dir.jitter, k.rng);
 }
 
-function blob(k: Kit, b: GeoBatch, c: string | number, r: number, p: V3, s: V3 | number = 1) {
+export function blob(k: Kit, b: GeoBatch, c: string | number, r: number, p: V3, s: V3 | number = 1) {
   b.ico(c, r, k.dir.detail, p, s, [k.rng() * 3, k.rng() * 3, k.rng() * 3]);
 }
 
-function pohutukawa(k: Kit, u: number, v: number, s = 1) {
+export function pohutukawa(k: Kit, u: number, v: number, s = 1) {
   const P = k.dir.palette, b = batch(k);
   for (const [dx, dz, lean] of [[0, 0, 0.25], [0.3, 0.2, -0.35], [-0.2, -0.3, 0.1]] as const) {
     b.cyl(P.trunk, 0.16 * s, 0.26 * s, 1.8 * s, seg(k, 6), [dx * s, 0.8 * s, dz * s], [lean, 0, lean * 0.6]);
@@ -354,7 +354,7 @@ function pohutukawa(k: Kit, u: number, v: number, s = 1) {
   place(k, b, u, v, k.rng() * 6);
 }
 
-function cabbageTree(k: Kit, u: number, v: number, s = 1) {
+export function cabbageTree(k: Kit, u: number, v: number, s = 1) {
   const P = k.dir.palette, b = batch(k);
   b.cyl(P.trunk, 0.1 * s, 0.16 * s, 2.4 * s, seg(k, 5), [0, 1.2 * s, 0]);
   const heads: V3[] = [[0.5 * s, 3.2 * s, 0.1 * s], [-0.4 * s, 3.0 * s, -0.2 * s], [0, 3.5 * s, 0]];
@@ -371,7 +371,7 @@ function cabbageTree(k: Kit, u: number, v: number, s = 1) {
   place(k, b, u, v, k.rng() * 6);
 }
 
-function ponga(k: Kit, u: number, v: number, s = 1) {
+export function ponga(k: Kit, u: number, v: number, s = 1) {
   const P = k.dir.palette, b = batch(k);
   const h = 2.6 * s;
   b.cyl(P.trunk, 0.18 * s, 0.24 * s, h, seg(k, 6), [0, h / 2, 0]);
@@ -387,7 +387,7 @@ function ponga(k: Kit, u: number, v: number, s = 1) {
   place(k, b, u, v, 0);
 }
 
-function kowhaiTree(k: Kit, u: number, v: number, s = 1) {
+export function kowhaiTree(k: Kit, u: number, v: number, s = 1) {
   const P = k.dir.palette, b = batch(k);
   b.cyl(P.trunk, 0.1 * s, 0.17 * s, 1.6 * s, seg(k, 5), [0, 0.8 * s, 0], [0.1, 0, 0.12]);
   for (let i = 0; i < 5; i++) {
@@ -398,7 +398,7 @@ function kowhaiTree(k: Kit, u: number, v: number, s = 1) {
   place(k, b, u, v, k.rng() * 6);
 }
 
-function bushClump(k: Kit, u: number, v: number, s = 1) {
+export function bushClump(k: Kit, u: number, v: number, s = 1) {
   const P = k.dir.palette, b = batch(k);
   const n = 3 + Math.floor(k.rng() * 3);
   for (let i = 0; i < n; i++) {
@@ -408,7 +408,7 @@ function bushClump(k: Kit, u: number, v: number, s = 1) {
   place(k, b, u, v, 0);
 }
 
-function flax(k: Kit, u: number, v: number, s = 1) {
+export function flax(k: Kit, u: number, v: number, s = 1) {
   const P = k.dir.palette, b = batch(k);
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * Math.PI * 2;
@@ -417,7 +417,7 @@ function flax(k: Kit, u: number, v: number, s = 1) {
   place(k, b, u, v, k.rng() * 6);
 }
 
-function tussock(k: Kit, b: GeoBatch, u: number, v: number, s = 1) {
+export function tussock(k: Kit, b: GeoBatch, u: number, v: number, s = 1) {
   const y = k.ground(u, v);
   const c = k.dir.palette.tussock;
   if (k.dir.id !== "A") {
@@ -430,9 +430,8 @@ function tussock(k: Kit, b: GeoBatch, u: number, v: number, s = 1) {
   }
 }
 
-function homestead(k: Kit) {
+export function homestead(k: Kit, u = SPOTS.homestead.u, v = SPOTS.homestead.v, rot = -0.15) {
   const P = k.dir.palette, b = batch(k);
-  const { u, v } = SPOTS.homestead;
   // villa: weatherboards, hipped iron roof, verandah
   b.box(P.wall, [5, 2.2, 3.6], [0, 1.1 + 0.2, 0]);
   b.box(P.soil, [5.2, 0.3, 3.8], [0, 0.15, 0]);
@@ -457,12 +456,11 @@ function homestead(k: Kit) {
   b.cyl("#2f3a2f", 0.1, 0.1, 0.4, 5, [-0.05, 0.5, 2.75]);
   // garden
   for (let i = 0; i < 6; i++) blob(k, b, i % 2 ? P.kowhai : P.pohutukawa, 0.28, [-2.6 + i * 0.5, 0.35, 3.6], [1, 0.8, 1]);
-  place(k, b, u, v, -0.15);
+  place(k, b, u, v, rot);
 }
 
-function woolshed(k: Kit) {
+export function woolshed(k: Kit, u = SPOTS.woolshed.u, v = SPOTS.woolshed.v, yards = true) {
   const P = k.dir.palette, b = batch(k);
-  const { u, v } = SPOTS.woolshed;
   // on piles, long red shed with a red iron gable roof and a skillion over the board
   for (let i = -3; i <= 3; i++) for (const z of [-1.6, 1.6]) b.box(P.trunk, [0.25, 0.8, 0.25], [i * 1.1, 0.4, z]);
   b.box(P.shedWall, [7.4, 2.6, 3.6], [0, 0.8 + 1.3, 0]);
@@ -477,6 +475,7 @@ function woolshed(k: Kit) {
   // ramp and yards
   b.box(P.fence, [1.2, 0.12, 2.4], [2.8, 0.45, 2.8], [-0.35, 0, 0]);
   place(k, b, u, v, 0.05);
+  if (!yards) return;
   const y = batch(k);
   const Y = [u + 0.5, u + 7, v - 5.2, v - 1.2] as const;
   fenceRect(k, y, Y, 1.1);
@@ -488,7 +487,7 @@ function woolshed(k: Kit) {
   }
 }
 
-function fenceLine(k: Kit, b: GeoBatch, a: [number, number], c: [number, number], spacing = 2.2) {
+export function fenceLine(k: Kit, b: GeoBatch, a: [number, number], c: [number, number], spacing = 2.2) {
   const P = k.dir.palette;
   const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
   const n = Math.max(1, Math.round(len / spacing));
@@ -514,7 +513,7 @@ function fenceLine(k: Kit, b: GeoBatch, a: [number, number], c: [number, number]
   }
 }
 
-function fenceRect(k: Kit, b: GeoBatch, r: readonly [number, number, number, number], spacing = 2.2, gap = false) {
+export function fenceRect(k: Kit, b: GeoBatch, r: readonly [number, number, number, number], spacing = 2.2, gap = false) {
   const [u0, u1, v0, v1] = r;
   fenceLine(k, b, [u0, v0], [u1, v0], spacing);
   fenceLine(k, b, [u1, v0], [u1, v1], spacing);
@@ -525,21 +524,19 @@ function fenceRect(k: Kit, b: GeoBatch, r: readonly [number, number, number, num
   fenceLine(k, b, [u0, v1], [u0, v0], spacing);
 }
 
-function bridge(k: Kit) {
+export function bridge(k: Kit, u = SPOTS.bridge.u, v = SPOTS.bridge.v, rot = 0, y = 0) {
   const P = k.dir.palette, b = batch(k);
-  const { u, v } = SPOTS.bridge;
   b.box(P.fence, [2.6, 0.22, 6.6], [0, 0.95, 0]);
   for (const x of [-1.25, 1.25]) {
     b.box(P.trunk, [0.12, 0.12, 6.6], [x, 1.6, 0]);
     for (const z of [-3, -1, 1, 3]) b.box(P.trunk, [0.16, 0.8, 0.16], [x, 1.3, z]);
   }
   for (const z of [-3.1, 3.1]) b.box(P.soil, [2.7, 0.6, 0.6], [0, 0.5, z]);
-  place(k, b, u, v, 0, { y: 0 });
+  place(k, b, u, v, rot, { y });
 }
 
-function showground(k: Kit) {
+export function showground(k: Kit, u = SPOTS.showground.u, v = SPOTS.showground.v, tents = true) {
   const P = k.dir.palette;
-  const { u, v } = SPOTS.showground;
   const b = batch(k);
   // two striped marquees
   const tent = (x: number, z: number, w: number, d: number) => {
@@ -549,14 +546,16 @@ function showground(k: Kit) {
     b.cyl(P.trunk, 0.05, 0.05, 1.2, 4, [x, 3.3, z]);
     b.box(P.kowhai, [0.6, 0.35, 0.03], [x + 0.3, 3.7, z]);
   };
-  tent(-2, 1.5, 4, 3);
-  tent(3.2, -1.5, 3, 2.6);
+  if (tents) {
+    tent(-2, 1.5, 4, 3);
+    tent(3.2, -1.5, 3, 2.6);
+  }
   // little grandstand
   for (let i = 0; i < 3; i++) b.box(P.wall, [4, 0.5, 0.8], [0.5, 0.25 + i * 0.5, -4 - i * 0.8]);
   b.box(P.roofRed, [4.4, 0.12, 3], [0.5, 2.6, -4.8], [-0.2, 0, 0]);
   for (const x of [-1.5, 2.5]) b.cyl(P.trunk, 0.06, 0.06, 2.6, 4, [x, 1.3, -3.6]);
   // bunting between poles
-  const poles: V3[] = [[-5, 0, 4], [0, 0, 5], [5, 0, 3.5], [6, 0, -3]];
+  const poles: V3[] = tents ? [[-5, 0, 4], [0, 0, 5], [5, 0, 3.5], [6, 0, -3]] : [];
   for (const p of poles) b.cyl(P.trunk, 0.07, 0.07, 3, 4, [p[0], 1.5, p[2]]);
   for (let i = 0; i < poles.length - 1; i++) {
     const a = poles[i]!, c = poles[i + 1]!;
@@ -570,14 +569,14 @@ function showground(k: Kit) {
   place(k, b, u, v, 0.2);
 }
 
-function mailbox(k: Kit) {
+export function mailbox(k: Kit) {
   const P = k.dir.palette, b = batch(k);
   b.box(P.trunk, [0.15, 1.1, 0.15], [0, 0.55, 0]);
   b.box(P.roofRed, [0.5, 0.4, 0.7], [0, 1.25, 0]);
   place(k, b, SPOTS.mailbox.u, SPOTS.mailbox.v, 0.3);
 }
 
-function ute(k: Kit, u: number, v: number) {
+export function ute(k: Kit, u: number, v: number) {
   const P = k.dir.palette, b = batch(k);
   const body = k.dir.id === "B" ? P.trim : k.dir.id === "D" ? "#3f8fe0" : "#e8e1cf";
   b.box(body, [1.4, 0.7, 2.8], [0, 0.65, 0]);
@@ -600,7 +599,7 @@ function toyMountains(k: Kit) {
   }
 }
 
-function clouds(k: Kit) {
+export function clouds(k: Kit) {
   if (k.dir.id === "A") return;
   const c = k.dir.id === "B" ? "#fbf1db" : "#ffffff";
   for (const [u, v, y, s] of [[-30, 30, 17, 1.2], [8, 40, 22, 1], [30, 22, 16, 0.8]] as const) {

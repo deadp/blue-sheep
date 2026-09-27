@@ -1,5 +1,6 @@
 // Style lab screenshots. Usage (repo root):
 //   node packages/game/src/stylelab/shoot.mjs [dirs] [scenes]      e.g.  ... A,B farm,card
+//   node packages/game/src/stylelab/shoot.mjs r2 [maps|ui|sheep|<shot names>]   (round 2 → shots/r2/)
 // Starts Vite on a free port, shoots style-lab.html?dir=X&scene=Y at 1280×800 in headless Chrome
 // (probe launch args), writes shots/{X}-{scene}.png, a 2×3 contact sheet per direction
 // ({X}-sheet.png) and all-farms.png, then stops Vite.
@@ -18,8 +19,9 @@ const OUT = path.join(here, "shots");
 fs.mkdirSync(OUT, { recursive: true });
 const ALL_DIRS = ["A", "B", "C", "D"];
 const ALL_SCENES = ["farm", "hud", "card", "forecast", "sheep", "label"];
-const dirs = process.argv[2] ? process.argv[2].split(",") : ALL_DIRS;
-const scenes = process.argv[3] ? process.argv[3].split(",") : ALL_SCENES;
+const R2 = process.argv[2] === "r2";
+const dirs = !R2 && process.argv[2] ? process.argv[2].split(",") : ALL_DIRS;
+const scenes = !R2 && process.argv[3] ? process.argv[3].split(",") : ALL_SCENES;
 const RESERVED = new Set([4173, 4174, 5198]);
 
 async function freePort() {
@@ -71,11 +73,55 @@ async function shoot(dir, scene) {
   console.log("wrote", path.relative(REPO_DIR, file));
 }
 
-for (const d of dirs) for (const s of scenes) await shoot(d, s);
+
+// ---------------------------------------------------------------- round 2 (DESIGN-v3 §15 item 20)
+
+const OUT2 = path.join(OUT, "r2");
+const CONCEPTS = { a: "a. River valley", b: "b. Rolling downs", c: "c. High-country station", d: "d. Coastal valley" };
+const STAGES = ["start", "mid", "late"];
+const VARIANTS = { i: "i. Felted wool", ii: "ii. Chunky knit", iii: "iii. Woven tweed" };
+const SCREENS = ["hud", "card", "forecast", "woolshed"];
+
+async function shoot2(name, query, size = { width: 1280, height: 800 }) {
+  fs.mkdirSync(OUT2, { recursive: true });
+  const ctx = await browser.newContext({ viewport: size });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+  page.on("console", (m) => { if (m.type() === "error") errors.push(`${name}: ${m.text()}`); });
+  await page.goto(`${url}/style-lab-r2.html?${query}`);
+  await page.waitForSelector('body[data-ready="1"]', { state: "attached", timeout: 180_000 });
+  await page.waitForTimeout(300);
+  const file = path.join(OUT2, `${name}.png`);
+  await page.screenshot({ path: file, fullPage: true });
+  await ctx.close();
+  console.log("wrote", path.relative(REPO_DIR, file));
+  return file;
+}
+
+async function round2(what) {
+  const want = (group, name) => what.includes(group) || what.includes(name);
+  const mapTiles = [];
+  for (const c of Object.keys(CONCEPTS)) for (const st of STAGES) {
+    const name = `map-${c}-${st}`;
+    if (want("maps", name)) await shoot2(name, `scene=map&concept=${c}&stage=${st}`);
+    mapTiles.push([path.join(OUT2, `${name}.png`), `${CONCEPTS[c]} · ${st}`]);
+  }
+  if (what.includes("maps")) await compose(path.join(OUT2, "maps-sheet.png"), mapTiles, 3, "Round 2 map concepts: how the farm grows (start · mid · late)", 1920, true);
+  for (const v of Object.keys(VARIANTS)) {
+    const tiles = [];
+    for (const s of SCREENS) {
+      const name = `ui-${v}-${s}`;
+      if (want("ui", name)) await shoot2(name, `scene=ui&variant=${v}&screen=${s}`);
+      tiles.push([path.join(OUT2, `${name}.png`), s]);
+    }
+    if (what.includes("ui")) await compose(path.join(OUT2, `ui-sheet-${v}.png`), tiles, 2, `Felt & fibre UI: ${VARIANTS[v]}`);
+  }
+  if (want("sheep", "sheep-compare")) await shoot2("sheep-compare", "scene=sheep", { width: 1280, height: 900 });
+}
 
 const b64 = (f) => `data:image/png;base64,${fs.readFileSync(f).toString("base64")}`;
-async function compose(file, tiles, cols, title) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 400 } });
+async function compose(file, tiles, cols, title, width = 1280, capTop = false) {
+  const ctx = await browser.newContext({ viewport: { width, height: 400 } });
   const page = await ctx.newPage();
   const cells = tiles.map(([f, cap]) => `<figure><img src="${fs.existsSync(f) ? b64(f) : ""}"><figcaption>${cap}</figcaption></figure>`).join("");
   await page.setContent(`<style>
@@ -83,13 +129,21 @@ async function compose(file, tiles, cols, title) {
     h1{margin:0;padding:10px 14px;font-size:20px}
     .g{display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;padding:0 6px 6px}
     figure{margin:0;position:relative}img{display:block;width:100%}
-    figcaption{position:absolute;left:8px;bottom:8px;background:rgba(43,39,36,.8);padding:3px 8px;border-radius:4px}
+    figcaption{position:absolute;left:8px;${capTop ? "top:8px" : "bottom:8px"};background:rgba(43,39,36,.8);padding:3px 8px;border-radius:4px}
   </style><h1>${title}</h1><div class="g">${cells}</div>`);
   await page.waitForTimeout(200);
   await page.screenshot({ path: file, fullPage: true });
   await ctx.close();
   console.log("wrote", path.relative(REPO_DIR, file));
 }
+
+if (R2) {
+  await round2(process.argv[3] ? process.argv[3].split(",") : ["maps", "ui", "sheep"]);
+  await cleanupAll();
+  if (errors.length) { console.error("ERRORS:\n" + errors.join("\n")); process.exit(1); }
+  process.exit(0);
+}
+for (const d of dirs) for (const s of scenes) await shoot(d, s);
 
 const NAMES = { A: "A. Farm Diary", B: "B. Woolshed Woodcut", C: "C. Misty Pastoral", D: "D. Toybox Diorama" };
 if (scenes.length === ALL_SCENES.length) {
