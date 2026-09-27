@@ -944,3 +944,46 @@ and tuning is a separate commit only if a target is badly missed.
     - (c) Something new later.
 
     *Recommend (b):* keeps the brand and tells players the setting.
+
+## 15. Resolved decisions (user, 2026-09-27) — these override anything above
+
+1. **Pigment loci:** 2 per colour (0–4 doses, 125 hues). As designed.
+2. **Dyeing:** pastel plant dyes only (the kiwi finds them), capped at intensity
+   0.3, never counting toward the Golden Fleece rainbow.
+3. **Shearing:** **spring and autumn** (twice a year), not every season. Rebalance
+   income, wool store size and the woolshed pipeline around two clips a year.
+4. **Pets and birds:** keep all; the kiwi only visits once dogs are trained and
+   the cat wears a bell (gentle conservation note).
+5. **Saves:** **no migration.** v3 starts fresh with a new save key; drop §11's
+   remap work and the "loads an old save" probe from phase 2.
+6. **Golden Fleece rainbow:** six colour families at I ≥ 0.6 alive at once
+   (fall back to a photo album only if the blind median exceeds 45 seasons).
+7. **Birds are the woolshed workforce (replaces "craft labour" and reshapes §8):**
+   befriended birds are placed at woolshed stations. Each species has a station
+   affinity and a wool affinity; fondness sets how well it works.
+   - Kākā: strong beak → carding, best on coarse/strong wools.
+   - Tūī: sings a rhythm → spinning, best on fine wools.
+   - Pīwakawaka: quick → knitting.
+   - Ruru: night shift → +capacity at any station.
+   - Kiwi: finds dye plants (pastel dyes) and rare-gene clues.
+   - Kea (optional, late): the only bird that can process steel wool; a little
+     mischief.
+   You still do the work yourself at a base rate; bench upgrades add capacity;
+   Aunty Mere's knitting circle remains a one-off help. No wages.
+8. **Mutations:** yes, rare (μ 0.001), fantasy loci only; the only source of
+   pōhutukawa wool.
+9. **Title:** "Blue Sheep of Kōwhai Creek".
+10. **Tutorial teaches a Punnet square with horns.** The tutorial pair are both
+    polled carriers of horns. Before planning the mating, Old Tom shows a 2×2
+    Punnet square (polled/horned, drawn with sheep-head icons and words, no
+    letters on screen unless the numbers unlock) predicting about one lamb in
+    four horned, and links it to the ten-lamb forecast. After the reveal, he
+    reuses the same square to explain the surprise hidden colour. The codex
+    keeps the square as a concept card.
+11. **Gentle pacing; no extra sheep after the tutorial.** The player keeps the
+    tutorial flock and grows it themselves (lambs, market). Remove the
+    neighbour/Granny Moss handover. Introduce one new concept at a time over
+    the chapters, each only after the previous one has been used; never unlock
+    several systems at once. Rebalance oracle/blind sims for the small start.
+12. **Fondness:** name kept, numbers kept; add brushing on the live portrait as a
+    third once-per-season way to build it. Dogs stay as built.

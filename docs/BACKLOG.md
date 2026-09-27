@@ -5,6 +5,9 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
+- **Tutorial + pacing + brushing (v2, now):** Punnet square with horns in the tutorial; remove the post-tutorial flock handover (player grows from the tutorial flock); one concept at a time; brushing on the live portrait. See DESIGN-v3.md §15 items 10–12.
+- **Brushing** (user, 2026-09-27): keep the name Fondness and its numbers; add a hands-on brushing action on the live portrait as a third way to build fondness (once per animal per season, like greeting). Dogs stay as built (they join, stack protection, eat 1–3 coins a season).
+
 Nothing in progress. The v3 design pass is written: **`docs/DESIGN-v3.md`** (pigment genetics,
 breeds and wool types, fantasy wools, woolshed pipeline, items, demand meters, birds, river
 valley, chapters and the Golden Fleece, save migration, ten implementation phases, open
@@ -73,7 +76,9 @@ Decisions (user, 2026-09-27, round 3):
   next-to-skin knits, Icelandic → lopapeysa, Romney → hardy outer knits,
   Drysdale → rugs). Right wool for the pattern gives better quality and price.
 
-Design written: `docs/DESIGN-v3.md` (2026-09-27). Planned approach: a design pass first (docs/DESIGN-v3.md: genetics model for
+Design written: `docs/DESIGN-v3.md` (2026-09-27). Decisions round 4 and later: see docs/DESIGN-v3.md §15 (binding).
+
+Planned approach: a design pass first (docs/DESIGN-v3.md: genetics model for
 continuous colour, fibre pipeline, item/recipe/pattern tree, market saturation,
 magic + native birds, act structure without blue as the sole goal, migration of
 existing saves), then implementation in phases, each probe-verified.
