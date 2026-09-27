@@ -987,3 +987,14 @@ and tuning is a separate commit only if a target is badly missed.
     several systems at once. Rebalance oracle/blind sims for the small start.
 12. **Fondness:** name kept, numbers kept; add brushing on the live portrait as a
     third once-per-season way to build it. Dogs stay as built.
+13. **Time-staggered concepts with mini-lessons (user, 2026-09-27):** early
+    systems arrive on a calendar, not on use or a timeout, and each arrives
+    "the tutorial way": a short skippable Old Tom lesson (2–4 steps, each
+    completing on the real action). Schedule: orders after the tutorial
+    (year 1); vet at Year 2 Spring; farm improvements at Year 2 Autumn; dogs
+    (and foxes) at Year 3 Spring; cat (and mice) at Year 3 Autumn. Act-gated
+    concepts (numbers, fair, tree, visiting rams) stay on their acts but never
+    arrive in the same season as another concept (queue to the next season).
+    Foxes never raid before dogs are on sale. The first letter asks for horns.
+14. **Brushing gesture:** press and hold on the sheep (all devices) instead of a
+    drag.

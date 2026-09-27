@@ -5,6 +5,8 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
+- **Pacing calendar + mini-lessons + hold-to-brush (v2, now):** DESIGN-v3 §15 items 13–14; also fix the forecast litter wrapping to two rows at 1280 px, long names overlapping the candidate hint chip, and CLAUDE.md's stale "ten steps" tutorial line.
+
 Nothing in progress. The v3 design pass is written: **`docs/DESIGN-v3.md`** (pigment genetics,
 breeds and wool types, fantasy wools, woolshed pipeline, items, demand meters, birds, river
 valley, chapters and the Golden Fleece, save migration, ten implementation phases, open
