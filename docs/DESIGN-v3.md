@@ -1046,3 +1046,11 @@ and tuning is a separate commit only if a target is badly missed.
     headings and names only; a clean readable font for numbers, buttons and
     sentences. Watch-out: mist must not wash out sheep colours (colour is the
     core mechanic) — keep mist to distance/edges.
+21. **Style round 2 picks (user, 2026-09-27):** panels = **felted wool with
+    blanket stitching, plus pom-pom badges** (from the knit variant) for HUD
+    badges. Sheep = **the round-2 natural sheep with a friendlier face**
+    (slightly bigger, softer eyes so portraits stay charming). Map: the user
+    rejected all four zoomed-out concepts as "too close to concept art" and
+    wants options that show **what gameplay actually looks like** at play zoom
+    (camera framing, how you move around, how expansion appears in play) before
+    choosing a layout.
