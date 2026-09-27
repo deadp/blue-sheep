@@ -1003,3 +1003,11 @@ and tuning is a separate commit only if a target is badly missed.
     (season 2) is the 1-in-4 horned lamb, after which Old Tom introduces the
     Punnet square; lamb 3 (season 3) is the black lamb, explained with the same
     square. Then market and the goal. Short steps, one concept each.
+16. **Friendlier UI overhaul inside v3 (user, 2026-09-27):** current pain points
+    are too much text, too many buttons/panels at once, and a web-app look.
+    Target style: hand-drawn kiwiana — woodgrain and corrugated-iron frames,
+    paper tags, stitched fabric, rounded chunky buttons, gentle bounces, a cosy
+    handmade farm-diary feel. Fewer words, more icons and pictures; show only
+    the options relevant right now (progressive disclosure). Do this as an
+    early v3 phase ("UI foundation": design system + HUD + core panels) so all
+    later phases build on it, then apply it to each new screen as it is built.

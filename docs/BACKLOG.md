@@ -75,7 +75,9 @@ Decisions (user, 2026-09-27, round 3):
   next-to-skin knits, Icelandic → lopapeysa, Romney → hardy outer knits,
   Drysdale → rugs). Right wool for the pattern gives better quality and price.
 
-Design written: `docs/DESIGN-v3.md` (2026-09-27). Decisions round 4 and later: see docs/DESIGN-v3.md §15 (binding).
+Design written: `docs/DESIGN-v3.md` (2026-09-27). v3 includes an early **UI foundation** phase (DESIGN-v3 §15 item 16).
+
+Decisions round 4 and later: see docs/DESIGN-v3.md §15 (binding).
 
 Planned approach: a design pass first (docs/DESIGN-v3.md: genetics model for
 continuous colour, fibre pipeline, item/recipe/pattern tree, market saturation,
