@@ -1011,3 +1011,11 @@ and tuning is a separate commit only if a target is badly missed.
     the options relevant right now (progressive disclosure). Do this as an
     early v3 phase ("UI foundation": design system + HUD + core panels) so all
     later phases build on it, then apply it to each new screen as it is built.
+17. **Onboarding spans 3–4 in-game years (user, 2026-09-27):** after the v3
+    rework, the guided introduction (tutorial + calendar mini-lessons) should
+    stretch over roughly the first 3–4 years, one concept per season at most,
+    covering v3's systems too (pigment colours, breeds/wool types, wool store,
+    woolshed stations, birds, fantasy wools, the A&P show). Design the v3
+    calendar accordingly (Phase 7 / chapters). Act-concept lessons (numbers,
+    fair, tree, visiting ram) are kept. Brushing hold stays 1.2 s. For now the
+    v2 letters arrive straight after the tutorial.
