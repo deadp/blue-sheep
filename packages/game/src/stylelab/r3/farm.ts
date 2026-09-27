@@ -48,6 +48,9 @@ export const AREAS: Record<AreaId, Area> = {
 };
 export const AREA_ORDER: AreaId[] = ["home", "woolshed", "flats", "rushy", "bush", "high"];
 
+/** Where the creek flats gate goes when the land is opened (v on the west fence, clear of the woolshed yards). */
+export const FLATS_GATE = -4.8;
+
 export const isOpen = (a: Area, st: Stage) => a.opens === "early" || (a.opens === "mid" && st === "mid");
 
 const col = (red: number, yellow: number, blue: number, dilute = false, white = false, depth = 1): ColourInput => ({ white, red, yellow, blue, dilute, depth });
@@ -146,7 +149,7 @@ export interface Farm {
   gate: UV;
 }
 
-function groundColour(st: Stage, u: number, v: number, h: number, slope: number, rng: Rng): THREE.Color {
+function groundColour(st: Stage, u: number, v: number, h: number, slope: number, jitter: number, forceOpen?: AreaId): THREE.Color {
   const P = MISTY.palette;
   const blot = Math.sin(u * 0.31 + Math.cos(v * 0.23) * 2) * Math.cos(v * 0.27 - u * 0.05);
   const fine = Math.sin(u * 1.7 + v * 0.9) * Math.sin(v * 1.3 - u * 0.6);
@@ -156,7 +159,7 @@ function groundColour(st: Stage, u: number, v: number, h: number, slope: number,
   for (const a of [AREAS.home, AREAS.flats, AREAS.rushy, AREAS.high]) {
     const w = softRect(u, v, a.rect!, 0.8);
     if (w <= 0) continue;
-    if (isOpen(a, st)) {
+    if (isOpen(a, st) || a.id === forceOpen) {
       const lush = hex(P.grass2).lerp(hex(P.grass), 0.15 + 0.2 * blot);
       lush.multiplyScalar(1 + 0.03 * Math.sin((u + v * 0.3) * 0.9)); // mown bands
       lush.lerp(hex("#b8d98f"), Math.max(0, fine) * 0.25); // clover
@@ -180,11 +183,11 @@ function groundColour(st: Stage, u: number, v: number, h: number, slope: number,
   if (Math.abs(d) < 3.2) c.lerp(hex(P.soil), 0.55 * (1 - ss(2, 3.2, Math.abs(d))));
   if (lineDist(u, v, ROAD) < 1.6) c.lerp(hex(P.road), 1 - ss(1.1, 1.6, lineDist(u, v, ROAD)));
   for (const t of TRACKS) { const td = lineDist(u, v, t); if (td < 1) c.lerp(hex(P.road), 0.8 * (1 - ss(0.6, 1, td))); }
-  c.multiplyScalar(0.985 + rng() * 0.03);
+  c.multiplyScalar(0.985 + jitter * 0.03);
   return c;
 }
 
-function terrain(st: Stage, mats: Mats, rng: Rng): THREE.Object3D[] {
+function terrain(st: Stage, mats: Mats, rng: Rng, reveal?: RevealTerrain): THREE.Object3D[] {
   const U0 = -110, U1 = 150, V0 = -45, V1 = 95, S = 0.8;
   const nu = Math.round((U1 - U0) / S), nv = Math.round((V1 - V0) / S);
   const pos = new Float32Array((nu + 1) * (nv + 1) * 3), colr = new Float32Array((nu + 1) * (nv + 1) * 3);
@@ -194,8 +197,16 @@ function terrain(st: Stage, mats: Mats, rng: Rng): THREE.Object3D[] {
     // coarser far away: fine near the farm, but the same grid keeps it simple
     const h = height(u, v);
     const slope = Math.hypot(height(u + 0.5, v) - h, height(u, v + 0.5) - h) * 2;
-    const c = groundColour(st, u, v, h, slope, rng);
+    const jit = rng();
+    const c = groundColour(st, u, v, h, slope, jit);
     const k = (j * (nu + 1) + i) * 3;
+    if (reveal && softRect(u, v, AREAS.flats.rect!, 0.8) > 0) {
+      const o = groundColour(st, u, v, h, slope, jit, "flats");
+      reveal.idx.push(k);
+      reveal.from.push(c.r, c.g, c.b);
+      reveal.to.push(o.r, o.g, o.b);
+      reveal.at.push(u, v);
+    }
     pos[k] = u; pos[k + 1] = h; pos[k + 2] = -v;
     colr[k] = c.r; colr[k + 1] = c.g; colr[k + 2] = c.b;
   }
@@ -205,7 +216,9 @@ function terrain(st: Stage, mats: Mats, rng: Rng): THREE.Object3D[] {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  g.setAttribute("color", new THREE.BufferAttribute(colr, 3));
+  const colAttr = new THREE.BufferAttribute(colr, 3);
+  g.setAttribute("color", colAttr);
+  if (reveal) reveal.attr = colAttr;
   g.setIndex(idx);
   g.computeVertexNormals();
   const t = new THREE.Mesh(g, mats.surface("terrain"));
@@ -458,15 +471,15 @@ function tuss(k: Kit, b: GeoBatch, u: number, v: number, s = 1) {
 
 // ---------------------------------------------------------------- grass detail (instanced)
 
-function grassTufts(k: Kit, st: Stage, root: THREE.Group) {
-  const blade = new THREE.ConeGeometry(0.05, 0.42, 3);
+function grassTufts(k: Kit, st: Stage, root: THREE.Group, N = 16000, NF = 1400, rv?: Reveal) {
+  // the prototype drops the hidden blade caps (half the triangles)
+  const blade = new THREE.ConeGeometry(0.05, 0.42, 3, 1, !!rv);
   const tuft = new GeoBatch(0);
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2;
     tuft.add(blade.clone(), "#ffffff", mat([Math.cos(a) * 0.08, 0.18, Math.sin(a) * 0.08], [Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]));
   }
   const geo = tuft.build()!;
-  const N = 16000;
   const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }), N);
   const c = new THREE.Color();
   const P = MISTY.palette;
@@ -479,6 +492,7 @@ function grassTufts(k: Kit, st: Stage, root: THREE.Group) {
     if (d > -2.4 || lineDist(u, v, ROAD) < 1.6) continue;
     let inPad = false, locked = false;
     for (const a of [AREAS.home, AREAS.flats, AREAS.rushy]) if (softRect(u, v, a.rect!, 0.2) > 0.5) { inPad = true; locked = !isOpen(a, st); }
+    if (rv && softRect(u, v, AREAS.flats.rect!, 0.2) > 0.5) continue;
     if (!inPad && rng() < 0.5) continue;
     if (inPad && !locked && rng() < 0.45) continue;
     const s = locked ? 1.5 + rng() * 0.9 : 0.55 + rng() * 0.4;
@@ -491,10 +505,33 @@ function grassTufts(k: Kit, st: Stage, root: THREE.Group) {
   im.count = n;
   im.receiveShadow = true;
   root.add(im);
+  if (rv) {
+    // the creek flats get their own tufts: tall rank grass now, short lawn after the reveal
+    const r2 = mulberry32(1234);
+    const [u0, u1, v0, v1] = AREAS.flats.rect!;
+    const nf = Math.round(N * 0.07);
+    const tall = new THREE.InstancedMesh(geo, im.material, nf), short = new THREE.InstancedMesh(geo, im.material, nf);
+    for (let i = 0; i < nf; i++) {
+      const u = u0 + 0.4 + r2() * (u1 - u0 - 0.8), v = v0 + 0.4 + r2() * (v1 - v0 - 0.8);
+      const s = 1.5 + r2() * 0.9, s2 = 0.55 + r2() * 0.4;
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, r2() * 6, 0));
+      const at = new THREE.Vector3(u, k.ground(u, v) - 0.02, -v);
+      m4.compose(at, q, new THREE.Vector3(s, s * (0.8 + r2() * 0.5), s));
+      tall.setMatrixAt(i, m4);
+      tall.setColorAt(i, c.set("#a9a57a").lerp(hex("#8f9a6a"), r2()).multiplyScalar(0.92 + r2() * 0.12));
+      m4.compose(at, q, new THREE.Vector3(s2, s2 * (0.8 + r2() * 0.5), s2));
+      short.setMatrixAt(i, m4);
+      short.setColorAt(i, c.set(P.grass2).lerp(hex("#7fb86a"), r2()).multiplyScalar(0.92 + r2() * 0.12));
+    }
+    tall.receiveShadow = short.receiveShadow = true;
+    short.visible = false;
+    root.add(tall, short);
+    rv.tallGrass = tall; rv.shortGrass = short;
+  }
   // daisies and buttercups in the open paddocks
-  const fl = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.065, 0), new THREE.MeshBasicMaterial(), 1400);
+  const fl = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.065, 0), new THREE.MeshBasicMaterial(), NF);
   let f = 0;
-  for (let t = 0; t < 6000 && f < 1400; t++) {
+  for (let t = 0; t < 6000 && f < NF; t++) {
     const u = -60 + rng() * 150, v = -12 + rng() * 24;
     let ok = false;
     for (const a of [AREAS.home, AREAS.flats]) if (softRect(u, v, a.rect!, 0.2) > 0.5 && isOpen(a, st)) ok = true;
@@ -530,12 +567,13 @@ function mistTexture(): THREE.Texture {
   mistTex.colorSpace = THREE.SRGBColorSpace;
   return mistTex;
 }
-function mist(root: THREE.Group, x: number, y: number, z: number, w: number, h: number, opacity: number) {
+function mist(root: THREE.Group, x: number, y: number, z: number, w: number, h: number, opacity: number): THREE.Sprite {
   const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: mistTexture(), color: "#f4f7f6", transparent: true, opacity, depthWrite: false, fog: false }));
   m.position.set(x, y, z);
   m.scale.set(w, h, 1);
   m.renderOrder = 5;
   root.add(m);
+  return m;
 }
 
 // ---------------------------------------------------------------- selection ring
@@ -556,16 +594,55 @@ function ringTexture(): THREE.CanvasTexture {
 
 // ---------------------------------------------------------------- build
 
-export interface FarmOpts { farmer?: boolean; backdrop?: boolean }
+export interface FarmOpts {
+  farmer?: boolean;
+  backdrop?: boolean;
+  /** Movement prototype: leave the sheep out (the prototype builds its own), cap grass, swing the home gate open,
+   *  and split the creek flats into animatable pieces so opening the land can be played as a reveal. */
+  noSheep?: boolean;
+  grass?: number;
+  flowers?: number;
+  gateOpen?: number;
+  reveal?: boolean;
+  /** false = no mist at all (user, 2026-09-27: "no mist, or at least not always"). */
+  mist?: boolean;
+}
 
-export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: Mats } {
+/** Colour data for blending the creek flats' ground from rank to lush. */
+export interface RevealTerrain { attr?: THREE.BufferAttribute; idx: number[]; from: number[]; to: number[]; at: number[] }
+/** The creek flats in pieces: what goes (mist, scrub, rank grass, broken fence, sign) and what comes. */
+export interface Reveal {
+  terrain: RevealTerrain;
+  mist: THREE.Sprite[];
+  scrub: THREE.Object3D[];
+  broken: THREE.Object3D[];
+  mended: THREE.Object3D[];
+  sign: THREE.Object3D[];
+  open: THREE.Object3D[];
+  tallGrass?: THREE.InstancedMesh;
+  shortGrass?: THREE.InstancedMesh;
+}
+
+export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: Mats; reveal?: Reveal } {
   const mats = new Mats(MISTY);
   const rng = mulberry32(0x5eed ^ (st === "mid" ? 7 : 3));
   const root = new THREE.Group();
   const ground = (u: number, v: number) => Math.max(height(u, v), WATER - 0.3);
   const k: Kit = { dir: MISTY, mats, rng, ground, add: (o) => root.add(o) };
   const big: Kit = { ...k, add: (o) => { o.scale.multiplyScalar(1.7); o.traverse((c) => { if ((c as THREE.Mesh).isMesh) (c as THREE.Mesh).castShadow = true; }); root.add(o); } };
-  for (const o of terrain(st, mats, rng)) root.add(o);
+  const rv: Reveal | undefined = opts.reveal ? { terrain: { idx: [], from: [], to: [], at: [] }, mist: [], scrub: [], broken: [], mended: [], sign: [], open: [] } : undefined;
+  /** Build into a batch of its own and keep the mesh (for pieces the reveal animates). */
+  const piece = (list: THREE.Object3D[], fill: (b: GeoBatch) => void, cast = true) => {
+    const b = batch(k);
+    fill(b);
+    const g = b.build();
+    if (!g) return;
+    const m = mesh(mats, g, "world", { outline: 0 });
+    m.castShadow = cast;
+    root.add(m);
+    list.push(m);
+  };
+  for (const o of terrain(st, mats, rng, rv?.terrain)) root.add(o);
   if (opts.backdrop) backdrop(root, mats);
 
   // buildings
@@ -576,14 +653,29 @@ export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: M
   const gateAt = AREAS.home.rect![1];
   for (const id of ["home", "flats", "rushy", "high"] as AreaId[]) {
     const a = AREAS[id];
+    if (rv && id === "flats") { piece(rv.broken, (b) => fenceRect(k, b, a.rect!, true)); continue; }
     fenceRect(k, fb, a.rect!, !isOpen(a, st), id === "home" ? -4 : undefined);
+  }
+  if (rv) {
+    // the mended creek-flats fence, post by post, with a gate gap on the woolshed (west) side
+    const [u0, u1, v0, v1] = AREAS.flats.rect!;
+    const runs: [UV, UV][] = [[[u0, FLATS_GATE + 1.8], [u0, v1]], [[u0, v1], [u1, v1]], [[u1, v1], [u1, v0]], [[u1, v0], [u0, v0]], [[u0, v0], [u0, FLATS_GATE - 1.8]]];
+    for (const [a, c] of runs) {
+      const n = Math.max(1, Math.round(Math.hypot(c[0] - a[0], c[1] - a[1]) / 2.3));
+      for (let i = 0; i < n; i++) {
+        const p0: UV = [lerp(a[0], c[0], i / n), lerp(a[1], c[1], i / n)], p1: UV = [lerp(a[0], c[0], (i + 1) / n), lerp(a[1], c[1], (i + 1) / n)];
+        piece(rv.mended, (b) => fenceLine(k, b, p0, p1, 3));
+      }
+    }
+    for (const m of rv.mended) m.visible = false;
+    gate({ ...k, add: (o) => { root.add(o); rv.open.push(o); } }, u0, FLATS_GATE, 1.35, Math.PI / 2);
   }
   // homestead garden fence
   fenceLine(k, fb, [-52, -7], [-36, -7], 2.0);
   const fg = fb.build();
   if (fg) { const fm = mesh(mats, fg, "world", { outline: 0 }); fm.castShadow = true; root.add(fm); }
   // gates: home paddock to the road; creek flats gate faces the woolshed
-  gate(k, -6, -4, 0, Math.PI / 2);
+  gate(k, -6, -4, opts.gateOpen ?? 0, Math.PI / 2);
   const gateUV: UV = [AREAS.flats.rect![0], 0];
   void gateAt;
 
@@ -593,6 +685,23 @@ export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: M
     const a = AREAS[id];
     const [u0, u1, v0, v1] = a.rect!;
     const pick = (m: number): UV => [lerp(u0 + m, u1 - m, rng()), lerp(v0 + m, v1 - m, rng())];
+    if (rv && id === "flats") {
+      // the same locked dressing as below, but each clump its own mesh so the reveal can clear them one by one
+      const area = (u1 - u0) * (v1 - v0);
+      const n = Math.round(area / 9);
+      for (let i = 0; i < n; i++) { const p = pick(0.8); piece(rv.scrub, (b) => scrub(k, b, p[0], p[1], 0.8 + rng() * 0.5)); }
+      const signKit: Kit = { ...k, add: (o) => { root.add(o); rv.sign.push(o); } };
+      sign(signKit, u0 + 3, v0 - 0.8, "OLD FENCES", "needs mending");
+      const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2, y = ground(cu, cv);
+      if (opts.mist !== false) {
+        rv.mist.push(mist(root, cu, y + 2.2, -cv, (u1 - u0) * 1.2, 6, 0.8));
+        rv.mist.push(mist(root, cu + (u1 - u0) * 0.2, y + 1.2, -(cv - (v1 - v0) * 0.25), (u1 - u0) * 0.9, 4, 0.6));
+        rv.mist.push(mist(root, cu - (u1 - u0) * 0.25, y + 1.4, -(cv + (v1 - v0) * 0.25), (u1 - u0) * 0.8, 4, 0.55));
+      }
+      piece(rv.open, (b) => { trough(k, b, u0 + 2.5, v1 - 2.2); bale(k, b, u1 - 3, v1 - 2.5); bale(k, b, u1 - 5, v0 + 3); });
+      for (const m of rv.open) m.visible = false;
+      continue;
+    }
     if (!isOpen(a, st)) {
       const area = (u1 - u0) * (v1 - v0);
       const n = Math.round(area / (a.wet ? 12 : a.tussock ? 14 : 9));
@@ -608,9 +717,9 @@ export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: M
       sign(k, u0 + 3, v0 - 0.8, w1, w2);
       const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2, y = ground(cu, cv);
       // mist hangs over locked land only
-      mist(root, cu, y + 2.2, -cv, (u1 - u0) * 1.2, 6, 0.8);
-      mist(root, cu + (u1 - u0) * 0.2, y + 1.2, -(cv - (v1 - v0) * 0.25), (u1 - u0) * 0.9, 4, 0.6);
-      mist(root, cu - (u1 - u0) * 0.25, y + 1.4, -(cv + (v1 - v0) * 0.25), (u1 - u0) * 0.8, 4, 0.55);
+      if (opts.mist !== false) mist(root, cu, y + 2.2, -cv, (u1 - u0) * 1.2, 6, 0.8);
+      if (opts.mist !== false) mist(root, cu + (u1 - u0) * 0.2, y + 1.2, -(cv - (v1 - v0) * 0.25), (u1 - u0) * 0.9, 4, 0.6);
+      if (opts.mist !== false) mist(root, cu - (u1 - u0) * 0.25, y + 1.4, -(cv + (v1 - v0) * 0.25), (u1 - u0) * 0.8, 4, 0.55);
     } else {
       trough(k, pb, u0 + 2.5, v1 - 2.2);
       bale(k, pb, u1 - 3, v1 - 2.5);
@@ -677,11 +786,11 @@ export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: M
   bb.box("#b7a893", [0.2, 1.4, 0.2], [-0.8, 0.4, -2.4], [0.3, 0, 0.2]);
   place(k, bb, -4, creekV(-4), 0, { y: 0.1, outline: 0 });
 
-  grassTufts(k, st, root);
+  grassTufts(k, st, root, opts.grass, opts.flowers, rv);
 
   // far mist: along the tops and down the valley ends (distance and edges only)
-  for (let u = -120; u <= 170; u += 22) mist(root, u, 24 + 3 * Math.sin(u * 0.1), -(70 + 6 * Math.sin(u * 0.07)), 48, 12, 0.85);
-  for (let u = -100; u <= 150; u += 18) mist(root, u, 12, -(46 + 4 * Math.sin(u * 0.13)), 34, 8, 0.55);
+  if (opts.mist !== false) for (let u = -120; u <= 170; u += 22) mist(root, u, 24 + 3 * Math.sin(u * 0.1), -(70 + 6 * Math.sin(u * 0.07)), 48, 12, 0.85);
+  if (opts.mist !== false) for (let u = -100; u <= 150; u += 18) mist(root, u, 12, -(46 + 4 * Math.sin(u * 0.13)), 34, 8, 0.55);
   // clouds
   for (const [u, v, y, s] of [[-40, 60, 30, 1.6], [20, 80, 36, 1.3], [80, 55, 28, 1.1], [130, 75, 34, 1.4]] as const) {
     const b = batch(k);
@@ -692,7 +801,7 @@ export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: M
   // sheep
   const sheep = new Map<string, THREE.Group>();
   const flock = st === "mid" ? [...HOME_FLOCK, ...FLATS_FLOCK] : HOME_FLOCK;
-  for (const s of flock) {
+  for (const s of opts.noSheep ? [] : flock) {
     const g = buildSheep2(mats, s, 1.25, { friendly: true });
     g.position.set(s.at[0], ground(s.at[0], s.at[1]), -s.at[1]);
     g.rotation.y = s.rot;
@@ -746,5 +855,5 @@ export function buildFarm(st: Stage, opts: FarmOpts = {}): { farm: Farm; mats: M
     },
   };
   void hashString;
-  return { farm, mats };
+  return { farm, mats, ...(rv ? { reveal: rv } : {}) };
 }

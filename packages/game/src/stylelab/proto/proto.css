@@ -1,0 +1,74 @@
+/* Movement prototype: full-window stage plus the new felt bits (mode switch, prompts, toasts, pops). Throwaway. */
+html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; }
+body.proto { font: 600 16px/1.25 Nunito, sans-serif; color: #56494a; user-select: none; -webkit-user-select: none; touch-action: none; }
+.proto #app { position: fixed; inset: 0; width: auto; height: auto; overflow: clip; }
+.proto #stage { position: absolute; inset: 0; }
+.proto #world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.proto #ui { position: absolute; inset: 0; pointer-events: none; overflow: clip; }
+.proto #ui button, .proto #ui .mmap, .proto #ui .fcard, .proto #ui .ptag3 .tag, .proto #ui .plac, .proto #ui .modesw { pointer-events: auto; cursor: pointer; }
+.proto #ui .fcard { cursor: default; }
+.proto #tags > div { position: absolute; left: 0; top: 0; }
+.proto .ptag3, .proto .plac, .proto .stag, .proto .ntag, .proto .bub { transition: none; }
+.proto .plac { pointer-events: auto; }
+.proto .stag { pointer-events: none; }
+
+/* mode switch: a felt toggle, top right */
+.proto .modesw { position: absolute; right: 22px; top: 20px; display: flex; gap: 0; padding: 5px; border-radius: 28px; z-index: 6; outline: 2px dashed rgba(183, 110, 95, .5); outline-offset: -4px; }
+.proto .modesw button { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 7px; width: 104px; justify-content: center; height: 42px; border-radius: 22px; font: 800 16px/1 Nunito, sans-serif; color: #7a6660; }
+.proto .modesw button .ic { font-size: 22px; --fill: url(#sat-sage); }
+.proto .modesw button.on { color: #34502d; }
+.proto .modesw .knob { position: absolute; z-index: 1; top: 5px; left: 5px; width: 104px; height: 42px; border-radius: 22px; --felt: #a9cf97; transition: transform .28s cubic-bezier(.5, 1.6, .4, 1); box-shadow: 0 2px 0 rgba(80, 110, 70, .25), 0 4px 10px rgba(60, 80, 50, .2); outline: 1.5px dashed rgba(255, 255, 255, .8); outline-offset: -4px; }
+.proto .modesw[data-mode="pan"] .knob { transform: translateX(104px); }
+
+/* control hint chip, bottom centre (walk) or above the signposts (pan) */
+.proto .hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 22px; font: 700 14px/1 Nunito, sans-serif; white-space: nowrap; z-index: 4; opacity: .92; outline: 1.5px dashed rgba(183, 110, 95, .45); outline-offset: -4px; }
+.proto .hint .keys { display: inline-flex; gap: 3px; }
+.proto .hint kbd { min-width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
+.proto .hint .sep { width: 1px; height: 18px; background: rgba(86, 73, 74, .25); margin: 0 4px; }
+.proto .hint .ic { font-size: 20px; --fill: url(#sat-sage); }
+.proto[data-mode="pan"] .hint { bottom: 138px; }
+.proto .travel.posts { left: 50%; transform: translateX(-50%); bottom: 14px; }
+.proto .sign .board { transition: transform .2s; }
+.proto .sign:hover .board { transform: translateY(-6px) rotate(-1.5deg); }
+.proto .acts { opacity: .55; pointer-events: none; }
+.proto .acts button { pointer-events: none !important; }
+.proto[data-mode="pan"] .acts { display: none; }
+
+/* minimap: base + live canvases stacked */
+.proto .mm-stack { position: relative; border-radius: 12px; overflow: hidden; z-index: 2; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .06); cursor: crosshair; }
+.proto .mm-stack canvas { position: absolute; left: 0; top: 0; display: block; }
+
+/* floating prompts */
+.proto .pp-wrap { display: flex; flex-direction: column; gap: 8px; transform: translate(0, -50%); z-index: 4; }
+.proto .pp { display: inline-flex; align-items: center; pointer-events: auto; animation: pp-in .22s cubic-bezier(.4, 1.7, .5, 1); }
+.proto .pp kbd { position: relative; width: 38px; height: 38px; border-radius: 50%; font-size: 16px; z-index: 1; --felt: #a9cf97; color: #34502d; outline: 1.5px dashed rgba(255, 255, 255, .85); outline-offset: -4px; }
+.proto .pp kbd svg { position: absolute; inset: -4px; width: 46px; height: 46px; transform: rotate(-90deg); pointer-events: none; }
+.proto .pp kbd .ring { fill: none; stroke: #fbf4e6; stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 94.2; stroke-dashoffset: calc(94.2 * (1 - var(--p, 0))); opacity: 0; }
+.proto .pp.hold kbd .ring { opacity: 1; stroke: #e79a93; }
+.proto .pp > span { margin-left: -10px; padding: 8px 15px 8px 18px; border-radius: 0 17px 17px 0; font: 800 14.5px/1 Nunito, sans-serif; white-space: nowrap; }
+.proto .pp.hold > span::after { content: " · hold"; opacity: .6; font-weight: 700; }
+@keyframes pp-in { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* toast */
+.proto #toast { position: absolute; left: 50%; top: 84px; transform: translate(-50%, -12px); display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px 10px 14px; border-radius: 24px; font: 700 15px/1.1 Nunito, sans-serif; white-space: nowrap; opacity: 0; transition: opacity .25s, transform .25s; z-index: 8; outline: 1.5px dashed rgba(183, 110, 95, .5); outline-offset: -5px; }
+.proto #toast.on { opacity: 1; transform: translate(-50%, 0); }
+.proto #toast .ic { font-size: 24px; --fill: url(#sat-butter); }
+.proto #toast b { font-weight: 800; }
+
+/* pops: hearts and speech that float up */
+.proto .pop { position: absolute; transform: translate(-50%, -100%); animation: pop-up 1.3s ease-out forwards; z-index: 5; pointer-events: none; }
+.proto .pop.heart { font-size: 30px; }
+.proto .pop.heart .ic .f { fill: url(#sat-pink); }
+.proto .pop.say span { display: inline-block; padding: 6px 13px; border-radius: 16px; font: 400 20px/1.1 "Patrick Hand", cursive; white-space: nowrap; }
+.proto .pop.say { animation-duration: 1.4s; animation-name: say-up; }
+@keyframes pop-up { 0% { opacity: 0; transform: translate(-50%, -60%) scale(.5); } 15% { opacity: 1; transform: translate(-50%, -110%) scale(1.1); } 100% { opacity: 0; transform: translate(-50%, -260%) scale(1); } }
+@keyframes say-up { 0% { opacity: 0; transform: translate(-50%, -80%); } 12% { opacity: 1; transform: translate(-50%, -100%); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -130%); } }
+
+/* card pops in */
+.proto .fcard.in { animation: card-in .3s cubic-bezier(.35, 1.5, .5, 1); }
+@keyframes card-in { from { opacity: 0; transform: translateX(30px) rotate(2deg); } to { opacity: 1; transform: none; } }
+
+#fps { position: absolute; right: 12px; bottom: 6px; font: 700 11px/1 ui-monospace, monospace; color: rgba(60, 50, 50, .7); z-index: 9; }
+
+/* no mist (user, 2026-09-27): the round-3 rim haze is off too; locked land reads by scrub, old fences, sign and tag */
+.proto .fx.rim { display: none !important; }
