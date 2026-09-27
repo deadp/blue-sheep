@@ -1,6 +1,7 @@
 // Style lab screenshots. Usage (repo root):
 //   node packages/game/src/stylelab/shoot.mjs [dirs] [scenes]      e.g.  ... A,B farm,card
 //   node packages/game/src/stylelab/shoot.mjs r2 [maps|ui|sheep|<shot names>]   (round 2 → shots/r2/)
+//   node packages/game/src/stylelab/shoot.mjs r3 [1,2,3,4] [play,woolshed,expand,mid,motion,faces]   (round 3 → shots/r3/)
 // Starts Vite on a free port, shoots style-lab.html?dir=X&scene=Y at 1280×800 in headless Chrome
 // (probe launch args), writes shots/{X}-{scene}.png, a 2×3 contact sheet per direction
 // ({X}-sheet.png) and all-farms.png, then stops Vite.
@@ -20,8 +21,9 @@ fs.mkdirSync(OUT, { recursive: true });
 const ALL_DIRS = ["A", "B", "C", "D"];
 const ALL_SCENES = ["farm", "hud", "card", "forecast", "sheep", "label"];
 const R2 = process.argv[2] === "r2";
-const dirs = !R2 && process.argv[2] ? process.argv[2].split(",") : ALL_DIRS;
-const scenes = !R2 && process.argv[3] ? process.argv[3].split(",") : ALL_SCENES;
+const R3 = process.argv[2] === "r3";
+const dirs = !R2 && !R3 && process.argv[2] ? process.argv[2].split(",") : ALL_DIRS;
+const scenes = !R2 && !R3 && process.argv[3] ? process.argv[3].split(",") : ALL_SCENES;
 const RESERVED = new Set([4173, 4174, 5198]);
 
 async function freePort() {
@@ -135,6 +137,95 @@ async function compose(file, tiles, cols, title, width = 1280, capTop = false) {
   await page.screenshot({ path: file, fullPage: true });
   await ctx.close();
   console.log("wrote", path.relative(REPO_DIR, file));
+}
+
+
+// ---------------------------------------------------------------- round 3 (DESIGN-v3 §15 item 21)
+
+const OUT3 = path.join(OUT, "r3");
+const VIEW_NAMES = { 1: "1. Close isometric · pan & zoom", 2: "2. Side-on valley · parallax", 3: "3. Paddock scenes · travel", 4: "4. Farmer's-eye · third person" };
+const SHOTS3 = ["play", "woolshed", "expand", "mid"];
+const SHOT_CAP = { play: "a. play moment · home paddock", woolshed: "b. woolshed stations", expand: "c. expansion moment", mid: "d. mid-game · 2–3 open areas" };
+
+async function round3(views, what) {
+  fs.mkdirSync(path.join(OUT3, "frames"), { recursive: true });
+  const want = (s) => what.includes(s);
+  for (const v of views) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e) => errors.push(`view-${v}: ${e.message}`));
+    page.on("console", (m) => { if (m.type() === "error") errors.push(`view-${v}: ${m.text()}`); });
+    const t0 = Date.now();
+    await page.goto(`${url}/style-lab-r3.html?view=${v}&shot=play`);
+    await page.waitForSelector('body[data-ready="1"]', { state: "attached", timeout: 300_000 });
+    console.log(`view ${v} ready in ${Date.now() - t0} ms`);
+    const show = async (shot, frame = 0) => {
+      await page.evaluate(([s, f]) => window.__show(s, f), [shot, frame]);
+      await page.waitForSelector('body[data-ready="1"]', { state: "attached", timeout: 300_000 });
+      await page.waitForTimeout(120);
+    };
+    for (const shot of SHOTS3) {
+      if (!want(shot)) continue;
+      await show(shot);
+      const file = path.join(OUT3, `view-${v}-${shot}.png`);
+      await page.screenshot({ path: file });
+      console.log("wrote", path.relative(REPO_DIR, file));
+    }
+    if (want("motion")) {
+      const frames = [];
+      for (let f = 0; f < 6; f++) {
+        await show("motion", f);
+        const file = path.join(OUT3, "frames", `view-${v}-motion-${f}.png`);
+        await page.screenshot({ path: file });
+        frames.push([file, `frame ${f + 1} · ${f * 250} ms`]);
+      }
+      await compose(path.join(OUT3, `view-${v}-motion.png`), frames, 3, `${VIEW_NAMES[v]} · camera motion (6 frames, 250 ms apart)`, 1920);
+    }
+    await ctx.close();
+    await compose3(v);
+  }
+  if (views.length === 4) await compose(path.join(OUT3, "views-compare.png"), [1, 2, 3, 4].map((v) => [path.join(OUT3, `view-${v}-play.png`), VIEW_NAMES[v]]), 2, "Round 3: the same play moment in four camera options", 1920, true);
+  if (want("faces")) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 460 } });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e) => errors.push(`faces: ${e.message}`));
+    await page.goto(`${url}/style-lab-r3.html?scene=faces`);
+    await page.waitForSelector('body[data-ready="1"]', { state: "attached", timeout: 120_000 });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(OUT3, "sheep-faces.png"), fullPage: true });
+    await ctx.close();
+    console.log("wrote sheep-faces.png");
+  }
+}
+
+/** Per-option contact sheet: the four moments 2×2 with the motion strip underneath. */
+async function compose3(v) {
+  const tiles = SHOTS3.map((s) => [path.join(OUT3, `view-${v}-${s}.png`), SHOT_CAP[s]]);
+  const motion = path.join(OUT3, `view-${v}-motion.png`);
+  const ctx = await browser.newContext({ viewport: { width: 1920, height: 400 } });
+  const page = await ctx.newPage();
+  const cells = tiles.map(([f, cap]) => `<figure><img src="${fs.existsSync(f) ? b64(f) : ""}"><figcaption>${cap}</figcaption></figure>`).join("");
+  await page.setContent(`<style>
+    body{margin:0;background:#2b2724;font:600 17px/1.2 sans-serif;color:#f4ecd8}
+    h1{margin:0;padding:12px 16px;font-size:24px}
+    .g{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 6px 6px}
+    figure{margin:0;position:relative}img{display:block;width:100%}
+    figcaption{position:absolute;left:10px;top:10px;background:rgba(43,39,36,.82);padding:4px 10px;border-radius:5px}
+    .m{padding:0 6px 6px}
+  </style><h1>${VIEW_NAMES[v]}</h1><div class="g">${cells}</div>${fs.existsSync(motion) ? `<div class="m"><img src="${b64(motion)}"></div>` : ""}`);
+  await page.waitForTimeout(200);
+  const file = path.join(OUT3, `view-${v}-sheet.png`);
+  await page.screenshot({ path: file, fullPage: true });
+  await ctx.close();
+  console.log("wrote", path.relative(REPO_DIR, file));
+}
+
+if (R3) {
+  const views = process.argv[3] ? process.argv[3].split(",").map(Number) : [1, 2, 3, 4];
+  await round3(views, process.argv[4] ? process.argv[4].split(",") : [...SHOTS3, "motion", "faces"]);
+  await cleanupAll();
+  if (errors.length) { console.error("ERRORS:\n" + errors.join("\n")); process.exit(1); }
+  process.exit(0);
 }
 
 if (R2) {

@@ -34,8 +34,15 @@ function shadeByHeight(geo: THREE.BufferGeometry, y0: number, y1: number, lo: nu
   c.needsUpdate = true;
 }
 
+export interface Sheep2Opts {
+  /** Round-3 friendlier face (DESIGN-v3 §15 item 21): a slightly bigger head, shorter muzzle,
+   *  bigger soft eyes set a little forward in a pale eye patch, with a relaxed upper lid. */
+  friendly?: boolean;
+}
+
 /** Build a sheep facing +x, standing on y = 0, about 1.45 units long (adult). */
-export function buildSheep2(mats: Mats, s: LabSheep, scale = 1): THREE.Group {
+export function buildSheep2(mats: Mats, s: LabSheep, scale = 1, opts: Sheep2Opts = {}): THREE.Group {
+  const fr = !!opts.friendly;
   const rng = mulberry32(hashString(s.name) ^ 0x2ee9);
   const wool = new THREE.Color(hexOf(s.colour));
   const face = faceOf(s);
@@ -87,14 +94,18 @@ export function buildSheep2(mats: Mats, s: LabSheep, scale = 1): THREE.Group {
   head.position.set(L * 1.2, bodyY + H * 1.0, 0);
   head.rotation.z = -0.28;
   root.add(head);
-  const hs = lamb ? 1.18 : 1;
+  const hs = (lamb ? 1.18 : 1) * (fr ? 1.16 : 1);
   head.scale.setScalar(hs);
   const hb = new GeoBatch(0, rng);
   // tapered face: a skull and a narrower muzzle
   hb.ico(face, 1, 3, [0.08, 0, 0], [0.18, 0.145, 0.125]);
-  hb.ico(face, 1, 3, [0.23, -0.04, 0], [0.14, 0.09, 0.088]);
-  const nose = face.clone().lerp(new THREE.Color("#c99a90"), s.colour.white ? 0.5 : 0.2);
-  hb.ico(nose, 1, 2, [0.35, -0.055, 0], [0.035, 0.055, 0.065]);
+  if (fr) {
+    // rounder skull, shorter softer muzzle
+    hb.ico(face, 1, 3, [0.07, 0.01, 0], [0.19, 0.155, 0.14]);
+    hb.ico(face, 1, 3, [0.2, -0.045, 0], [0.13, 0.092, 0.095]);
+  } else hb.ico(face, 1, 3, [0.23, -0.04, 0], [0.14, 0.09, 0.088]);
+  const nose = face.clone().lerp(new THREE.Color("#c99a90"), s.colour.white ? 0.5 : fr ? 0.3 : 0.2);
+  hb.ico(nose, 1, 2, [fr ? 0.31 : 0.35, -0.055, 0], [0.035, 0.055, 0.065]);
   // wool topknot and cheeks of fleece behind the face
   hb.ico(wool, 0.1, 2, [0.02, 0.1, 0], [1.1, 0.85, 1.15]);
   hb.ico(wool, 0.06, 2, [0.1, 0.12, 0.04]);
@@ -126,9 +137,23 @@ export function buildSheep2(mats: Mats, s: LabSheep, scale = 1): THREE.Group {
   head.add(mesh(mats, hb.build()!, "skin", { outline: 0 }));
   // eyes on the sides of the head, a little larger than life, with a catch-light
   const eb = new GeoBatch(0);
-  for (const side of [1, -1]) {
-    eb.ico("#1d1614", 0.038, 2, [0.15, 0.04, side * 0.104], [1, 1.1, 0.7]);
-    eb.ico("#ffffff", 0.012, 1, [0.17, 0.055, side * 0.124]);
+  if (fr) {
+    // soft eyes: a faint pale patch, a big warm-dark eye set forward, a large catch-light and a small one
+    const patch = face.clone().lerp(new THREE.Color("#f4e8da"), s.colour.white ? 0.2 : 0.2);
+    const lb = new GeoBatch(0);
+    for (const side of [1, -1]) {
+      lb.ico(patch, 0.064, 2, [0.138, 0.042, side * 0.106], [1.1, 1.05, 0.55], [0, side * 0.35, 0]);
+      eb.ico("#2b1e19", 0.05, 2, [0.148, 0.042, side * 0.117], [1, 1.04, 0.62], [0, side * 0.35, 0]);
+      eb.ico("#6a4636", 0.028, 2, [0.158, 0.03, side * 0.133], [1, 1, 0.5], [0, side * 0.35, 0]);
+      eb.ico("#ffffff", 0.02, 1, [0.168, 0.062, side * 0.14]);
+      eb.ico("#ffffff", 0.008, 1, [0.14, 0.024, side * 0.143]);
+    }
+    head.add(mesh(mats, lb.build()!, "skin", { outline: 0 }));
+  } else {
+    for (const side of [1, -1]) {
+      eb.ico("#1d1614", 0.038, 2, [0.15, 0.04, side * 0.104], [1, 1.1, 0.7]);
+      eb.ico("#ffffff", 0.012, 1, [0.17, 0.055, side * 0.124]);
+    }
   }
   head.add(new THREE.Mesh(eb.build()!, mats.unlit()));
   return root;
