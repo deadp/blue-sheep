@@ -1063,3 +1063,9 @@ and tuning is a separate commit only if a target is badly missed.
     with a walking farmer (camera follows, click-to-walk and WASD, fond sheep
     follow the farmer, interact by walking up to a sheep) versus drag-pan +
     signposts, for the user to try in a browser before choosing.
+23. **No mist by default (user, 2026-09-27):** "no mist, or at least not
+    always". Mist is not part of the permanent look. Locked land reads through
+    scrub, old fences, signs and felt price tags instead. Mist may appear only
+    as an occasional weather/time-of-day effect (early mornings, some winter
+    days), never over paddocks. The "Misty Pastoral" direction keeps its soft
+    light and palette, not the mist.
