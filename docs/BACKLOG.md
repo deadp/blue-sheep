@@ -87,7 +87,7 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Done
 
-- Tutorial + pacing + brushing (COMMIT_HASH): Punnet square with horns in the tutorial (2×2, pictures and
+- Tutorial + pacing + brushing (0af0576): Punnet square with horns in the tutorial (2×2, pictures and
   words, 3 polled : 1 horned, hover/click interactive, letters only with numbers) and again for the surprise
   colour; codex "Punnet square" card; reusable `ui/punnet.ts`. No handover: every farm (tutorial, skip,
   `?seed`) starts with the same two sheep; concepts open one a season via `core/pacing.ts` (cards → orders →
