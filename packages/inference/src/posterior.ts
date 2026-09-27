@@ -26,8 +26,14 @@ export interface DiscretePosterior {
   jointMarginals: Record<string, Map<number, number>>;
 }
 
+/**
+ * Founder allele frequencies are floored at this, so a sheep carrying an allele its prior says is
+ * absent (a rare gene from another breed, a sport) still gets a small, finite weight.
+ */
+export const MIN_ALLELE_FREQ = 1e-4;
+
 function pairPrior(p: Pair, freq: number[]): number {
-  const a = freq[p[0]] ?? 0, b = freq[p[1]] ?? 0;
+  const a = Math.max(MIN_ALLELE_FREQ, freq[p[0]] ?? 0), b = Math.max(MIN_ALLELE_FREQ, freq[p[1]] ?? 0);
   return p[0] === p[1] ? a * a : 2 * a * b;
 }
 
@@ -37,9 +43,10 @@ function pairTransmission(child: Pair, dam: Pair, sire: Pair): number {
   return n / 4;
 }
 
-export function jointPrior(j: Joint, support: Support): number {
+/** HWE prior of a joint genotype, from the map's founder frequencies or `freqOverride` per locus. */
+export function jointPrior(j: Joint, support: Support, freqOverride?: Record<string, number[]>): number {
   let p = 1;
-  support.loci.forEach((l, i) => { p *= pairPrior(j[i]!, l.freq); });
+  support.loci.forEach((l, i) => { p *= pairPrior(j[i]!, freqOverride?.[l.id] ?? l.freq); });
   return p;
 }
 
@@ -109,20 +116,18 @@ export function posteriorDiscrete(map: GenomeMap, trait: DiscreteTrait, individu
   const rng = createRng(opts.seed ?? 1234);
   const support = discreteSupport(map, trait, individuals);
   const { all, cand } = support;
+  const n = all.length;
   const priors = all.map((j) => jointPrior(j, support));
-  // Transmission with an unknown (outside-pedigree) mate: marginalise mate over the prior.
-  const transUnknownMate = (child: number, parent: number): number => {
+  // Transmission table T[child][dam][sire] (n ≤ 27 by the per-trait limit, so ≤ 19683 entries).
+  const T = new Float64Array(n * n * n);
+  for (let c = 0; c < n; c++) for (let d = 0; d < n; d++) for (let m = 0; m < n; m++) T[(c * n + d) * n + m] = jointTransmission(all[c]!, all[d]!, all[m]!);
+  // Transmission with an unknown (outside-pedigree) mate: marginalise the mate over the prior.
+  const U = new Float64Array(n * n);
+  for (let c = 0; c < n; c++) for (let d = 0; d < n; d++) {
     let p = 0;
-    for (let m = 0; m < all.length; m++) p += priors[m]! * jointTransmission(all[child]!, all[parent]!, all[m]!);
-    return p;
-  };
-  const cache = new Map<number, number>();
-  const transUnknown = (child: number, parent: number): number => {
-    const key = child * all.length + parent;
-    let v = cache.get(key);
-    if (v === undefined) { v = transUnknownMate(child, parent); cache.set(key, v); }
-    return v;
-  };
+    for (let m = 0; m < n; m++) p += priors[m]! * T[(c * n + d) * n + m]!;
+    U[c * n + d] = p;
+  }
 
   const inds = individuals;
   const pos = new Map(inds.map((ind, i) => [ind.id, i]));
@@ -137,6 +142,42 @@ export function posteriorDiscrete(map: GenomeMap, trait: DiscreteTrait, individu
     }
   });
   const parents = inds.map((ind) => ({ dam: ind.dam && pos.has(ind.dam) ? pos.get(ind.dam)! : null, sire: ind.sire && pos.has(ind.sire) ? pos.get(ind.sire)! : null }));
+  // Founders with their own (breed) frequencies get their own prior.
+  const ownPrior = inds.map((ind, i) => {
+    const f = ind.priorFreq;
+    if (!f || parents[i]!.dam !== null || parents[i]!.sire !== null || !support.loci.some((l) => f[l.id])) return null;
+    return all.map((j) => jointPrior(j, support, f));
+  });
+
+  // Interchangeable loci (same alleles and founder frequencies, e.g. R1 and R2): single-sheep Gibbs
+  // moves can't swap their labels where the pedigree pins a dose (a sheep with 3 red doses is
+  // R1 +/+ R2 -/+ or the mirror image, and its lambs lock whichever it is). A Metropolis move that
+  // swaps the two loci for every sheep at once reconnects the mirror images.
+  const swaps: Int32Array[] = [];
+  const locusSame = (a: number, b: number) => {
+    const la = support.loci[a]!, lb = support.loci[b]!;
+    const sameFreq = (f?: Record<string, number[]>) => JSON.stringify(f?.[la.id] ?? la.freq) === JSON.stringify(f?.[lb.id] ?? lb.freq);
+    return JSON.stringify(la.alleles) === JSON.stringify(lb.alleles) && sameFreq() && inds.every((x) => sameFreq(x.priorFreq));
+  };
+  for (let a = 0; a < support.loci.length; a++) for (let b = a + 1; b < support.loci.length; b++) {
+    if (!locusSame(a, b)) continue;
+    const key = (j: Joint) => j.map((p) => p.join(",")).join("|");
+    const byKey = new Map(all.map((j, i) => [key(j), i]));
+    swaps.push(Int32Array.from(all, (j) => {
+      const sw = [...j];
+      [sw[a], sw[b]] = [sw[b]!, sw[a]!];
+      return byKey.get(key(sw))!;
+    }));
+  }
+  const inCand = candIdx.map((opts) => { const m = new Uint8Array(n); for (const c of opts) m[c] = 1; return m; });
+  const logFactor = (i: number, st: ArrayLike<number>): number => {
+    const { dam, sire } = parents[i]!;
+    const c = st[i]!;
+    const f = dam !== null && sire !== null ? T[(c * n + st[dam]!) * n + st[sire]!]!
+      : dam !== null ? U[c * n + st[dam]!]! : sire !== null ? U[c * n + st[sire]!]! : (ownPrior[i] ?? priors)[c]!;
+    return Math.log(f);
+  };
+  const swapped = new Int32Array(inds.length);
 
   const state = initialAssignment(inds, support, rng);
   const samples: Int16Array[] = [];
@@ -147,18 +188,19 @@ export function posteriorDiscrete(map: GenomeMap, trait: DiscreteTrait, individu
       const options = candIdx[i]!;
       if (options.length === 1) { state[i] = options[0]!; continue; }
       let total = 0;
+      const { dam, sire } = parents[i]!;
+      const prior = ownPrior[i] ?? priors;
       for (const c of options) {
-        const { dam, sire } = parents[i]!;
         let w: number;
-        if (dam !== null && sire !== null) w = jointTransmission(all[c]!, all[state[dam]!]!, all[state[sire]!]!);
-        else if (dam !== null) w = transUnknown(c, state[dam]!);
-        else if (sire !== null) w = transUnknown(c, state[sire]!);
-        else w = priors[c]!;
+        if (dam !== null && sire !== null) w = T[(c * n + state[dam]!) * n + state[sire]!]!;
+        else if (dam !== null) w = U[c * n + state[dam]!]!;
+        else if (sire !== null) w = U[c * n + state[sire]!]!;
+        else w = prior[c]!;
         for (const k of kids[i]!) {
           if (w === 0) break;
-          const kj = all[state[k.kid]!]!;
-          if (k.mate === null) w *= transUnknown(state[k.kid]!, c);
-          else w *= k.asDam ? jointTransmission(kj, all[c]!, all[state[k.mate]!]!) : jointTransmission(kj, all[state[k.mate]!]!, all[c]!);
+          const kj = state[k.kid]!;
+          if (k.mate === null) w *= U[kj * n + c]!;
+          else w *= k.asDam ? T[(kj * n + c) * n + state[k.mate]!]! : T[(kj * n + state[k.mate]!) * n + c]!;
         }
         weights[c] = w;
         total += w;
@@ -166,6 +208,14 @@ export function posteriorDiscrete(map: GenomeMap, trait: DiscreteTrait, individu
       if (total <= 0) continue; // stuck; keep current state
       let u = rng.next() * total;
       for (const c of options) { u -= weights[c]!; if (u <= 0) { state[i] = c; break; } }
+    }
+    for (const sw of swaps) {
+      let ok = true;
+      for (let i = 0; i < inds.length && ok; i++) { swapped[i] = sw[state[i]!]!; ok = inCand[i]![swapped[i]!] === 1; }
+      if (!ok) continue;
+      let logRatio = 0;
+      for (let i = 0; i < inds.length; i++) logRatio += logFactor(i, swapped) - logFactor(i, state);
+      if (logRatio >= 0 || Math.log(rng.next()) < logRatio) for (let i = 0; i < inds.length; i++) state[i] = swapped[i]!;
     }
     if (sweep >= burn) samples.push(Int16Array.from(state));
   }

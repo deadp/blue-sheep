@@ -644,3 +644,80 @@ Exit code non-zero on any failure; prints a one-screen summary. Artifacts in
 - The farmhouse and the shed hotspots both open the board (planned matings + Sleep);
   the HUD Sleep button sleeps directly. Mailbox → orders, fairground → fair, vet → vet,
   market → market. Locked buildings show a toast instead of an empty panel.
+
+## 9. Genetics v3 library (DESIGN-v3 Phase 1) — `@blue-sheep/genetics`, `@blue-sheep/inference`
+
+The v2 species (`sheep.sheep`, A/B/D colour) is unchanged and still drives the game. The v3
+library sits beside it until Phase 2 switches the game over. Everything here is pure and
+rng-driven through `createRng`.
+
+**Species `sheep3.sheep3`** (`genetics/src/sheep3.ts`, exported as the namespace `sheep3`): six
+chromosomes of 150 cM. Each pigment locus has its own chromosome; W sits 140 cM from R1.
+
+| Locus | Alleles (index 0, 1) | Farm freq of index 1 | Trait (phenotype strings) |
+|---|---|---|---|
+| `W` | `w`, `W` | 0.55 (so `w/w` ≈ 20 %) | `white`: `"white"` / `"coloured"` |
+| `R1` `R2` / `Y1` `Y2` / `U1` `U2` | `-`, `+` | 0.20 / 0.25 / 0.10 | `red` / `yellow` / `blue`: dose `"0"`…`"4"`, masked by white |
+| `Dl` | `d`, `D` | 0.75 | `dilute`: `"pale"` / `"full"`, masked by white |
+| `S` | `s`, `S` | 0.65 | `pattern`: `"spotted"` / `"solid"`, masked by white |
+| `P` | `p`, `P` | 0.5 | `horns`: `"polled"` / `"horned"` |
+| `DC` | `dc`, `DC` | 0 | `coat`: `"double"` / `"single"` (dominant) |
+| `N` | `n`, `N` | 0 | `hair`: `"hairy"` / `"plain"` (dominant) |
+| `ST` `CL` `GW` `PA` `SO` | common, rare (`st`…) | 0 (GW, SO 0.02) | `steel` `cloud` `glow` `paua` `southerly`: name / `"plain"` (recessive; `paua` masked when lustre < 5) |
+| `PO` | `po`, `PO` | 0 (sport-only) | `pohutukawa`: `"pohutukawa"` / `"plain"` (dominant) |
+
+Quantitative traits: `fineness` (µm, 6 FN QTLs a = 1.5, GR pleiotropy, N +8), `staple` (mm, SL1–4
+a = 12, N +40, DC +20), `crimp` (+0.3 per fine FN allele, N −1.5), `lustre` (0–10, LU1–3),
+`fleeceWeight` (N +1 kg), `size`, `boldness`, `depth` ("Colour strength", ×0.6–1.4, CD1–4,
+h² ≈ 0.67). `milk` is gone. Exports also `DISCRETE_TRAITS` (15), `QUANTITATIVE_TRAITS`,
+`PIGMENT_LOCI`, `FANTASY_LOCI`, `FANTASY_TRAIT`, `QTL_GROUPS`, `pigmentDoses(genome)`, and
+`SPORTS` (the `mate()` option for v3: μ = 0.001 at the fantasy loci only).
+
+**Core helpers** (all backward compatible):
+- `DiscreteTrait.maskedBy?: {trait, value} | {trait, below}` and `isMasked(trait, phenotype)`.
+- `observePhenotypes(genome, species, rng, inbreeding?)` → every visible phenotype, masked ones omitted.
+- `sampleFounder(map, rng, freqOverride?)`: the override replaces some loci's frequencies; the rng
+  is consumed the same way.
+- `mate(dam, sire, map, rng, opts?)` and `mateDetailed(...) → { genome, sports: {locus, parent}[] }`.
+  With no `opts.mutation` the rng is consumed exactly as before (old saves replay identically).
+
+**Colour** (`colour.ts`): `woolColour(ColourInput) → WoolColour { hex, rgb, hsl, family, name,
+intensity, dilute, spotted, amounts, trueBlue, gold }`; `colourInputFromPhenotype(ph)`;
+`colourFamily(ρ, γ, β)`; `intensityBand(I)` (soft < 0.3 ≤ bright < 0.6 ≤ vivid); `rybToRgb`;
+OKLab helpers. Families: neutrals `white oatmeal taupe charcoal brown`, hues `red orange yellow
+green blue purple`. `name` is the family or its pastel (pink, peach, lemon, mint, sky, lilac,
+silver, fawn), `"snow-white"` for mask-white, `"gold"` for the special. Differences from DESIGN-v3
+§2.2, made after looking at the palette sheet:
+- The mix isn't a plain trilinear sRGB blend (low doses went grey). The shared part
+  `min(ρ,γ,β)` sets a natural colour (oatmeal → warm taupe → charcoal), and the rest sets a hue on
+  the RYB wheel (the same eight corner colours). The hue is laid over the natural colour by
+  C = max − min in OKLCH, so a little pigment reads as a pale tint.
+- Neutral when C < 0.12 (was 0.2), because a single dose at the lowest strength tints visibly.
+- Brown only for muted *warm* hues. Muted cool hues keep their name (slate blue, olive green).
+
+**Breeds** (`breeds.ts`): `BREEDS: Record<BreedId, BreedSpec>` (`farm merino corriedale perendale
+romney drysdale icelandic`), `BREED_IDS`, `breedFreqs(id) → FreqOverride` (fleece QTL frequencies
+solved from each breed's target means), `sampleBreedFounder(id, rng)`,
+`expectedTraitMean(trait, freqs)`. Farm's staple target is 90 mm (not 100), so most Farm sheep
+classify as Crossbred.
+
+**Wool type** (`wooltype.ts`): `woolType(FleeceMeasures) → "lopi" | "carpet" | "fine" | "medium" |
+"lustre" | "strong" | "crossbred"` (§3.3 order), `fleeceFromPhenotype(ph)`, `coatLayers(µm)`,
+`WOOL_TYPE_LABEL`. It lives in genetics (pure), not in core as §3.3 suggested.
+
+**Inference changes** (`@blue-sheep/inference`):
+- `discreteSupport` ignores a masked phenotype (`isMasked`), which is the exact posterior.
+- `Individual.priorFreq?` gives breed-aware founder priors. Founder allele frequencies are floored
+  at `MIN_ALLELE_FREQ` (1e-4) so a sport or an off-breed rare allele keeps a finite weight.
+- `jointPrior(j, support, freqOverride?)`.
+- The Gibbs sampler uses a precomputed transmission table. It is bit-identical to before on v2
+  traits and about 3× faster.
+- A Metropolis move swaps interchangeable loci (same alleles and frequencies, e.g. R1/R2) across the
+  whole pedigree. Without it, per-locus marginals stick to one labelling. v2 traits have no such
+  loci, so their results don't change.
+- Benchmark (test): all 15 v3 traits on a 200-sheep pedigree with 300 samples take about
+  190–310 ms on the 4-core dev box. The test bound is 600 ms.
+
+**Dev palette:** `npx vite-node packages/genetics/scripts/palette.ts [--png] [--seed N]` writes
+`packages/genetics/out/palette.html` (and `palette.png`, `palette-cube.png`; `out/` is gitignored). It
+prints the breed table, the founder colour families per breed, and a selective-breeding sim.

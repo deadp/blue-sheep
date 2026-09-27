@@ -9,6 +9,25 @@ export interface DiscreteTrait {
   loci: string[];
   /** Map from locus id -> [alleleA, alleleB] (names) to a phenotype label. */
   resolve: (genotypes: Record<string, [string, string]>) => string;
+  /**
+   * The trait can't be seen when another trait hides it: when that trait's phenotype equals
+   * `value` (discrete, e.g. white wool hides the pigment doses), or is below `below`
+   * (quantitative, e.g. pāua shimmer needs lustre ≥ 5). A masked phenotype carries no
+   * information, so it is left out of the evidence (see `isMasked`).
+   */
+  maskedBy?: MaskRule;
+}
+
+export type MaskRule = { trait: string; value: string } | { trait: string; below: number };
+
+/** True when `trait` is hidden given the other phenotypes of the same sheep. */
+export function isMasked(trait: DiscreteTrait, phenotype: Record<string, string | number | undefined>): boolean {
+  const m = trait.maskedBy;
+  if (!m) return false;
+  const v = phenotype[m.trait];
+  if (v === undefined) return false;
+  if ("value" in m) return v === m.value;
+  return typeof v === "number" && v < m.below;
 }
 
 export interface Qtl {

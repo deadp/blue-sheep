@@ -4,3 +4,4 @@ dist/
 .vite/
 packages/game/probe/out/
 packages/game/probe/.build/
+packages/genetics/out/

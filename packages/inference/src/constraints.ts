@@ -4,14 +4,23 @@
  * tests. Constraint propagation to a fixpoint; ignores linkage.
  */
 import type { DiscreteTrait, GenomeMap } from "@blue-sheep/genetics";
-import { getLocus } from "@blue-sheep/genetics";
+import { getLocus, isMasked } from "@blue-sheep/genetics";
 
 export interface Individual {
   id: string;
   dam: string | null;
   sire: string | null;
+  /**
+   * Observed phenotypes by trait id. A discrete trait that another phenotype masks
+   * (`DiscreteTrait.maskedBy`, e.g. pigment doses on a white sheep) is ignored even if present.
+   */
   phenotype: Record<string, string | number>;
   tested: Record<string, string>;
+  /**
+   * Founder allele frequencies for this sheep, by locus id (e.g. its breed's), replacing the map's
+   * as its prior. Only used when neither parent is in the pedigree.
+   */
+  priorFreq?: Record<string, number[]>;
 }
 
 /** Unordered allele pair, indices with a <= b. */
@@ -65,15 +74,14 @@ export function discreteSupport(map: GenomeMap, trait: DiscreteTrait, individual
   for (const l of loci) all = all.flatMap((j) => pairsFor(l.alleles.length).map((p) => [...j, p]));
 
   const gstr = (l: (typeof loci)[number], p: Pair) => `${l.alleles[p[0]]}/${l.alleles[p[1]]}`;
+  const phen = all.map((j) => jointPhenotype(trait, loci, j));
 
-  // Initial filter: own phenotype + tests.
+  // Initial filter: own phenotype (unless masked) + tests.
   const cand = new Map<string, Joint[]>();
   for (const ind of individuals) {
-    const observed = ind.phenotype[trait.id];
-    cand.set(ind.id, all.filter((j) => {
-      const g: Record<string, [string, string]> = {};
-      loci.forEach((l, i) => { g[l.id] = [l.alleles[j[i]![0]]!, l.alleles[j[i]![1]]!]; });
-      if (observed !== undefined && trait.resolve(g) !== observed) return false;
+    const observed = isMasked(trait, ind.phenotype) ? undefined : ind.phenotype[trait.id];
+    cand.set(ind.id, all.filter((j, ji) => {
+      if (observed !== undefined && phen[ji] !== String(observed)) return false;
       return loci.every((l, i) => {
         const t = ind.tested[l.id];
         return !t || t === gstr(l, j[i]!);

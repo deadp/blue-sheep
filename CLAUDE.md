@@ -21,13 +21,14 @@ Blue Sheep is a cozy, turn-based sheep-breeding game built on realistic genetics
 - `npm run serve`: builds and serves the production game on `0.0.0.0:4173` for a human.
 - `npm run dev -- --host`: Vite dev server for a human.
 - `npx vite-node packages/game/scripts/<name>.ts`: oracle and balance sims, e.g. `blind.ts` (knowledge-limited farmer: seasons per act and ending rate over 30 seeds) or `oracle.ts`.
+- `npx vite-node packages/genetics/scripts/palette.ts --png`: the v3 colour palette sheet, breed table and a selective-breeding sim, written to `packages/genetics/out/` (gitignored). Open `palette.png` with Read after any colour-model change.
 
 The user works on a different machine. When you start a server for them, bind to all interfaces (`--host` / `0.0.0.0`). Report `http://<first IP from hostname -I>:<port>`, not `localhost`, and leave the server running in the background.
 
 ## Packages and ownership
 
 ```
-packages/genetics/          pure TS: genome, meiosis, traits, pedigree, createRng
+packages/genetics/          pure TS: genome, meiosis, traits, pedigree, createRng; v3: sheep3, colour, breeds, wooltype
 packages/inference/         pure TS: posteriors, lamb outcome distributions, info gain
 packages/game/src/core/     state, sim, acts, orders, fair, events, vet, market, economy, knowledge
 packages/game/src/world3d/  Three.js isometric diorama (WorldView); imports nothing from core/
