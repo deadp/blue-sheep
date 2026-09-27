@@ -1054,3 +1054,12 @@ and tuning is a separate commit only if a target is badly missed.
     wants options that show **what gameplay actually looks like** at play zoom
     (camera framing, how you move around, how expansion appears in play) before
     choosing a layout.
+22. **Camera and movement (user, 2026-09-27, style round 3):** camera =
+    **close isometric** (one paddock fills the screen, big clickable sheep,
+    felt minimap, locked land at the edges with felt price tags). Sheep face =
+    the round-3 friendlier face. Movement: the user wants to **try a walking
+    farmer in the close-iso view** ("1 or walk around maybe") alongside
+    drag-pan + signposts. Next step: a small playable prototype of close iso
+    with a walking farmer (camera follows, click-to-walk and WASD, fond sheep
+    follow the farmer, interact by walking up to a sheep) versus drag-pan +
+    signposts, for the user to try in a browser before choosing.
