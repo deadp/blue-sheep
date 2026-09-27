@@ -140,11 +140,14 @@ ul.plain { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-dire
 .tab.on { background: var(--sun); }
 .picker { display: grid; grid-template-columns: minmax(200px, 250px) 1fr; gap: 16px; align-items: start; }
 .cands { display: flex; flex-direction: column; gap: 6px; max-height: 56vh; overflow: auto; padding: 2px 6px 4px 2px; }
-.cand { display: grid; grid-template-columns: 18px 1fr auto; gap: 6px; align-items: center; text-align: left; background: #fff; box-shadow: 1px 1px 0 var(--ink); padding: 7px 9px; border-width: 1.5px; font-weight: 600; }
+.cand { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 6px; align-items: center; text-align: left; background: #fff; box-shadow: 1px 1px 0 var(--ink); padding: 7px 9px; border-width: 1.5px; font-weight: 600; }
 .cand.on { background: var(--note); border-width: 2px; box-shadow: 2px 2px 0 var(--ink); }
 .cand.busy { opacity: 0.5; }
 .cand.visitor { border-style: dashed; }
 .cname { display: flex; flex-direction: column; min-width: 0; }
+/* long names end in an ellipsis (the full name is the tooltip) instead of running under the hint */
+.cname .cn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.csub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .csub { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
 .cand .hint { font-size: 0.8rem; color: var(--ink-soft); white-space: nowrap; text-align: right; }
 .forecast { background: #fffdf7; border: 2px dashed var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
@@ -328,8 +331,11 @@ ul.plain { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-dire
 .meter2.compact .m-bar i { width: 15px; height: 12px; }
 .o-forecast .meter2 { margin-right: 4px; }
 
-/* litter of rendered lambs */
+/* litter of rendered lambs: always ten in one row (tiles shrink to fit) except on phones (two rows of five) */
 .litter { gap: 5px; margin: 8px 0 8px; }
+.litter:not(.small) { display: grid; grid-template-columns: repeat(10, minmax(0, 50px)); }
+.litter:not(.small) .lamb-tile { width: 100%; height: auto; aspect-ratio: 1; }
+@media (max-width: 520px) { .litter:not(.small) { grid-template-columns: repeat(5, minmax(0, 50px)); } }
 .lamb-tile { position: relative; display: inline-grid; place-items: center; width: 50px; height: 50px; border-radius: 14px; background: radial-gradient(circle at 50% 62%, #ffffffcc, #ffffff00 70%), #eef3e6; border: 2px solid #e3d9c8; animation: lambIn 0.42s cubic-bezier(.3,1.6,.5,1) calc(var(--i, 0) * 70ms) backwards; }
 .lamb-tile img { width: 100%; height: 100%; border-radius: 12px; object-fit: cover; }
 .lamb-tile.blob { background: #f6f0e4; }
@@ -709,3 +715,21 @@ body.gallery-mode #hud { position: sticky; top: 0; height: 110px; }
   body.tut-on:has(#mentor .m-wide) #overlay:not(.side) { padding-left: 366px; }
   #mentor .punnet .pgrid { grid-template-columns: 78px repeat(2, 96px); }
 }
+
+/* ---------- Press-and-hold to brush (live portrait) or pat (animal card): a ring fills above the finger ---------- */
+.sc-stage .hold-ring { position: absolute; width: 48px; height: 48px; margin: -24px 0 0 -24px; pointer-events: none; z-index: 4; --p: 0; animation: hold-in 0.15s ease-out; }
+.hold-ring svg { display: block; transform: rotate(-90deg); filter: drop-shadow(1px 2px 0 #3b333055); }
+.hold-ring .hr-track { fill: #fffaf0e6; stroke: #3b3330; stroke-width: 3; }
+.hold-ring .hr-fill { fill: none; stroke: #e8577e; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--p) * 100); }
+.hold-ring .hr-heart { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(12px + var(--p) * 9px); color: #e8577e; line-height: 1; }
+.hold-ring.done { animation: hold-done 0.6s ease-out forwards; }
+.hold-ring.cancel { animation: hold-out 0.22s ease-in forwards; }
+@keyframes hold-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+@keyframes hold-done { 0% { transform: scale(1); } 30% { transform: scale(1.25); opacity: 1; } 100% { transform: scale(1.4); opacity: 0; } }
+@keyframes hold-out { to { opacity: 0; transform: scale(0.7); } }
+.reduced-motion .hold-ring, .reduced-motion .hold-ring.done, .reduced-motion .hold-ring.cancel { animation: none; }
+.sc-stage.pet-stage { position: relative; touch-action: none; user-select: none; }
+
+/* ---------- Mini-lessons: the mentor card for a newly arrived concept ---------- */
+#mentor:has(.lesson) { border-color: var(--accent-dark); }
+#mentor .lesson .m-step { color: var(--accent-dark); }

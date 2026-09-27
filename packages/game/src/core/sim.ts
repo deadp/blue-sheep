@@ -18,7 +18,7 @@ import {
 import type { CrossForecast, GameState, SeasonReport, Sheep } from "./types.js";
 import { feedPerHead, hasUpgrade } from "./upgrades.js";
 import { departVisitingRam, offerVisitingRam } from "./visitor.js";
-import { isTutorialFirstMating, tutorialLambGenome } from "./tutorial.js";
+import { tutorialHornsCard, tutorialLambGenome, tutorialLambIndex } from "./tutorial.js";
 import { checkPacing } from "./pacing.js";
 
 /** Chance of twins for a mating whose lambs would have inbreeding f. */
@@ -71,19 +71,21 @@ export function advanceSeason(state: GameState): SeasonReport {
   state.stats.coinsEarned += report.income;
 
   // 3. Lambing. A valid planned mating always gives at least one lamb unless the ewe is ill.
+  const tutorialCards: Sheep[] = [];
   const ped = pedigreeOf(state);
   for (const p of pairings) {
     const ewe = state.sheep[p.ewe]!, ram = state.sheep[p.ram]!;
     if (!state.flock.includes(ewe.id)) continue;
     if (isIll(ewe, t)) { say(`${ewe.name} was too poorly to lamb this season.`); continue; }
     const f = ped.offspringInbreeding(ewe.id, ram.id);
-    // The tutorial's first mating gives one lamb that shows a hidden colour (see core/tutorial.ts).
-    const tutorialLamb = isTutorialFirstMating(state, ewe.id, ram.id);
+    // The tutorial pair's first three matings give one lamb each, with a set look (see core/tutorial.ts).
+    const tutIndex = tutorialLambIndex(state, ewe.id, ram.id);
+    const tutorialLamb = tutIndex >= 0;
     const litter = tutorialLamb ? 1 : rng.chance(twinChance(f)) ? 2 : 1;
     const born: Sheep[] = [];
     for (let i = 0; i < litter; i++) {
       const draw = () => mate(genomeOf(ewe), genomeOf(ram), species.map, rng);
-      const genome = tutorialLamb ? tutorialLambGenome(draw) : draw();
+      const genome = tutorialLamb ? tutorialLambGenome(draw, tutIndex) : draw();
       const lamb = addSheep(state, rng, {
         sex: rng.chance(0.5) ? "ewe" : "ram", born: t + 1, dam: ewe.id, sire: ram.id, genome, inbreeding: f, origin: "bred",
       });
@@ -91,6 +93,7 @@ export function advanceSeason(state: GameState): SeasonReport {
       welcomeLamb(state, lamb, ewe.id, t + 1);
       report.lambs.push(lamb);
       born.push(lamb);
+      if (tutIndex === 1) tutorialCards.push(lamb);
       state.stats.lambsBorn += 1;
       if (lamb.phenotype["colour"] === "blue") {
         state.stats.bluesBorn += 1;
@@ -171,6 +174,7 @@ export function advanceSeason(state: GameState): SeasonReport {
 
   // 10. What did we learn?
   report.discoveries = updateDiscoveries(state);
+  for (const l of tutorialCards) { const c = tutorialHornsCard(state, l); if (c) report.discoveries.unshift(c); }
 
   // 11. Acts and the ending.
   report.actAdvanced = checkActAdvance(state, baseline);

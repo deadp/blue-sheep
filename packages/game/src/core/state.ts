@@ -192,6 +192,8 @@ export function newGame(seed: number): GameState {
     mice: null,
     achievements: [],
     tutorial: null,
+    lesson: null,
+    lessonsDone: [],
   };
   // Starting flock: one white ewe and one white ram (the tutorial pair; see addStarterPair).
   addStarterPair(state, rng);
@@ -213,7 +215,8 @@ export function setLocus(g: Genome, locus: string, alleles: [string, string]): v
  * The starter pair's genes. Both white, both carry hidden colour (one white copy, one coloured copy) and are
  * black underneath, so a lamb that shows its colour is black. The ewe also carries one dilute copy, the ram
  * none, so no lamb of the pair can be blue (that stays the goal). Both are polled carriers of horns (one
- * no-horns copy, one horns copy): the tutorial's Punnet square. Everything else is an ordinary founder.
+ * no-horns copy, one horns copy): the tutorial's Punnet square. Both are solid with no hidden spotting (so
+ * the tutorial's first lamb teaches nothing by surprise). Everything else is an ordinary founder.
  */
 function starterGenome(rng: Rng, sex: Sex): Genome {
   const g = sampleFounder(species.map, rng);
@@ -221,6 +224,7 @@ function starterGenome(rng: Rng, sex: Sex): Genome {
   setLocus(g, "B", ["B", "B"]);
   setLocus(g, "D", sex === "ewe" ? ["d", "D"] : ["D", "D"]);
   setLocus(g, "P", ["p", "P"]);
+  setLocus(g, "S", ["S", "S"]); // solid, no hidden spotting: the tutorial's lambs bring one idea at a time
   return g;
 }
 
@@ -231,6 +235,7 @@ function starterMotherGenome(rng: Rng, forSex: Sex): Genome {
   setLocus(g, "B", ["B", "B"]);
   setLocus(g, "D", forSex === "ewe" ? ["d", "D"] : ["D", "D"]);
   setLocus(g, "P", ["p", "p"]);
+  setLocus(g, "S", ["S", "S"]);
   return g;
 }
 
@@ -294,13 +299,16 @@ export function deserialize(json: string): GameState {
     if (st.mice === undefined) st.mice = null;
     // Saves from before the tutorial have none.
     if (st.tutorial === undefined) st.tutorial = null;
-    // Tutorials saved before the Punnet square: no neighbour's flock any more, and the step moves to its new place.
-    if (st.tutorial && "held" in st.tutorial) {
+    // Saves from before the mini-lessons: none running, none done.
+    if (st.lesson === undefined) st.lesson = null;
+    if (!Array.isArray(st.lessonsDone)) st.lessonsDone = [];
+    // Tutorials saved before the three-lamb tutorial (no version): their steps no longer line up, so an
+    // unfinished one ends here (the farm stays as it is), and any neighbour's flock field is dropped.
+    if (st.tutorial && st.tutorial.ver === undefined) {
       const old = st.tutorial as typeof st.tutorial & { held?: unknown };
-      const OLD = ["ewe", "ram", "forecast", "plan", "sleep", "reveal", "grow", "market", "goal", "done"];
-      const NEW = ["ewe", "ram", "forecast", "punnet", "plan", "sleep", "reveal", "why", "grow", "market", "goal", "done"];
-      old.step = NEW.indexOf(OLD[old.step - 1] ?? "done") + 1 || NEW.length;
       delete old.held;
+      if (!old.done) { old.done = true; old.step = 17; }
+      old.ver = 3;
     }
     return st;
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  PACE_WAIT, PACING, acceptOrder, advanceSeason, buyUpgrade, eventPool, grantUnlock, newGame, newTutorialGame, nextUnlock,
-  upgradeBlocked, upgradeOffered, vetTest, type GameState, type Unlock,
+  CALENDAR, ORDERS_BY, PACING, advanceSeason, advanceTutorial, tutorialOver, buyUpgrade, enterAct, eventPool, grantUnlock, newGame, newTutorialGame,
+  nextDated, nextUnlock, skipTutorial, upgradeBlocked, upgradeOffered, type GameState, type Unlock,
 } from "./index.js";
 import { planAll } from "./testkit.js";
 
@@ -18,78 +18,105 @@ function run(g: GameState, seasons: number, each?: (g: GameState) => void): { se
   return got;
 }
 
-describe("pacing: one new concept at a time", () => {
-  it("the ladder order is fixed", () => {
+describe("pacing: a calendar, one new concept a season", () => {
+  it("the order and the dates are fixed", () => {
     expect(PACING.map((p) => p.id)).toEqual(["cards", "orders", "vet", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]);
+    // Year 2 Spring, Year 2 Autumn, Year 3 Spring, Year 3 Autumn (season 0 = Year 1 Spring).
+    expect(CALENDAR).toEqual({ vet: 4, farm: 6, dogs: 8, cat: 10 });
   });
 
-  it("never more than one concept a season, in ladder order, each after its trigger", () => {
-    for (const seed of [3, 8, 21]) {
+  it("each dated concept arrives exactly on its season, letters in year 1, never two at once", () => {
+    for (const seed of [3, 8, 21, 44, 57]) {
       const g = newGame(seed);
-      const got = run(g, 30);
+      const got = run(g, 14);
+      const when = Object.fromEntries(got.map((x) => [x.id, x.season]));
+      expect(when["orders"], `seed ${seed}`).toBeLessThanOrEqual(2); // no tutorial: the first free season (Year 1)
+      // The codex comes with the first discovery card, whenever that is.
+      if (g.discoveries.length) expect(when["cards"], `seed ${seed}`).toBeGreaterThanOrEqual(g.discoveries[0]!.season);
+      for (const [id, season] of Object.entries(CALENDAR)) expect(when[id], `seed ${seed} ${id}`).toBe(season);
       const seasons = got.map((x) => x.season);
       expect(new Set(seasons).size, `seed ${seed}`).toBe(seasons.length);
-      const order = PACING.map((p) => p.id);
-      const idx = got.map((x) => order.indexOf(x.id));
-      // The early chain comes strictly in ladder order, none skipped; so do the story concepts.
-      const cut = order.indexOf("numbers");
-      const early = idx.filter((i) => i < cut), story = idx.filter((i) => i >= cut);
-      expect(early, `seed ${seed}`).toEqual(early.map((_, k) => k));
-      expect(story, `seed ${seed}`).toEqual(story.map((_, k) => cut + k));
-      expect(got[0]?.id).toBe("cards");
-      expect(got[0]?.season).toBe(1); // the first lambs
     }
   });
 
-  it("cards come with the first lamb; orders not until the tutorial is over", () => {
+  it("a skipped tutorial follows the same calendar (the letters come at once)", () => {
+    const g = newTutorialGame(9);
+    skipTutorial(g);
+    expect(tutorialOver(g)).toBe("orders");
+    expect(g.season).toBe(0);
+    const got = run(g, 11);
+    expect(got.map((x) => `${x.id}@${x.season}`)).toEqual(expect.arrayContaining(["vet@4", "farm@6", "dogs@8", "cat@10"]));
+  });
+
+  it("letters never come during the tutorial; they come when it ends, or by Year 2 Summer if it never does", () => {
     const g = newTutorialGame(4);
     const t = g.tutorial!;
-    g.tutorial!.step = 6; // "sleep"
-    g.plans[t.ewe] = t.ram;
-    const r1 = advanceSeason(g);
-    expect(r1.unlocked).toBe("cards");
-    expect(g.unlocks).toEqual(["cards"]);
-    // Still in the tutorial: another season brings nothing new.
-    const r2 = advanceSeason(g);
-    expect(r2.unlocked).toBeNull();
+    for (let i = 0; i < 3; i++) { g.plans[t.ewe] = t.ram; advanceSeason(g); }
+    expect(g.unlocks).toEqual(["cards"]); // the horned lamb's card brought the codex, nothing else
     g.tutorial!.done = true;
-    const r3 = advanceSeason(g);
-    expect(r3.unlocked).toBe("orders");
-    expect(g.orders.length).toBeLessThanOrEqual(1); // a single letter to start with
+    expect(tutorialOver(g)).toBe("orders");
+    expect(g.season).toBe(3); // Year 1 Winter
+    expect(g.orders[0]?.kind).toBe("horns");
+    expect(g.orders.length).toBe(1);
+
+    const h = newTutorialGame(5);
+    const got = run(h, ORDERS_BY + 1);
+    expect(got.find((x) => x.id === "orders")?.season).toBe(ORDERS_BY);
+    expect(got.find((x) => x.id === "vet")?.season).toBe(4);
   });
 
-  it("each concept waits until the one before has been used, or PACE_WAIT seasons", () => {
-    const g = newGame(12);
-    g.money = 400;
-    planAll(g);
-    advanceSeason(g); // cards
-    advanceSeason(g); // orders
-    expect(g.unlocks).toEqual(["cards", "orders"]);
-    // Ignore the letters: the vet comes only after PACE_WAIT seasons.
-    let waited = 0;
-    while (!g.unlocks.includes("vet")) { advanceSeason(g); waited++; }
-    expect(waited).toBe(PACE_WAIT);
-    // Use the vet at once: the farm improvements follow the very next season.
-    g.money = 400;
-    const id = g.flock[0]!;
-    vetTest(g, id, "D");
-    expect(nextUnlock(g)).toBeNull(); // not in the same season
-    expect(advanceSeason(g).unlocked).toBe("farm");
+  it("the first letter asks for horns in a normal game too", () => {
+    for (const seed of [1, 2, 3, 11]) {
+      const g = newGame(seed);
+      run(g, 2);
+      expect(g.unlocks).toContain("orders");
+      expect([...g.orders, ...g.orderHistory].sort((a, b) => a.posted - b.posted)[0]?.kind, `seed ${seed}`).toBe("horns");
+    }
   });
 
-  it("taking an order opens the vet the next season", () => {
-    const g = newGame(31);
-    g.money = 400;
+  it("act concepts queue behind the calendar: never in a dated season, never two at once", () => {
+    const g = newGame(51);
     grantUnlock(g, "cards");
-    g.season = 5;
     grantUnlock(g, "orders");
-    g.orders.push({
-      id: "o1", kind: "horns", villager: "Mrs Pike", text: "", colour: null, horns: "horned", sex: null, kg: null, microns: null,
-      posted: 5, expires: 7, deadline: 9, reward: 10, reputation: 1, status: "open", filledBy: [], resolvedSeason: null,
-    });
-    g.nextOrderId = 2;
-    acceptOrder(g, "o1");
-    expect(advanceSeason(g).unlocked).toBe("vet");
+    g.season = 3;
+    g.act = 2;
+    expect(nextUnlock(g)).toBe("numbers"); // season 3 is free
+    grantUnlock(g, "numbers");
+    expect(nextUnlock(g)).toBeNull(); // one a season
+    g.season = 4;
+    expect(nextUnlock(g)).toBe("vet"); // the vet's season, not the fair's
+    grantUnlock(g, "vet");
+    g.season = 5;
+    expect(nextUnlock(g)).toBe("fair");
+    grantUnlock(g, "fair");
+    expect(g.fair.nextSeason).toBeGreaterThan(5); // a season's notice before the first fair
+    g.season = 6;
+    g.act = 3;
+    expect(nextUnlock(g)).toBe("farm");
+    grantUnlock(g, "farm");
+    g.season = 7;
+    expect(nextUnlock(g)).toBe("tree");
+    grantUnlock(g, "tree");
+    g.season = 8;
+    expect(nextUnlock(g)).toBe("dogs");
+    grantUnlock(g, "dogs");
+    g.season = 9;
+    expect(nextUnlock(g)).toBe("visitor");
+    grantUnlock(g, "visitor");
+    g.season = 10;
+    expect(nextUnlock(g)).toBe("cat");
+  });
+
+  it("in play, an early blue lamb's concepts still never share a season with the calendar", () => {
+    // Force act 2 in Year 1 Autumn and act 3 a season later: the act concepts fill the free seasons.
+    const g = newGame(77);
+    const got = run(g, 12, (s) => { if (s.season === 2) enterAct(s, 2); if (s.season === 3) enterAct(s, 3); });
+    const seasons = got.map((x) => x.season);
+    expect(new Set(seasons).size).toBe(seasons.length);
+    for (const [id, season] of Object.entries(CALENDAR)) expect(got.find((x) => x.id === id)?.season, id).toBe(season);
+    for (const x of got.filter((x) => ["numbers", "fair", "tree", "visitor"].includes(x.id))) {
+      expect(Object.values(CALENDAR)).not.toContain(x.season);
+    }
   });
 
   it("the market sells improvements, dogs and the cat only once each has arrived; weather, foxes and mice follow them", () => {
@@ -108,47 +135,50 @@ describe("pacing: one new concept at a time", () => {
     expect(eventPool(g)).toContain("fox");
     expect(upgradeOffered(g, "collie")).toBe(true);
     expect(upgradeOffered(g, "cat")).toBe(false);
-    // no mice without the cat concept, however long you wait
-    for (let i = 0; i < 12; i++) { g.money = 1000; advanceSeason(g); if (g.unlocks.includes("cat")) break; expect(g.mice ?? null).toBeNull(); }
   });
 
-  it("a story concept jumps ahead of waiting early ones once its act begins", () => {
-    const g = newGame(51);
-    for (const u of ["cards", "orders", "vet"] as const) grantUnlock(g, u);
-    g.season = 20;
-    expect(nextUnlock(g)).toBe("farm");
-    g.act = 2;
-    expect(nextUnlock(g)).toBe("numbers");
+  it("no fox is ever announced or raids before dogs are on sale, and no mice before the cat", () => {
+    for (const seed of [2, 6, 13, 29, 31, 48]) {
+      const g = newGame(seed);
+      for (let i = 0; i < 16; i++) {
+        g.money = Math.max(g.money, 400);
+        planAll(g);
+        const r = advanceSeason(g);
+        const dogs = g.paced?.dogs;
+        if (r.announced?.kind === "fox" || r.announced?.kind === "wolf") expect(dogs, `seed ${seed} season ${g.season}`).toBeDefined();
+        if (r.event?.kind === "fox" || r.event?.kind === "wolf") expect(dogs! < r.event.season, `seed ${seed}`).toBe(true);
+        if (g.season < CALENDAR.dogs!) expect(g.pendingEvent?.kind === "fox").toBe(false);
+        if (r.miceComing) expect(g.unlocks).toContain("cat");
+      }
+    }
   });
 
-  it("numbers and the fair wait for act 2, the tree and visitors for act 3", () => {
-    const g = newGame(50);
-    for (const u of ["cards", "orders", "vet", "farm", "dogs", "cat"] as const) grantUnlock(g, u);
-    g.season = 10;
+  it("the board can say when the next dated concept comes", () => {
+    const g = newGame(3);
+    expect(nextDated(g)).toEqual({ id: "vet", season: 4 });
+    grantUnlock(g, "vet");
+    expect(nextDated(g)).toEqual({ id: "farm", season: 6 });
+  });
+
+  it("the fast-forward grants everything up to the act at once, with no lesson", () => {
+    const g = newGame(8);
+    enterAct(g, 3, undefined, { grant: true });
+    for (const u of ["cards", "orders", "vet", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]) expect(g.unlocks).toContain(u);
+    expect(g.lesson ?? null).toBeNull();
     expect(nextUnlock(g)).toBeNull();
-    g.act = 2;
-    expect(nextUnlock(g)).toBe("numbers");
-    grantUnlock(g, "numbers");
-    g.season = 11;
-    expect(nextUnlock(g)).toBe("fair");
-    grantUnlock(g, "fair");
-    expect(g.fair.nextSeason).toBeGreaterThan(11); // a season's notice before the first fair
-    expect(nextUnlock(g)).toBeNull(); // one a season
-    g.season = 12;
-    expect(nextUnlock(g)).toBeNull(); // the tree needs act 3
-    g.act = 3;
-    expect(nextUnlock(g)).toBe("tree"); // earned by the act: no wait for the fair to be used
-    grantUnlock(g, "tree");
-    expect(nextUnlock(g)).toBeNull();
-    g.season = 13;
-    expect(nextUnlock(g)).toBe("visitor");
   });
 
-  it("old saves keep what they had unlocked", () => {
+  it("old saves keep what they had unlocked, and a missed dated concept comes at once", () => {
     const g = newGame(60);
     g.unlocks = ["cards", "vet", "orders"];
     delete g.paced;
-    g.season = 3;
-    expect(nextUnlock(g)).toBe("farm"); // the missing early concept, straight away
+    g.season = 9;
+    expect(nextUnlock(g)).toBe("farm");
+  });
+
+  it("the tutorial's advance never unlocks anything by itself", () => {
+    const g = newTutorialGame(12);
+    expect(advanceTutorial(g, "ewe")).toBe(true);
+    expect(g.unlocks).toEqual([]);
   });
 });

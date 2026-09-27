@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { buildFullRig, buildSheepGeos, disposeGeos, EAR_REST, restPose, sheepKey, SheepMaterials, type FullRig, type SheepGeos, type SheepPose } from "./sheepMesh.js";
 import { Bubble } from "./fx.js";
 import { WOOL_HEX } from "./palette.js";
+import { HOLD_CLICK_MS, HOLD_MS, Hold } from "./hold.js";
 import type { Personality, WorldSheep } from "./types.js";
 
 /** What each temperament says. The first line is the greeting; clicks cycle through the rest. */
@@ -44,20 +45,23 @@ interface Live {
   // brushing
   /** Seconds of contented squint left (set while being brushed). */
   brushT: number;
-  /** Brushing distance (CSS px over the fleece) in the current drag, and in all drags since mounting. */
-  stroke: number;
+  /** Milliseconds held in the current (or last) brushing. */
   brushed: number;
   /** A full brushing has been given since mounting (reported once). */
   brushDone: boolean;
 }
 
-/** CSS px of brushing over the fleece that make one full brushing. */
-export const BRUSH_NEEDED = 140;
+/** Milliseconds of press-and-hold on the portrait that make one full brushing. */
+export const BRUSH_NEEDED = HOLD_MS;
 
 export interface PortraitStats {
   mounted: boolean; id: string | null; calls: number; frames: number;
-  /** Brushing since this sheep was mounted (CSS px over the fleece), fluff tufts in the air, hearts shown. */
-  brush: number; fluff: number; hearts: number; brushDone: boolean;
+  /**
+   * Brushing: ms held in the current (or last) press, its progress 0–1, whether the progress ring is showing
+   * and the press is still going, fluff tufts in the air, hearts shown, and whether a full brushing has been
+   * given since this sheep was mounted.
+   */
+  brush: number; hold: number; ring: boolean; holding: boolean; fluff: number; hearts: number; brushDone: boolean;
   /** Where the newest tuft is in the portrait (px from its top-left) and its size in px, or null. */
   fluffAt?: { x: number; y: number; px: number } | null;
 }
@@ -85,8 +89,9 @@ export class LivePortrait {
   /** The mounted sheep's height in world units (fluff is sized and flung relative to it). */
   private unit = 1;
   private heartsShown = 0;
-  /** The drag in progress (pointer down on the portrait). */
-  private drag: { x: number; y: number; moved: number; lastFluff: number; lastStroke: number; lastHeart: number } | null = null;
+  /** The brushing in progress (press-and-hold on the portrait), and its cosmetic beats (ms). */
+  private hold: Hold | null = null;
+  private beats = { fluff: 0, heart: 0, stroke: 0 };
   private suppressClick = false;
 
   constructor(
@@ -124,7 +129,8 @@ export class LivePortrait {
   stats(): PortraitStats {
     return {
       mounted: !!this.live, id: this.live?.id ?? null, calls: this.renderer?.info.render.calls ?? 0, frames: this.frames,
-      brush: Math.round(this.live?.brushed ?? 0), fluff: this.fluff.length, hearts: this.heartsShown, brushDone: this.live?.brushDone ?? false,
+      brush: Math.round(this.live?.brushed ?? 0), hold: this.hold?.progress ?? 0, ring: this.hold?.ringShown ?? false,
+      holding: this.hold?.active ?? false, fluff: this.fluff.length, hearts: this.heartsShown, brushDone: this.live?.brushDone ?? false,
       fluffAt: this.fluffScreen(),
     };
   }
@@ -162,7 +168,7 @@ export class LivePortrait {
       yaw: 0, pitch: 0, roll: 0, vyaw: 0, vpitch: 0, tYaw: 0.25, tPitch: 0.05, tRoll: 0,
       nextLook: 1.2, blinkIn: rnd(0.8, 2.5), blinkT: -1, earIn: rnd(0.5, 2), earT: [-1, -1],
       hop: -1, landed: 99, pointer: null, bleats: 0, lookX: 0, lookY: 0,
-      brushT: 0, stroke: 0, brushed: 0, brushDone: false,
+      brushT: 0, brushed: 0, brushDone: false,
     };
     // Tufts in the wool's colour, a shade warmer and darker so white fluff still reads against the pale stage.
     // Tufts in the wool's colour, a shade warmer and darker so white fluff still reads against the pale stage.
@@ -174,7 +180,7 @@ export class LivePortrait {
     const cv = r.domElement;
     cv.style.touchAction = "none";
     cv.onpointerdown = (ev) => this.onDown(ev);
-    cv.onpointermove = (ev) => { this.onPointer(ev); this.onDrag(ev); };
+    cv.onpointermove = (ev) => { this.onPointer(ev); this.hold?.move(ev.clientX, ev.clientY); };
     cv.onpointerup = () => this.onUp();
     cv.onpointercancel = () => this.onUp();
     cv.onpointerleave = () => { if (this.live) { this.live.pointer = null; if (this.reduced) this.draw(); } };
@@ -209,55 +215,60 @@ export class LivePortrait {
     L.nextLook = 1.4;
   }
 
-  // ---- brushing: click-and-drag over the fleece ----------------------------------------------
+  // ---- brushing: press and hold on the sheep ------------------------------------------------
 
   private onDown(ev: PointerEvent): void {
-    if (!this.live || ev.button > 0) return;
-    this.drag = { x: ev.clientX, y: ev.clientY, moved: 0, lastFluff: 0, lastStroke: 0, lastHeart: 0 };
-    this.live.stroke = 0;
+    const L = this.live;
+    if (!L || ev.button > 0) return;
+    this.suppressClick = false;
+    this.beats = { fluff: 0, heart: 0, stroke: 0 };
+    this.hold?.dispose();
+    this.hold = new Hold(L.el, {
+      onTick: (p, x, y) => this.brushTick(p, x, y),
+      onDone: () => {
+        const M = this.live;
+        if (!M) return;
+        this.suppressClick = true;
+        M.brushDone = true;
+        // The controller re-renders the card (so the hearts go up after it, via cheer()).
+        this.onBrush(M.id, "done");
+      },
+    });
+    this.hold.down(ev.clientX, ev.clientY);
+    L.brushed = 0;
     try { (ev.target as Element).setPointerCapture?.(ev.pointerId); } catch { /* not capturable */ }
   }
 
-  /** Where the pointer meets the sheep (world point), or null when it's off the sheep. */
-  private hitSheep(ev: PointerEvent): THREE.Vector3 | null {
+  /** Where a client point meets the sheep (world point), or null when it's off the sheep. */
+  private hitSheep(x: number, y: number): THREE.Vector3 | null {
     const L = this.live, r = this.renderer;
     if (!L || !r) return null;
     const rect = r.domElement.getBoundingClientRect();
-    const p = new THREE.Vector2(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+    const p = new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
     this.ray.setFromCamera(p, this.camera);
     const hit = this.ray.intersectObject(L.full.rig.root, true)[0];
     return hit ? hit.point.clone() : null;
   }
 
-  private onDrag(ev: PointerEvent): void {
-    const L = this.live, d = this.drag;
-    if (!L || !d) return;
-    const step = Math.hypot(ev.clientX - d.x, ev.clientY - d.y);
-    d.x = ev.clientX; d.y = ev.clientY;
-    d.moved += step;
-    if (d.moved > 8) this.suppressClick = true;
-    const at = this.hitSheep(ev);
-    if (!at || step <= 0) return;
-    // Over the fleece: it counts, the sheep leans in, tufts of wool drift off, now and then a heart.
-    L.stroke += step;
-    L.brushed += step;
+  /** While held: the sheep leans in and squints, tufts of wool drift off, now and then a heart and a swish. */
+  private brushTick(_p: number, x: number, y: number): void {
+    const L = this.live, h = this.hold;
+    if (!L || !h) return;
+    const ms = h.heldMs;
+    L.brushed = ms;
     L.brushT = 0.7;
-    if (L.stroke - d.lastFluff >= 10) { d.lastFluff = L.stroke; this.puff(at, 3); }
-    if (L.stroke - d.lastHeart >= 70) { d.lastHeart = L.stroke; this.heart(ev, 1); }
-    if (L.stroke - d.lastStroke >= 90) { d.lastStroke = L.stroke; this.onBrush(L.id, "stroke"); }
+    if (ms > HOLD_CLICK_MS) this.suppressClick = true;
+    if (ms - this.beats.fluff >= 110) { this.beats.fluff = ms; this.puff(this.hitSheep(x, y) ?? this.center.clone(), 3); }
+    if (ms - this.beats.heart >= 320) { this.beats.heart = ms; this.heart({ clientX: x, clientY: y }, 1); }
+    if (ms - this.beats.stroke >= 400) { this.beats.stroke = ms; this.onBrush(L.id, "stroke"); }
     if (this.reduced) this.draw();
   }
 
   private onUp(): void {
-    const L = this.live, d = this.drag;
-    this.drag = null;
-    if (!L || !d) return;
-    if (d.moved <= 8) this.suppressClick = false;
-    if (!L.brushDone && L.brushed >= BRUSH_NEEDED) {
-      L.brushDone = true;
-      // The controller re-renders the card (so the hearts go up after it, via cheer()).
-      this.onBrush(L.id, "done");
-    }
+    const h = this.hold;
+    if (!h) return;
+    // Let go early: nothing happens (a quick press is still a click: a bleat).
+    h.up();
   }
 
   /** A full brushing: a contented bubble and a burst of hearts over the portrait (call after re-rendering the card). */
@@ -309,7 +320,7 @@ export class LivePortrait {
   }
 
   /** Little hearts float up over the portrait (DOM): at the pointer, or a burst over the sheep. */
-  private heart(ev: PointerEvent | null, n: number): void {
+  private heart(ev: { clientX: number; clientY: number } | null, n: number): void {
     const L = this.live;
     if (!L) return;
     const rect = L.el.getBoundingClientRect();
@@ -353,7 +364,8 @@ export class LivePortrait {
     const L = this.live;
     if (!L) return;
     this.live = null;
-    this.drag = null;
+    this.hold?.dispose();
+    this.hold = null;
     this.clearFluff();
     this.scene.remove(L.full.rig.root);
     disposeGeos(L.geos);

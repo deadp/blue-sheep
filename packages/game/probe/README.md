@@ -8,7 +8,7 @@ passing unit tests do not prove the game runs. Spec: `docs/CONTRACTS.md` §7.
 
 | Command | What it does |
 |---|---|
-| `npm run probe` | build, then smoke → play → panels → life → voices → tutorial → video; summary table; exit 1 on any failure |
+| `npm run probe` | build, then smoke → play → panels → life → voices → tutorial → lessons → video; summary table; exit 1 on any failure |
 | `npm run probe:quick` | build, then smoke only |
 | `node packages/game/probe/run.mjs play panels` | build, then just the named steps |
 | `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, life, tutorial, video) |
@@ -46,25 +46,32 @@ screenshots of old code.
   `life-sheep-bleat`, `life-night`, `life-report-*`) and notes fps and draw calls.
   Voices: opening a card and clicking the portrait of a lamb, a ewe and a ram gives three different
   voices (`__game.debug.lastSound()`), pitch lamb > ewe > ram, stable per sheep; shy is softer, smoother
-  and shorter than bold; the settings toggle mutes. Brushing: a real drag across the portrait raises
-  fondness by 6 once a season ("Brushed this season"), with tufts and hearts (`brush-*` frames,
-  `brush-fluff.png` read back from the canvas mid-stroke); rubbing the collie's picture pats her.
+  and shorter than bold; the settings toggle mutes. Brushing (press and hold): a short press does nothing
+  and its ring goes away; a full hold (~1.2 s) raises fondness by 6 once a season ("Brushed this season"),
+  with a filling ring, tufts and hearts (`brush-hold-1`, `brush-ring`, `brush-fluff.png` read back from the
+  canvas mid-hold); holding the collie's picture pats her, a short press does not.
 - **voices.mjs**: we can't listen headless, so it renders lamb/ewe/ram × shy/calm/curious/bold bleats
   offline (`__game.debug.renderVoice`), measures length, peak/RMS and pitch (YIN), asserts the ordering,
   and writes `out/voices/*.wav` (plus `series-*.wav`, the 1–3 bleat series as played) and `stats.txt`.
-- **tutorial.mjs**: boots `?tutorial=1&fresh=1&nomotion=1` and plays all twelve
-  tutorial steps with real clicks. World sheep are clicked where the tutorial's
-  arrow points, with `open` as a fallback that the summary reports. It asserts
-  that each step advances on its action and that the mentor card never covers
-  a ringed target, the arrow's tip or the panel's primary button. The Punnet step
-  must show 3 polled : 1 horned for the carrier pair with no allele letters,
-  light the right copies/cells on hover and click, and fit at 1280×800 and
-  1024×768. It also asserts that the first lamb is coloured, earns discovery cards
-  and brings only the codex; that the colour square follows; that a ewe is bought;
-  that the final flock is just the tutorial's ewe, ram, lamb and bought ewe (no
-  handover); that the codex keeps the Punnet card; and that the next season brings
-  only the letters. Skipping is checked too. Screenshots: `tut-01..tut-12.png`,
-  `tut-04-hover`, `tut-04-pick`, `tut-04-1024`, `tut-codex`, `tut-end`, `tut-after`.
+- **tutorial.mjs**: boots `?tutorial=1&fresh=1&nomotion=1` and plays all seventeen
+  tutorial steps (three lambings of the same pair) with real clicks. World sheep are
+  clicked where the tutorial's arrow points, with `open` as a fallback that the
+  summary reports. It asserts that each step advances on its action and that the
+  mentor card never covers a ringed target, the arrow's tip or the panel's primary
+  button; lamb 1 is white and polled (no card, no codex), lamb 2 is white and
+  horned (the first card, the codex), lamb 3 is black (colour cards, act 1); the
+  Punnet square appears only after lamb 2, shows 3 polled : 1 horned with no
+  letters, lights copies/cells on hover and click and fits at 1280×800 and
+  1024×768; a ewe is bought; no handover; "Let's farm!" brings the horns letter and
+  its lesson at once; the next season (Year 2 Spring) brings only the vet. Skipping
+  is checked too. Screenshots: `tut-01..tut-17.png`, `tut-10-hover`, `tut-10-pick`,
+  `tut-10-1024`, `tut-end`, `tut-codex`, `tut-after`.
+- **lessons.mjs**: the pacing calendar and Old Tom's mini-lessons from `?seed=11`
+  to Year 4: each concept arrives alone on schedule (vet Y2 Spring, improvements Y2
+  Autumn, dogs Y3 Spring, cat Y3 Autumn) with its lesson; no fox before dogs; the
+  orders, vet, farm, dogs and cat lessons are completed by real clicks; a lesson
+  resumes after a sleep; the forecast keeps ten lambs on one row and long names
+  clear of the hint at 1280×800 and 1024×768. Screenshots `lesson-*`, `forecast-*`.
 - **video.mjs**: records 10 s of the idle world with motion on to `idle.webm`.
   Watch it for flicker and jitter.
 

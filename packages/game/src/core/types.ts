@@ -224,6 +224,8 @@ export interface TutorialState {
   ram: string;
   /** Coins the mentor chipped in at the market step (0 if none were needed). */
   gift: number;
+  /** The tutorial's version (3: three lambs). Absent in older saves: an unfinished old tutorial ends on load. */
+  ver?: number;
 }
 
 export interface GameState {
@@ -277,6 +279,13 @@ export interface GameState {
   paced?: Partial<Record<Unlock, number>>;
   /** Tutorial progress; null when there is no tutorial (absent in older saves: loaded as null). */
   tutorial: TutorialState | null;
+  /**
+   * The mini-lesson running for a newly arrived concept (core/lessons.ts): its id and 1-based step, or null.
+   * Absent in older saves: no lesson running.
+   */
+  lesson?: { id: Unlock; step: number } | null;
+  /** Lessons finished or skipped (absent in older saves: none). */
+  lessonsDone?: string[];
 }
 
 // ---- Forecasts ------------------------------------------------------------

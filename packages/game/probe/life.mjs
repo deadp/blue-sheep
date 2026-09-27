@@ -3,7 +3,7 @@
 // visits that sheep; closing the card (or opening another panel) unmounts it and releases the sheep;
 // body[data-panel] keeps tracking the open panel.
 // Care: the dogs and the cat are in the world exactly when owned; buying a dog changes the predator forecast;
-// greeting (opening a card) raises fondness once a season; a treat costs a coin; brushing (a drag across the
+// greeting (opening a card) raises fondness once a season; a treat costs a coin; brushing (press and hold on the
 // live portrait) raises it once a season and a dog gets a pat the same way; each animal has its own voice;
 // the report shows the happy-sheep wool line. With motion on it also saves frame sequences (life-sheep-*.png, life-world-*.png,
 // life-report-*.png) and notes draw calls and frame rate, for a human or agent to look at. Voices: a lamb, a ewe
@@ -188,91 +188,125 @@ export const life = {
       await g.close();
     }
 
-    // ---- 2d. brushing: click-and-drag across the live portrait's fleece
-    // Rules: a full brushing raises the sheep's fondness by the brushing amount (+6) once per season: the care
-    // box then says "Brushed this season"; brushing again the same season adds nothing; next season it counts
-    // again. While brushing, tufts of wool drift off and hearts float up (motion on). A dog gets a pat the same
-    // way by rubbing its picture on the animal card.
+    // ---- 2d. brushing: press and hold on the live portrait (all devices)
+    // Rules: holding ~1.2 s fills a ring and completes a brushing, which raises the sheep's fondness by the
+    // brushing amount (+6) once per season: the care box then says "Brushed this season"; a short press (let go
+    // early) does nothing and the ring goes away; brushing again the same season adds nothing; next season it
+    // counts again. While held, tufts of wool drift off and hearts float up (motion on). A dog gets a pat the
+    // same way by holding its picture on the animal card.
     {
       const g = await ctx.newPage();
       await g.boot("?seed=7&fresh=1");
       const st = await g.state();
       const a = st.flock[0];
       const fond = () => g.page.evaluate((id) => /** @type {any} */ (window).__game.debug.fondness(id), a);
+      const pstats = async () => (await world(g)).portrait;
       await g.act({ type: "open", panel: "sheep", id: a });
       await g.waitPanel("sheep");
       await g.page.waitForTimeout(400);
       const f0 = await fond();
       const mark0 = await g.page.evaluate(() => document.querySelector("#overlay .care [data-brushed]")?.getAttribute("data-brushed"));
       if (mark0 !== "0") throw new ProbeError(`before brushing the care box should offer a brush (data-brushed="0"), got ${mark0}`);
-      /** Drag back and forth across the portrait; screenshots at a few points mid-stroke. @param {string[]} frames */
-      const brushDrag = async (frames = []) => {
-        const b = await g.page.locator("#overlay canvas[data-live-portrait]").boundingBox();
-        if (!b) throw new ProbeError("no live portrait to brush");
-        const cx = b.x + b.width * 0.5, cy = b.y + b.height * 0.56;
-        await g.page.mouse.move(cx - 45, cy);
-        await g.page.mouse.down();
-        for (let i = 0; i < 10; i++) {
-          await g.page.mouse.move(cx + (i % 2 ? -45 : 45), cy + ((i % 3) - 1) * 10, { steps: 8 });
-          const k = [3, 6, 9].indexOf(i);
-          if (k >= 0 && frames[k]) ctx.artifact(await g.screenshot(frames[k]));
-        }
-        const mid = (await world(g)).portrait;
-        await g.page.mouse.up();
-        await g.page.waitForTimeout(150);
-        return mid;
-      };
-      const mid = await brushDrag(["brush-0", "brush-1", "brush-2"]);
+      const hint = await g.page.evaluate(() => document.querySelector("#overlay .care [data-brushed]")?.textContent ?? "");
+      if (!/press and hold/i.test(hint)) throw new ProbeError(`the care box should say to press and hold, says "${hint}"`);
+      const b = await g.page.locator("#overlay canvas[data-live-portrait]").boundingBox();
+      if (!b) throw new ProbeError("no live portrait to brush");
+      const cx = b.x + b.width * 0.5, cy = b.y + b.height * 0.56;
+      // A short press: the ring shows, then goes away on release; nothing else happens.
+      await g.page.mouse.move(cx, cy);
+      await g.page.mouse.down();
+      await g.page.waitForTimeout(350);
+      const shortMid = await pstats();
+      await g.page.mouse.up();
+      await g.page.waitForTimeout(400);
+      const shortAfter = await pstats();
+      const fShort = await fond();
+      if (!shortMid.ring || !(shortMid.hold > 0.1 && shortMid.hold < 0.6)) throw new ProbeError(`holding should show a filling ring: ${JSON.stringify(shortMid)}`);
+      if (shortAfter.ring || shortAfter.holding) throw new ProbeError(`letting go early should take the ring away: ${JSON.stringify(shortAfter)}`);
+      if (fShort !== f0) throw new ProbeError(`a short press should not brush: fondness ${f0} -> ${fShort}`);
+      // A full hold: the ring fills (screenshots on the way), tufts and hearts, then +6 once.
+      await g.page.mouse.down();
+      const t0 = Date.now();
+      await g.page.waitForTimeout(450);
+      const mid = await pstats();
+      ctx.artifact(await g.screenshot("brush-hold-1"));
+      await g.page.waitForTimeout(Math.max(0, 1600 - (Date.now() - t0)));
+      const full = await pstats();
+      await g.page.mouse.up();
+      await g.page.waitForTimeout(200);
       const f1 = await fond();
-      if (f1 - f0 !== 6) throw new ProbeError(`a full brushing should raise fondness by 6 once: ${f0} -> ${f1} (brushed ${mid.brush}px over the fleece)`);
-      if (!(mid.brush >= 140)) throw new ProbeError(`the drag should count as brushing over the fleece (${mid.brush}px)`);
-      if (!(mid.fluff > 0) || !(mid.hearts > 0)) throw new ProbeError(`brushing should send tufts of wool and hearts up: ${JSON.stringify(mid)}`);
+      if (f1 - f0 !== 6) throw new ProbeError(`a full hold should raise fondness by 6 once: ${f0} -> ${f1} (${JSON.stringify(full)})`);
+      if (!(mid.hold > 0.2 && mid.hold < 0.9) || !mid.ring) throw new ProbeError(`mid-hold the ring should be part-filled: ${JSON.stringify(mid)}`);
+      if (!full.brushDone || full.hold < 1) throw new ProbeError(`holding ~1.2 s should complete the brushing: ${JSON.stringify(full)}`);
+      if (!(full.hearts > 0) || !(Math.max(mid.fluff, full.fluff) > 0)) throw new ProbeError(`brushing should send tufts of wool and hearts up: ${JSON.stringify({ mid, full })}`);
       const done = await g.page.evaluate(() => document.querySelector("#overlay .care [data-brushed]")?.textContent ?? "");
       if (!/Brushed this season/.test(done)) throw new ProbeError(`the care box should say "Brushed this season", says "${done}"`);
       ctx.artifact(await g.screenshot("brush-done"));
-      // A frame read straight back from the portrait mid-stroke (headless Chrome starves animation frames while a
-      // real mouse button is held, so the page screenshots above can lag): tufts of wool drifting off the brush.
+      // A frame read straight back from the portrait mid-hold (headless Chrome starves animation frames while a
+      // real mouse button is held, so the page screenshots above can lag): tufts of wool drifting off.
       const mid2 = await g.page.evaluate(async () => {
         const c = /** @type {HTMLCanvasElement} */ (document.querySelector("#overlay canvas[data-live-portrait]"));
         const r = c.getBoundingClientRect();
-        const cx = r.left + r.width / 2, cy = r.top + r.height * 0.56;
-        const ev = (/** @type {string} */ type, /** @type {number} */ x, /** @type {number} */ y) => c.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerId: 7, bubbles: true, button: 0, buttons: 1, pointerType: "mouse" }));
-        ev("pointerdown", cx - 40, cy);
-        for (let i = 0; i <= 16; i++) ev("pointermove", cx - 40 + i * 5, cy + (i % 2) * 6);
-        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(res))));
+        const x = r.left + r.width / 2, y = r.top + r.height * 0.56;
+        c.dispatchEvent(new PointerEvent("pointerdown", { clientX: x, clientY: y, pointerId: 7, bubbles: true, button: 0, buttons: 1, pointerType: "touch" }));
+        await new Promise((res) => setTimeout(res, 600));
+        const ring = /** @type {any} */ (window).__game.debug.world().portrait.ring; // before frames (they can be slow here)
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
         const url = c.toDataURL("image/png");
-        const fluff = /** @type {any} */ (window).__game.debug.world().portrait.fluff;
-        ev("pointerup", cx + 40, cy);
-        return { url, fluff };
+        const p = /** @type {any} */ (window).__game.debug.world().portrait;
+        c.dispatchEvent(new PointerEvent("pointerup", { clientX: x, clientY: y, pointerId: 7, bubbles: true, button: 0, pointerType: "touch" }));
+        return { url, fluff: p.fluff, ring };
       });
-      if (!(mid2.fluff > 0)) throw new ProbeError(`a brush stroke should send tufts of wool off the fleece (${mid2.fluff})`);
+      if (!(mid2.fluff > 0) || !mid2.ring) throw new ProbeError(`a touch hold should send tufts off the fleece and show the ring (${JSON.stringify({ fluff: mid2.fluff, ring: mid2.ring })})`);
+      // The progress ring at about half way, for review: page screenshots take longer than the hold itself here,
+      // so a static copy of the live ring is kept while the press is let go early (which cancels it, no effect).
+      await g.page.evaluate(async () => {
+        const c = /** @type {HTMLCanvasElement} */ (document.querySelector("#overlay canvas[data-live-portrait]"));
+        const r = c.getBoundingClientRect();
+        const x = r.left + r.width * 0.42, y = r.top + r.height * 0.62;
+        c.dispatchEvent(new PointerEvent("pointerdown", { clientX: x, clientY: y, pointerId: 8, bubbles: true, button: 0, buttons: 1, pointerType: "touch" }));
+        await new Promise((res) => setTimeout(res, 620));
+        const ring = document.querySelector("#overlay .hold-ring");
+        if (ring) { const copy = /** @type {HTMLElement} */ (ring.cloneNode(true)); copy.classList.add("probe-copy"); copy.style.animation = "none"; ring.parentElement?.appendChild(copy); }
+        c.dispatchEvent(new PointerEvent("pointercancel", { clientX: x, clientY: y, pointerId: 8, bubbles: true, button: 0, pointerType: "touch" }));
+      });
+      await g.page.waitForTimeout(300);
+      const ringPng = path.join(OUT_DIR, "brush-ring.png");
+      await g.page.locator("#overlay .sc-stage").first().screenshot({ path: ringPng });
+      ctx.artifact(ringPng);
+      await g.page.evaluate(() => document.querySelectorAll(".probe-copy").forEach((e) => e.remove()));
       const fluffPng = path.join(OUT_DIR, "brush-fluff.png");
       fs.writeFileSync(fluffPng, Buffer.from(mid2.url.split(",")[1] ?? "", "base64"));
       ctx.artifact(fluffPng);
+      await g.page.mouse.move(cx, cy);
+      await g.page.mouse.down();
+      await g.page.waitForTimeout(1500);
+      await g.page.mouse.up();
       const f2 = await fond();
       if (f2 !== f1) throw new ProbeError(`brushing twice in a season should count once: ${f1} -> ${f2}`);
       g.assertNoErrors("brushing");
       await g.close();
-      // Next season it counts again (reduced motion: the same drag, without the slow animated night).
+      // Next season it counts again (reduced motion: the same hold, without the slow animated night).
       const n = await ctx.newPage();
       await n.boot("?seed=7&fresh=1&nomotion=1");
       const fondN = () => n.page.evaluate((id) => /** @type {any} */ (window).__game.debug.fondness(id), a);
-      const dragN = async () => {
+      const holdN = async (/** @type {number} */ ms) => {
         const bb = await n.page.locator("#overlay canvas[data-live-portrait]").boundingBox();
         if (!bb) throw new ProbeError("no live portrait to brush (reduced motion)");
-        const cx = bb.x + bb.width * 0.5, cy = bb.y + bb.height * 0.56;
-        await n.page.mouse.move(cx - 45, cy);
+        await n.page.mouse.move(bb.x + bb.width * 0.5, bb.y + bb.height * 0.56);
         await n.page.mouse.down();
-        for (let i = 0; i < 6; i++) await n.page.mouse.move(cx + (i % 2 ? -45 : 45), cy + ((i % 3) - 1) * 10, { steps: 6 });
+        await n.page.waitForTimeout(ms);
         await n.page.mouse.up();
         await n.page.waitForTimeout(100);
       };
       await n.act({ type: "open", panel: "sheep", id: a });
       await n.waitPanel("sheep");
       const n0 = await fondN();
-      await dragN();
+      await holdN(500);
+      const nShort = await fondN();
+      await holdN(1450);
       const n1 = await fondN();
-      await dragN();
+      await holdN(1450);
       const n2 = await fondN();
       await n.act({ type: "close" });
       await n.act({ type: "sleep" });
@@ -281,16 +315,17 @@ export const life = {
       await n.act({ type: "open", panel: "sheep", id: a });
       await n.waitPanel("sheep");
       const f3 = await fondN();
-      await dragN();
+      await holdN(1450);
       const f4 = await fondN();
-      if (n1 - n0 !== 6 || n2 !== n1) throw new ProbeError(`with reduced motion a brushing should also count once a season: ${n0} -> ${n1} -> ${n2}`);
+      if (nShort !== n0) throw new ProbeError(`with reduced motion a short press should not brush: ${n0} -> ${nShort}`);
+      if (n1 - n0 !== 6 || n2 !== n1) throw new ProbeError(`with reduced motion a hold should also count once a season: ${n0} -> ${n1} -> ${n2}`);
       if (f4 - f3 !== 6) throw new ProbeError(`next season a brushing should count again: ${f3} -> ${f4}`);
       n.assertNoErrors("brushing (reduced motion)");
       await n.close();
-      ctx.note(`brushing: fondness ${f0} -> ${f1} (+6, ${mid.brush}px over the fleece, ${mid2.fluff} tufts mid-stroke, ${mid.hearts} hearts) -> again ${f2}; reduced motion ${n0} -> ${n1} -> again ${n2} -> next season ${f3} -> ${f4}`);
+      ctx.note(`brushing (press and hold): short press ${f0} -> ${fShort} (ring shown ${shortMid.hold.toFixed(2)}, then gone); full hold -> ${f1} (+6, ${full.hearts} hearts, ${Math.max(mid.fluff, full.fluff)} tufts) -> again ${f2}; touch hold shows ring + ${mid2.fluff} tufts; reduced motion ${n0} -> short ${nShort} -> ${n1} -> again ${n2} -> next season ${f3} -> ${f4}`);
     }
     {
-      // A pat for a dog: rub its picture on the animal card.
+      // A pat for a dog: press and hold its picture on the animal card.
       const g = await ctx.newPage();
       await g.boot("?seed=7&fresh=1&nomotion=1&act=3");
       await g.page.evaluate(() => { /** @type {any} */ (window).__game.state().money = 2000; });
@@ -302,18 +337,27 @@ export const life = {
       const p0 = await fd();
       const b = await g.page.locator("#overlay .pet-stage").boundingBox();
       if (!b) throw new ProbeError("the animal card should have a picture to pat");
-      const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
-      await g.page.mouse.move(cx - 40, cy);
+      await g.page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
       await g.page.mouse.down();
-      for (let i = 0; i < 6; i++) await g.page.mouse.move(cx + (i % 2 ? -40 : 40), cy, { steps: 6 });
+      await g.page.waitForTimeout(400);
+      await g.page.mouse.up();
+      await g.page.waitForTimeout(150);
+      const pShort = await fd();
+      await g.page.mouse.down();
+      await g.page.waitForTimeout(600);
+      const ring = await g.page.locator("#overlay .pet-stage .hold-ring").count();
+      ctx.artifact(await g.screenshot("brush-pat-hold"));
+      await g.page.waitForTimeout(900);
       await g.page.mouse.up();
       await g.page.waitForTimeout(150);
       const p1 = await fd();
-      if (p1 - p0 !== 6) throw new ProbeError(`rubbing the collie's picture should pat her (+6 once a season): ${p0} -> ${p1}`);
+      if (pShort !== p0) throw new ProbeError(`a short press on the collie's picture should not pat her: ${p0} -> ${pShort}`);
+      if (!ring) throw new ProbeError("holding the collie's picture should show the ring");
+      if (p1 - p0 !== 6) throw new ProbeError(`holding the collie's picture should pat her (+6 once a season): ${p0} -> ${p1}`);
       const pat = await g.page.evaluate(() => document.querySelector("#overlay .care [data-brushed]")?.textContent ?? "");
       if (!/Patted this season/.test(pat)) throw new ProbeError(`the collie's care box should say "Patted this season", says "${pat}"`);
       ctx.artifact(await g.screenshot("brush-pat"));
-      ctx.note(`pat: collie fondness ${p0} -> ${p1}`);
+      ctx.note(`pat (press and hold): collie fondness ${p0} -> short ${pShort} -> ${p1}`);
       g.assertNoErrors("patting");
       await g.close();
     }

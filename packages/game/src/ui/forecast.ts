@@ -210,7 +210,7 @@ export function forecastPanelHtml(state: GameState, view: View): string {
     const sub = isVisitor ? "visiting — nothing known" : busy ? "busy this season" : elsewhere ? `planned with ${elsewhere}` : c.rosettes.length ? `🏵 ×${c.rosettes.length}` : "";
     return `<button class="cand ${c.id === chosen.sheep.id ? "on" : ""} ${busy ? "busy" : ""} ${isVisitor ? "visitor" : ""}" data-mate="${esc(c.id)}" ${busy ? "disabled" : ""}>
       ${swatch(String(c.phenotype["colour"]))}
-      <span class="cname">${esc(c.name)}${planned ? ` <span class="star" title="planned">★</span>` : ""}${sub ? `<span class="csub">${esc(sub)}</span>` : ""}</span>
+      <span class="cname"><span class="cn" title="${esc(c.name)}">${esc(c.name)}${planned ? ` <span class="star" title="planned">★</span>` : ""}</span>${sub ? `<span class="csub">${esc(sub)}</span>` : ""}</span>
       <span class="hint">${esc(hintFor(state, f, goal))}</span></button>`;
   }).join("");
 

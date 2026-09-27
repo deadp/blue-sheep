@@ -15,7 +15,7 @@ Blue Sheep is a cozy, turn-based sheep-breeding game built on realistic genetics
 - `npm test`: vitest, covering genetics statistics, inference and sim determinism.
 - `npm run typecheck`: `tsc -b` across all packages.
 - `npm run build`: production build into `packages/game/dist`.
-- `npm run probe`: builds, then runs smoke → play (12 seasons) → panels → life (live portrait, sheep visits, sheepdog, voices) → voices (offline-rendered bleats, stats and WAVs in `out/voices/`) → tutorial (all ten steps by real clicks, `tut-01..10.png`) → 10 s video in headless Chrome. Artifacts go to `packages/game/probe/out/`.
+- `npm run probe`: builds, then runs smoke → play (12 seasons) → panels → life (live portrait, sheep visits, sheepdog, voices) → voices (offline-rendered bleats, stats and WAVs in `out/voices/`) → tutorial (all seventeen steps over three lambings by real clicks, `tut-01..17.png`) → lessons (the pacing calendar to Year 4, each concept's Old Tom mini-lesson, the vet lesson by real clicks, `lesson-*.png`, forecast layout at 1280×800 and 1024×768) → 10 s video in headless Chrome. Artifacts go to `packages/game/probe/out/`.
 - `npm run probe:quick`: builds, then runs smoke only. Run it after every change that touches the game.
 - `npm run probe:shot -- "?seed=7&panel=vet" vet`: builds and screenshots one deep link to `probe/out/vet.png`.
 - `npm run serve`: builds and serves the production game on `0.0.0.0:4173` for a human.

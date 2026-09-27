@@ -42,12 +42,16 @@ export {
 } from "./personality.js";
 export { EWE_NAMES, RAM_NAMES, VILLAGERS } from "./names.js";
 export {
-  PACING, paceStep, unlockedAt, latestUnlock, nextUnlock, grantUnlock, checkPacing, type PaceStep,
+  PACING, CALENDAR, ORDERS_BY, paceStep, unlockedAt, latestUnlock, nextUnlock, nextDated, grantUnlock, checkPacing, tutorialOver, type PaceStep,
 } from "./pacing.js";
+export {
+  LESSONS, lessonDef, lessonInfo, lessonActive, startLesson, lessonStepMet, advanceLesson, ackLesson, skipLesson, lessonSpeech,
+  type LessonDef, type LessonStep, type LessonPoint, type LessonView, type LessonInfo,
+} from "./lessons.js";
 export {
   PUNNET_GENES, punnetSquare, punnetLook, knownCopies, knownPunnet, type PunnetGene, type PunnetSquare, type PunnetCell,
 } from "./punnet.js";
 export {
   TUTORIAL_STEPS, MENTOR, newTutorialGame, advanceTutorial, skipTutorial, tutorialInfo, tutorialActive, tutorialStep,
-  cheapestMarketEwe, isTutorialFirstMating, colourOf, type TutorialStepId, type TutorialStepDef, type TutorialInfo,
+  cheapestMarketEwe, isTutorialFirstMating, tutorialLambIndex, tutorialLambs, TUTORIAL_LAMBS, TUTORIAL_VERSION, colourOf, hornsOf, type TutorialStepId, type TutorialStepDef, type TutorialInfo,
 } from "./tutorial.js";

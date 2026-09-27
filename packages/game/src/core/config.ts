@@ -110,7 +110,7 @@ export const FOND_LAMB_FROM_DAM = 0.3;
 export const FOND_PET_START = 20;
 /** Greeting (opening its card), once a season. */
 export const FOND_GREET = 8;
-/** Brushing (drag across the fleece on the live portrait; a pat for a dog or the cat), once a season. */
+/** Brushing (press and hold the live portrait; a pat for a dog or the cat), once a season. */
 export const FOND_BRUSH = 6;
 /** A treat, once a season, for TREAT_COST coins. */
 export const FOND_TREAT = 15;
@@ -127,9 +127,6 @@ export const FOND_WOOL_LOW = 0.08;
 export const FOND_WORDS = ["Skittish", "Wary", "Friendly", "Fond of you", "Devoted"] as const;
 /** Wool price multiplier with the shearing shed. */
 export const SHEARING_BONUS = 1.25;
-
-// Pacing (core/pacing.ts): a concept waits for the one before it to be used, at most this many seasons.
-export const PACE_WAIT = 3;
 
 // Orders
 export const MAX_OPEN_ORDERS = 3; // visible on the board (offered + accepted)
@@ -170,8 +167,8 @@ export interface ActDef {
   line: string;
   goalText: string;
   /**
-   * Concepts that become available during this act. In play they arrive one at a time through the pacing
-   * ladder (core/pacing.ts); only the debug fast-forward (`?act=N`) grants them all at once.
+   * Concepts that become available during this act. In play they arrive one at a time on the pacing
+   * calendar (core/pacing.ts); only the debug fast-forward (`?act=N`) grants them all at once.
    */
   unlocks: Unlock[];
   flockCap: number;

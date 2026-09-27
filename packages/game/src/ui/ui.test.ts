@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { GOALS, acceptOrder, canBreed, factsFor, forecastOrder, giveTreat, greetAnimal, isAdult, seasonLabel, type GameState } from "../core/index.js";
-import { CONCEPTS, ODDS_SCALE, PANEL_NAMES, hudHtml, mentorHtml, renderPanel, forecastPanelHtml, tutorialStepMet, tutorialTarget, type View, type PanelName } from "./index.js";
+import { CONCEPTS, ODDS_SCALE, PANEL_NAMES, hudHtml, lessonMentorHtml, lessonTarget, mentorHtml, renderPanel, forecastPanelHtml, tutorialStepMet, tutorialTarget, type View, type PanelName } from "./index.js";
 import { TUTORIAL_STEPS, advanceSeason, advanceTutorial, buySheep, cheapestMarketEwe, newTutorialGame, planMating, tutorialStep } from "../core/index.js";
 import { personalityLine } from "../core/index.js";
 import { fixtures, type Fixture } from "./fixtures.js";
@@ -9,7 +9,7 @@ const PORTRAIT = "data:image/png;base64,AAAA";
 const GENOTYPE = /[A-Za-z]\/[A-Za-z]/;
 const VOCAB = new Set([
   "close", "open", "sheep", "findmate", "mate", "goal", "plan", "buy", "sell", "hire", "test", "accept", "decline",
-  "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial", "treat",
+  "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial", "treat", "lesson",
   // not actions: markers on the care box, the animal card and improvement cards (for probes and styles)
   "care", "pet", "upgrade-card",
   // not actions: the mentor card's step markers for probes and styles
@@ -293,6 +293,7 @@ describe("panel content", () => {
     // No grown sheep of the lamb's sex: planning is blocked until it grows up.
     s.flock = s.flock.filter((id) => s.sheep[id]!.sex !== lamb.sex || !isAdult(s.sheep[id]!, s.season));
     s.hiredRam = null;
+    s.lesson = null; // (a lesson card takes the hint's place)
     const h = hudHtml(s, view());
     expect(h).toContain(`No ${lamb.sex} is ready to breed`);
     expect(h).toMatch(/still growing — (she|he|the first) can breed from Year \d+, (Spring|Summer|Autumn|Winter)\./);
@@ -478,7 +479,33 @@ describe("tutorial", () => {
       checkCommon(h, g, `mentor/${tutorialStep(g)}`);
       checkCommon(hudHtml(g, v), g, `hud/${tutorialStep(g)}`);
       seen.push(tutorialStep(g)!);
+      // One idea a step: short (at most four sentences outside a figure).
+      const words = h.replace(/<div class="m-figure">[\s\S]*?<\/div><div class="m-after">/, "").replace(/<[^>]+>/g, " ");
+      expect((words.match(/[.!?](\s|$)/g) ?? []).length, `mentor/${tutorialStep(g)} is too long`).toBeLessThanOrEqual(6);
       return h;
+    };
+    /** Plan the pair again from the field: the ewe, Find a mate, Plan. */
+    const again = () => {
+      let v = view();
+      expect(tutorialTarget(g, v)).toEqual({ kind: "sheep", id: t.ewe });
+      v = view({ panel: "sheep", sheepId: t.ewe });
+      expect(tutorialTarget(g, v)).toEqual({ kind: "html", selectors: ["#overlay [data-findmate]"] });
+      v = view({ panel: "forecast", sheepId: t.ewe });
+      expect(check(v)).toContain("Plan this mating");
+      expect(tutorialStepMet(g, v)).toBe(false);
+      planMating(g, t.ewe, t.ram);
+      expect(tutorialStepMet(g, v)).toBe(true);
+      return v;
+    };
+    /** Sleep: the step ends on the report with the new lamb. */
+    const sleep = (id: "sleep" | "sleep2" | "sleep3") => {
+      check(view());
+      expect(tutorialTarget(g, view())).toEqual({ kind: "html", selectors: ["#hud [data-sleep]"] });
+      const r = advanceSeason(g);
+      const v = view({ panel: "report", report: r });
+      expect(tutorialStepMet(g, v)).toBe(true);
+      advanceTutorial(g, id);
+      return { r, v };
     };
     // 1: the ewe in the field
     let v = view();
@@ -488,86 +515,115 @@ describe("tutorial", () => {
     v = view({ panel: "sheep", sheepId: t.ewe });
     expect(tutorialStepMet(g, v)).toBe(true);
     advanceTutorial(g, "ewe");
-    // 2: the ram, with the ewe's card explained
-    expect(check(v)).toContain("What you know");
+    // 2: the ram, with the ewe's card explained in a sentence
+    expect(check(v)).toContain("what you know about her");
     expect(tutorialTarget(g, v)).toEqual({ kind: "sheep", id: t.ram });
     v = view({ panel: "sheep", sheepId: t.ram });
-    expect(tutorialStepMet(g, v)).toBe(true);
     advanceTutorial(g, "ram");
     // 3: find a mate
     check(v);
     expect(tutorialTarget(g, v)).toEqual({ kind: "html", selectors: ["#overlay [data-findmate]"] });
     v = view({ panel: "forecast", sheepId: t.ram });
     advanceTutorial(g, "forecast");
-    // 4: the Punnet square — two copies, 3 polled : 1 horned, tied to the forecast; no letters before numbers
+    // 4: plan — one sentence on the ten-lamb forecast, no Punnet square yet
+    const pl = check(v);
+    expect(pl).toContain("one chance in ten");
+    expect(pl).not.toContain('class="punnet');
+    expect(renderPanel(g, v)).toContain(`data-plan="${t.ewe}:${t.ram}"`);
+    planMating(g, t.ewe, t.ram);
+    advanceTutorial(g, "plan");
+    // 5–6: sleep; the first lamb is plain white and polled, with no card and no codex
+    let { r, v: rv } = sleep("sleep");
+    const l1 = r.lambs[0]!;
+    expect([l1.phenotype["colour"], l1.phenotype["horns"]]).toEqual(["white", "polled"]);
+    const r1 = check(rv);
+    expect(r1).toContain(`${l1.name}</b>, white`);
+    expect(r1).toContain("two seasons");
+    expect(renderPanel(g, rv)).not.toContain('data-unlocked="cards"');
+    expect(tutorialTarget(g, rv)).toEqual({ kind: "html", selectors: ["#overlay .row [data-close].primary"] });
+    expect(tutorialStepMet(g, view())).toBe(true);
+    advanceTutorial(g, "lamb1");
+    // 7–8: the same pair again; the horned lamb, its card and the codex
+    expect(check(view())).toContain("what else these two can give us");
+    again();
+    advanceTutorial(g, "again");
+    ({ r, v: rv } = sleep("sleep2"));
+    const l2 = r.lambs[0]!;
+    expect([l2.phenotype["colour"], l2.phenotype["horns"]]).toEqual(["white", "horned"]);
+    expect(check(rv)).toContain("<b>horns</b>");
+    const rep2 = renderPanel(g, rv);
+    expect(rep2).toContain('class="dcard');
+    expect(rep2).toContain('data-unlocked="cards"');
+    advanceTutorial(g, "horns");
+    // 10: the Punnet square after the surprise — two copies, 3 polled : 1 horned, tied to "one in four"
+    v = view();
     const pq = check(v);
-    expect(pq).toContain("one chance in ten");
     expect(pq).toContain('class="punnet');
     expect(pq).toContain('data-dom="3" data-rec="1"');
-    expect(pq).toContain("one lamb in four has horns");
+    expect(pq).toContain("about one lamb in four");
     expect(pq).toContain("no-horns copy");
-    expect(pq).toContain("horns copy");
     expect(pq).not.toContain('class="p-let"');
     expect(pq).toContain('data-tutorial="ack"');
-    expect(tutorialTarget(g, v)).toEqual({ kind: "html", selectors: ["#overlay .legend.extras .xkey:first-child"] });
-    expect(renderPanel(g, v)).toContain("one in four horned");
-    // With the numbers unlock the same square shows the letters.
+    expect(tutorialTarget(g, v)).toEqual({ kind: "sheep", id: l2.id });
     const withNums = structuredClone(g) as GameState;
     withNums.unlocks.push("numbers");
     expect(mentorHtml(withNums, v)).toContain('<span class="p-let">P</span>');
     advanceTutorial(g, "punnet");
-    // 5: plan
-    expect(check(v)).toContain("Plan this mating");
-    expect(renderPanel(g, v)).toContain(`data-plan="${t.ewe}:${t.ram}"`);
-    planMating(g, t.ewe, t.ram);
-    expect(tutorialStepMet(g, v)).toBe(true);
-    advanceTutorial(g, "plan");
-    // 6: sleep
-    check(v);
-    const r = advanceSeason(g);
-    v = view({ panel: "report", report: r });
-    expect(tutorialStepMet(g, v)).toBe(true);
-    advanceTutorial(g, "sleep");
-    // 7: the reveal (only the codex arrives with it)
-    const lamb = r.lambs[0]!;
-    expect(check(v)).toContain(`${lamb.name}</b> is <b>${String(lamb.phenotype["colour"])}`);
-    const rep = renderPanel(g, v);
-    expect(rep).toContain('class="dcard');
-    expect(rep).toContain('data-unlocked="cards"');
-    expect(rep).not.toContain("orders at the mailbox");
-    v = view();
-    expect(tutorialStepMet(g, v)).toBe(true);
-    advanceTutorial(g, "reveal");
-    // 8: why that colour — the same square with the hidden colour copy
-    const why = check(v);
-    expect(why).toContain('class="punnet');
+    // 11–13: once more; the black lamb
+    again();
+    advanceTutorial(g, "again2");
+    ({ r, v: rv } = sleep("sleep3"));
+    const l3 = r.lambs[0]!;
+    expect(l3.phenotype["colour"]).toBe("black");
+    expect(check(rv)).toContain("<b>black</b>");
+    advanceTutorial(g, "black");
+    // 14: why black — the same square with the hidden colour copy
+    const why = check(view());
     expect(why).toContain('data-gene="colour"');
     expect(why).toContain('data-dom="3" data-rec="1"');
     expect(why).toContain("colour copy");
-    expect(tutorialStepMet(g, v)).toBe(false);
     advanceTutorial(g, "why");
-    // 9: lambs grow up
-    expect(check(v)).toContain("two seasons");
-    expect(tutorialTarget(g, v)).toMatchObject({ kind: "sheep", id: lamb.id });
-    advanceTutorial(g, "grow");
-    // 10: the market
+    // 15: the market
     v = view({ panel: "market" });
     expect(check(v)).toContain("nothing known");
     buySheep(g, cheapestMarketEwe(g)!.id);
     expect(tutorialStepMet(g, v)).toBe(true);
     advanceTutorial(g, "market");
-    // 11: the goal, in plain words
+    // 16: the goal, in plain words
     const goal = check(v);
     expect(goal).toContain("dilute");
-    expect(goal).toContain('data-tutorial="ack"');
     advanceTutorial(g, "goal");
-    // 12: your flock — no neighbour, no extra sheep
+    // 17: your flock — no neighbour, no extra sheep
     const done = check(v);
     expect(done).not.toContain("Granny Moss");
     for (const id of g.flock) expect(done).toContain(g.sheep[id]!.name);
-    expect(g.flock).toHaveLength(4);
+    expect(g.flock).toHaveLength(6);
     advanceTutorial(g, "done");
     expect(mentorHtml(g, v)).toBe("");
-    expect(seen).toEqual(TUTORIAL_STEPS.map((d) => d.id));
+    expect([...new Set(seen)]).toEqual(TUTORIAL_STEPS.map((d) => d.id));
+  });
+});
+
+describe("mini-lesson card", () => {
+  it("shows Old Tom's step with Skip, a button only on informational steps, and waits behind the report", async () => {
+    const { newGame, advanceSeason: adv, advanceLesson } = await import("../core/index.js");
+    const g = newGame(14);
+    while (g.season < 4) { g.money = 80; adv(g); }
+    expect(g.lesson).toEqual({ id: "vet", step: 1 });
+    const h = lessonMentorHtml(g, view());
+    expect(h).toContain('data-lesson="vet"');
+    expect(h).toContain('data-lesson="skip"');
+    expect(h).not.toContain('data-lesson="ack"');
+    expect(h).toContain("Old Tom");
+    expect(h).not.toMatch(GENOTYPE);
+    expect(lessonTarget(g, view())).toEqual({ kind: "spot", id: "vet", rings: ["#hud [data-open=vet]"] });
+    expect(lessonMentorHtml(g, view({ panel: "report" }))).toBe("");
+    expect(lessonTarget(g, view({ panel: "report" }))).toBeNull();
+    // The HUD hint makes room for the lesson card.
+    expect(hudHtml(g, view())).not.toContain("hud-hint");
+    advanceLesson(g, "vet");
+    g.sheep[g.flock[0]!]!.tested["D"] = "tested";
+    advanceLesson(g, "test");
+    expect(lessonMentorHtml(g, view({ panel: "vet" }))).toContain('data-lesson="ack"');
   });
 });

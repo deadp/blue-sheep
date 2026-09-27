@@ -21,6 +21,7 @@ const PET_KINDS: readonly PetKind[] = ["terrier", "collie", "maremma", "cat"];
 const PET_LABEL: Record<PetKind, string> = { terrier: "the terrier", collie: "the collie", maremma: "the Maremma", cat: "the cat" };
 
 export { BLEATS } from "./portrait.js";
+export { Hold, HOLD_MS, HOLD_CLICK_MS, type HoldHandlers } from "./hold.js";
 
 const HOTSPOTS: readonly Hotspot[] = ["house", "shed", "market", "vet", "fairground", "mailbox"];
 const CAM_DIR = new THREE.Vector3(1, 0.98, 1).normalize();
@@ -651,7 +652,7 @@ export class WorldView {
       calls: i.render.calls, triangles: i.render.triangles, sheep: this.ents.size, geometries: i.memory.geometries,
       dog: DOG_KINDS.some((k) => this.dogs[k].visible), dogs: DOG_KINDS.filter((k) => this.dogs[k].visible), cat: this.cat.visible,
       hearts: this.hearts.active, attended: this.attended, bubble: this.bubble.id ? this.bubble.el.textContent : null,
-      portrait: this.live?.stats() ?? { mounted: false, id: null, calls: 0, frames: 0, brush: 0, fluff: 0, hearts: 0, brushDone: false },
+      portrait: this.live?.stats() ?? { mounted: false, id: null, calls: 0, frames: 0, brush: 0, hold: 0, ring: false, holding: false, fluff: 0, hearts: 0, brushDone: false },
     };
   }
 

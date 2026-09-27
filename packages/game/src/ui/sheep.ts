@@ -34,7 +34,7 @@ export function careHtml(state: GameState, id: string, effect: string): string {
   const fb = brushed ? null : forecastBrush(state, id);
   const brush = brushed
     ? `<div class="c-brush done" data-brushed="1">${pet ? "✋ Patted" : "🪮 Brushed"} this season ✓</div>`
-    : `<div class="c-brush" data-brushed="0">${pet ? "✋ <b>Pat</b>: rub the picture above." : "🪮 <b>Brush</b>: drag across the fleece in the picture above."}${fb ? ` ${esc(fb.text)}` : ""}</div>`;
+    : `<div class="c-brush" data-brushed="0">${pet ? "✋ <b>Pat</b>: press and hold the picture above." : "🪮 <b>Brush</b>: press and hold the sheep in the picture above."}${fb ? ` ${esc(fb.text)}` : ""}</div>`;
   return `<div class="care" data-care="${esc(id)}">
     <div class="c-top"><span class="c-lbl">Fondness</span>${heartMeter(state, level, fc && fc.after > level ? { to: fc.after } : {})}${said}</div>
     ${effect ? `<div class="c-wool">${effect}</div>` : ""}
@@ -95,7 +95,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
   return `<div class="sheep-card">
     <div class="sc-stage" style="--bg:${PORTRAIT_BG[colour] ?? "#dde8f0"}">
       <div class="sc-portrait" data-live-portrait-slot="${esc(s.id)}">${portrait(view, s, "lg")}</div>
-      <div class="sc-hello meta" aria-hidden="true">${own ? "click to say hello · drag to brush" : "click to say hello"}</div>
+      <div class="sc-hello meta" aria-hidden="true">${own ? "click to say hello · press and hold to brush" : "click to say hello"}</div>
     </div>
     <div class="sc-main">
       <div class="sc-name"><h2>${esc(s.name)} ${sexMark(s)}</h2>${own ? `<button class="icon" data-rename="${esc(s.id)}" title="Rename" aria-label="Rename ${esc(s.name)}">✎</button>` : ""}</div>

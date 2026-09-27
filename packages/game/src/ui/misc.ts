@@ -5,6 +5,7 @@ import {
 import { esc, has, prop, stars } from "./util.js";
 import type { View } from "./view.js";
 import { actTrack } from "./track.js";
+import { lessonShown } from "./tutorial.js";
 
 const FLAVOUR = [
   "Somewhere in this flock, a blue lamb is waiting to be born.",
@@ -180,5 +181,5 @@ export function hudHtml(state: GameState, view: View): string {
       <button class="hud-sleep" data-sleep="1" title="Sleep to end the season">Sleep 🌙${nPlans ? `<span class="badge">${nPlans}</span>` : ""}</button>
     </div>
   </div>
-  ${tutorialStep(state) ? "" : `<div class="hud-hint">${hudHint(state, view)}</div>`}`;
+  ${tutorialStep(state) || lessonShown(state, view) ? "" : `<div class="hud-hint">${hudHint(state, view)}</div>`}`;
 }

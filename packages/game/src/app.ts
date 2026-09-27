@@ -7,13 +7,14 @@ import {
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
   seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
+  ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade,
   type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
 } from "./core/index.js";
-import { WorldView, type Hotspot, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
+import { Hold, WorldView, type Hotspot, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
 import {
   Overlay, PANEL_NAMES, defaultView, delegateActions, hudHtml, panelOptions, renderPanel, toast,
-  mentorHtml, tutorialStepMet, tutorialTarget,
+  mentorHtml, tutorialStepMet, tutorialTarget, lessonShown, lessonTarget, lessonMentorHtml,
   type ActionData, type PanelName, type TutorialTarget, type View,
 } from "./ui/index.js";
 import { fastForward } from "./debug.js";
@@ -24,8 +25,8 @@ const MOTION_KEY = "blue-sheep-reduced-motion";
 export const VERSION = "1.0.0";
 /** Sheep that fit in the first paddock before the rest move to the second one. */
 const PADDOCK_ROOM = 10;
-/** CSS px of rubbing on a dog's or the cat's picture that make one pat (the same as a sheep's brushing). */
-const PAT_NEEDED = 140;
+/** Milliseconds of press-and-hold on a dog's or the cat's picture that make one pat (the same as a sheep's brushing). */
+const PAT_HOLD_MS = 1200;
 
 export type Action =
   | { type: "plan"; ewe: string; ram: string }
@@ -41,14 +42,16 @@ export type Action =
   | { type: "upgrade"; id: string }
   /** Give a sheep in the flock, or an owned dog/cat, a treat (1 coin, once a season). Greeting is opening its card. */
   | { type: "treat"; id: string }
-  /** Brush a sheep (pat a dog or the cat): once a season. In the game it is a drag across the live portrait. */
+  /** Brush a sheep (pat a dog or the cat): once a season. In the game it is a press-and-hold on the live portrait. */
   | { type: "brush"; id: string }
   | { type: "rename"; id: string; name: string }
   | { type: "newGame"; seed?: number }
   | { type: "open"; panel: PanelName; id?: string }
   | { type: "close" }
   /** start: a new tutorial game; ack: the mentor's "Got it"; skip: end the tutorial now (the flock arrives). */
-  | { type: "tutorial"; op: "start" | "ack" | "skip"; seed?: number };
+  | { type: "tutorial"; op: "start" | "ack" | "skip"; seed?: number }
+  /** The running mini-lesson (core/lessons.ts): ack = the mentor's button on an informational step; skip = end it. */
+  | { type: "lesson"; op: "ack" | "skip" };
 
 type Marker = NonNullable<WorldSheep["marker"]> | null;
 const COLOURS = new Set(["white", "black", "brown", "blue", "fawn"]);
@@ -79,7 +82,7 @@ export class App {
   private readonly mentorEl: HTMLElement;
   private readonly arrowEl: HTMLElement;
   private tutTarget: TutorialTarget = null;
-  private tutStepSeen = -1;
+  private tutStepSeen = "";
   private tutFrame = 0;
   /** Target + window size last scrolled into view (so the player can still scroll freely afterwards). */
   private tutScrollKey = "";
@@ -371,14 +374,14 @@ export class App {
     if (!isPetId(id)) this.world.portraitCheer();
   }
 
-  /** The animal card's picture: rub it (click-and-drag) to pat the dog or the cat. */
+  /** The animal card's picture: press and hold it to pat the dog or the cat (a ring fills; let go early and nothing happens). */
   private syncPetPat(): void {
     if (this.view.panel !== "animal") return;
     const id = this.view.sheepId;
     const stage = this.overlay.el.querySelector<HTMLElement>(".pet-stage");
     if (!id || !stage || stage.dataset.pat) return;
     stage.dataset.pat = id;
-    let drag: { x: number; y: number; moved: number; stroke: number; heart: number } | null = null;
+    stage.style.touchAction = "none";
     const heart = (x: number, y: number) => {
       const h = document.createElement("span");
       h.className = "brush-heart";
@@ -388,66 +391,84 @@ export class App {
       stage.appendChild(h);
       window.setTimeout(() => h.remove(), 1300);
     };
+    let beat = { heart: 0, swish: 0 };
+    const hold = new Hold(stage, {
+      onTick: (_p, x, y) => {
+        const ms = hold.heldMs;
+        const r = stage.getBoundingClientRect();
+        if (ms - beat.swish >= 400) { beat.swish = ms; this.voices.swish(0.25); }
+        if (ms - beat.heart >= 320) { beat.heart = ms; heart(x - r.left, y - r.top - 10); }
+      },
+      onDone: () => {
+        const r = stage.getBoundingClientRect();
+        for (let i = 0; i < 4; i++) heart(r.width * (0.3 + 0.4 * Math.random()), r.height * 0.3);
+        this.guard(() => this.brush(id));
+      },
+    }, PAT_HOLD_MS);
     stage.addEventListener("pointerdown", (e) => {
-      drag = { x: e.clientX, y: e.clientY, moved: 0, stroke: 0, heart: 0 };
+      if (e.button > 0) return;
+      beat = { heart: 0, swish: 0 };
+      hold.down(e.clientX, e.clientY);
       try { stage.setPointerCapture(e.pointerId); } catch { /* ignore */ }
       e.preventDefault();
     });
-    stage.addEventListener("pointermove", (e) => {
-      if (!drag) return;
-      const step = Math.hypot(e.clientX - drag.x, e.clientY - drag.y);
-      drag.x = e.clientX; drag.y = e.clientY;
-      drag.moved += step;
-      if (drag.moved - drag.stroke >= 90) { drag.stroke = drag.moved; this.voices.swish(0.25); }
-      if (drag.moved - drag.heart >= 70) { drag.heart = drag.moved; const r = stage.getBoundingClientRect(); heart(e.clientX - r.left, e.clientY - r.top - 10); }
-    });
-    const up = () => {
-      const d = drag;
-      drag = null;
-      if (!d || d.moved < PAT_NEEDED) return;
-      const r = stage.getBoundingClientRect();
-      for (let i = 0; i < 4; i++) heart(r.width * (0.3 + 0.4 * Math.random()), r.height * 0.3);
-      this.guard(() => this.brush(id));
-    };
-    stage.addEventListener("pointerup", up);
-    stage.addEventListener("pointercancel", up);
+    stage.addEventListener("pointermove", (e) => hold.move(e.clientX, e.clientY));
+    stage.addEventListener("pointerup", () => hold.up());
+    stage.addEventListener("pointercancel", () => hold.up());
   }
 
-  // ------------------------------------------------------------------ tutorial
+  // ------------------------------------------------------------------ tutorial and mini-lessons
 
-  /** If the player has just done what the tutorial step asked, move on (possibly several steps). */
+  /** Old Tom is on screen: the tutorial, or a mini-lesson for a newly arrived concept. */
+  private guideOn(): boolean {
+    return tutorialActive(this.state) || lessonShown(this.state, this.view);
+  }
+
+  /** If the player has just done what the tutorial step (or lesson step) asked, move on (possibly several steps). */
   private tutorialAdvance(): void {
-    if (this.sleeping || !tutorialActive(this.state)) return;
+    if (this.sleeping) return;
     let moved = false;
-    for (let i = 0; i < TUTORIAL_STEPS.length && tutorialStepMet(this.state, this.view); i++) {
-      const id = tutorialStep(this.state);
-      if (!id || !advanceTutorial(this.state, id)) break;
-      moved = true;
+    if (tutorialActive(this.state)) {
+      for (let i = 0; i < TUTORIAL_STEPS.length && tutorialStepMet(this.state, this.view); i++) {
+        const id = tutorialStep(this.state);
+        if (!id || !advanceTutorial(this.state, id)) break;
+        moved = true;
+      }
+    } else if (lessonShown(this.state, this.view)) {
+      for (let i = 0; i < 6 && lessonStepMet(this.state, this.view); i++) {
+        const l = lessonInfo(this.state);
+        if (!l || !advanceLesson(this.state, l.stepId)) break;
+        moved = true;
+      }
     }
     if (moved) { this.persist = true; this.save(); }
   }
 
   /** The mentor card, the ring on the thing to click and the arrow pointing at it. */
   private renderTutorial(): void {
-    const on = tutorialActive(this.state);
+    const tut = tutorialActive(this.state);
+    const on = this.guideOn();
     const info = tutorialInfo(this.state);
-    const target = on ? tutorialTarget(this.state, this.view) : null;
+    const lesson = !tut && on ? lessonInfo(this.state) : null;
+    const target = tut ? tutorialTarget(this.state, this.view) : on ? lessonTarget(this.state, this.view) : null;
     const changedTarget = JSON.stringify(target) !== JSON.stringify(this.tutTarget);
     this.tutTarget = target;
     if (changedTarget) this.world.setSnapshot(this.snapshot()); // the pointed-at sheep gets a ring
     document.body.classList.toggle("tut-on", on);
     const hudTarget = target?.kind === "html" && target.selectors[0]!.startsWith("#hud");
     document.body.classList.toggle("tut-hud-top", on && hudTarget && !!this.view.panel);
-    const html = on ? mentorHtml(this.state, this.view) : "";
+    const html = tut ? mentorHtml(this.state, this.view) : on ? lessonMentorHtml(this.state, this.view) : "";
     if (this.mentorEl.innerHTML !== html) this.mentorEl.innerHTML = html;
     this.mentorEl.hidden = !on;
-    document.body.dataset.tutorial = on && info ? String(info.step) : "";
-    // A new step that points at a sheep in the field: bring it into view (unless a card is being visited).
-    const step = on && info ? info.step : -1;
+    document.body.dataset.tutorial = tut && info ? String(info.step) : "";
+    document.body.dataset.lesson = lesson ? `${lesson.id}:${lesson.step}` : "";
+    // A new step that points at a sheep or a place in the field: bring it into view (unless a card is being visited).
+    const step = tut && info ? `t${info.step}` : lesson ? `${lesson.id}${lesson.step}` : "";
     if (step !== this.tutStepSeen) {
       this.tutStepSeen = step;
       // (With another sheep's card open the camera is visiting that one: glide over to the new target.)
       if (target?.kind === "sheep" && !(this.view.panel === "sheep" && this.view.sheepId === target.id)) this.world.focus(target.id);
+      if (target?.kind === "spot" && !this.view.panel) this.world.focus(target.id as Hotspot);
     }
     this.applyRings();
     if (on && !this.tutFrame) this.tutFrame = requestAnimationFrame(this.tutorialFrame);
@@ -466,17 +487,22 @@ export class App {
   /** Every frame while the tutorial runs: keep the arrow on its (possibly wandering) target. */
   private readonly tutorialFrame = (): void => {
     this.tutFrame = 0;
-    if (!tutorialActive(this.state)) { this.arrowEl.hidden = true; return; }
+    if (!this.guideOn()) { this.arrowEl.hidden = true; return; }
     this.applyRings();
     const t = this.tutTarget;
     // The arrow's tip sits on the target; it comes from above (down), below (up) or the left (right).
     let pt: { x: number; y: number; dir: "down" | "up" | "right" } | null = null;
+    // A place in the world points at itself when it is on screen and no panel covers it, else at its HUD button.
+    const spot = t?.kind === "spot" && !this.sleeping && !this.view.panel ? this.world.screenPoint(t.id) : null;
+    const sel = t?.kind === "html" ? t.selectors[0]! : t?.kind === "spot" && !spot?.inView ? t.rings[0]! : null;
     if (t?.kind === "sheep" && !this.sleeping) {
       const p = this.world.screenPoint(t.id);
       if (p) pt = { x: p.x, y: p.y - 4, dir: "down" };
-    } else if (t?.kind === "html") {
-      const el = document.querySelector<HTMLElement>(t.selectors[0]!);
-      const key = `${t.selectors[0]}|${window.innerWidth}x${window.innerHeight}|${this.view.panel ?? ""}`;
+    } else if (spot?.inView) {
+      pt = { x: spot.x, y: spot.y - 4, dir: "down" };
+    } else if (sel) {
+      const el = document.querySelector<HTMLElement>(sel);
+      const key = `${sel}|${window.innerWidth}x${window.innerHeight}|${this.view.panel ?? ""}`;
       if (el && key !== this.tutScrollKey) {
         this.tutScrollKey = key;
         if (el.closest("#overlay")) el.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -518,6 +544,19 @@ export class App {
       advanceTutorial(this.state, id);
       // "Let's farm!": the tutorial is over, so close whatever panel was open and show the farm.
       if (this.state.tutorial?.done) { this.view.panel = null; this.view.tab = null; }
+    }
+    // The tutorial is over: the first letter arrives at once, with its lesson (core/pacing.ts).
+    if (this.state.tutorial?.done) tutorialOver(this.state);
+    this.persist = true;
+    this.save();
+  }
+
+  private lessonOp(op: "ack" | "skip"): void {
+    if (op === "skip") {
+      if (!skipLesson(this.state)) throw new Error("There's no lesson running.");
+      toast("Lesson skipped. Old Tom tips his hat.");
+    } else if (!ackLesson(this.state)) {
+      throw new Error("Do what Old Tom asks to carry on.");
     }
     this.persist = true;
     this.save();
@@ -636,7 +675,8 @@ export class App {
         this.tutorialOp(op, seed);
         if (op === "start") return;
       }
-      if (d["open"]) this.openPanel(d["open"] as PanelName, d["sheepId"], d["tab"] ?? null);
+      if (d["lesson"]) this.lessonOp(d["lesson"] as "ack" | "skip");
+      else if (d["open"]) this.openPanel(d["open"] as PanelName, d["sheepId"], d["tab"] ?? null);
       else if (d["sheep"]) this.openPanel("sheep", d["sheep"]);
       else if (d["findmate"]) this.openPanel("forecast", d["findmate"]);
       else if (d["mate"]) this.view.mateId = d["mate"];
@@ -694,6 +734,7 @@ export class App {
       case "rename": this.mutate(() => renameSheep(this.state, a.id, a.name)); break;
       case "newGame": this.startNewGame(a.seed); return;
       case "tutorial": this.tutorialOp(a.op, a.seed); if (a.op === "start") return; break;
+      case "lesson": this.lessonOp(a.op); break;
       case "open": this.openPanel(a.panel, a.id); break;
       case "close": this.view.panel = null; break;
       case "sleep": await this.sleep(); return;
@@ -727,13 +768,13 @@ export class App {
     } finally {
       this.sleeping = false;
     }
-    if (tutorialActive(this.state)) this.render();
+    if (tutorialActive(this.state) || lessonInfo(this.state)) this.render();
   }
 
   private startNewGame(seed?: number, tutorial = false): void {
     const s = seed !== undefined && Number.isFinite(seed) ? Math.floor(seed) : randomSeed();
     this.state = tutorial ? newTutorialGame(s) : newGame(s);
-    this.tutStepSeen = -1;
+    this.tutStepSeen = "";
     this.view.report = null;
     this.view.sheepId = null;
     this.view.mateId = null;
@@ -839,6 +880,18 @@ export class App {
       version: VERSION,
       /** The tutorial's current step ({ step, id, done }), or null for a game without one. */
       tutorial: () => { const t = tutorialInfo(this.state); return t ? { ...t } : null; },
+      /**
+       * The running mini-lesson ({ id, title, step, count, stepId, stepTitle, ack, shown }) or null, plus the
+       * lessons done so far and every lesson's step ids (for probes).
+       */
+      lesson: () => {
+        const l = lessonInfo(this.state);
+        return {
+          current: l ? { ...l, shown: lessonShown(this.state, this.view) } : null,
+          done: [...(this.state.lessonsDone ?? [])],
+          all: LESSONS.map((x) => ({ id: x.id, steps: x.steps.map((st) => st.id) })),
+        };
+      },
       /** Not part of the contract: render stats (draw calls, live portrait, the dog) for probes. */
       debug: {
         world: () => this.world.debugStats(),

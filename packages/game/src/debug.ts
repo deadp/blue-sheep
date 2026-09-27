@@ -1,6 +1,6 @@
 /** Debug fast-forward for `?act=N`: a real game played with a greedy policy, then nudged into act N. */
 import {
-  ACTS, enterAct, grantUnlock, hireVisitingRam, enterFair, isAdult, newGame, seasonOfYear,
+  ACTS, LESSONS, enterAct, grantUnlock, hireVisitingRam, enterFair, isAdult, newGame, seasonOfYear,
   type ActNumber, type GameState, type SeasonReport,
 } from "./core/index.js";
 import { greedySeason } from "./ui/fixtures.js";
@@ -33,5 +33,8 @@ export function fastForward(seed: number, act: number): FastForward {
       if (s.visitingRam && s.money >= s.visitingRam.fee) { try { hireVisitingRam(s); } catch { /* ignore */ } }
     }
   }
+  // Everything up to act N at once, without lessons (a lesson started on the way is dropped).
+  s.lesson = null;
+  s.lessonsDone = LESSONS.filter((l) => s.unlocks.includes(l.id)).map((l) => l.id);
   return { state: s, report: r };
 }

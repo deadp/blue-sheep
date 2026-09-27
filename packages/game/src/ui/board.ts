@@ -1,7 +1,7 @@
 /** Shed board (goal, plans, orders, announcements, diary) and the orders panel. */
 import {
-  FAIR_LABEL, MAX_ACCEPTED_ORDERS, currentAct, forecastOrderFor, lambRoom, miceComingText, seasonLabel,
-  type GameState, type Order,
+  FAIR_LABEL, MAX_ACCEPTED_ORDERS, currentAct, forecastOrderFor, lambRoom, miceComingText, nextDated, seasonLabel,
+  type GameState, type Order, type Unlock,
 } from "../core/index.js";
 import { myAnimalsHtml } from "./pets.js";
 import { litterWords } from "./forecast.js";
@@ -21,6 +21,10 @@ export function goalCard(state: GameState): string {
   </div>`;
 }
 
+const COMING: Partial<Record<Unlock, string>> = {
+  vet: "the vet's hut opens", farm: "the trader brings farm improvements", dogs: "dogs come to the market", cat: "a farm cat comes to the market",
+};
+
 function upcoming(state: GameState): string[] {
   const out: string[] = [];
   if (state.pendingEvent) out.push(`📣 ${state.pendingEvent.text}`);
@@ -32,6 +36,9 @@ function upcoming(state: GameState): string[] {
     const entry = state.fair.entry ? state.sheep[state.fair.entry]?.name : null;
     out.push(`🎪 Village fair ${when <= 0 ? "this season" : `in ${seasonLabel(state.fair.nextSeason)}`}: ${FAIR_LABEL[state.fair.category].toLowerCase()}. ${entry ? `${entry} is entered.` : "No entry yet."}`);
   }
+  // What the calendar brings next (core/pacing.ts), so nothing arrives out of the blue.
+  const soon = nextDated(state);
+  if (soon && soon.season - state.season <= 2) out.push(`🗓 Old Tom says ${COMING[soon.id] ?? "something new comes"} in ${seasonLabel(soon.season)}.`);
   if (state.visitingRam && state.visitingRam.season === state.season) {
     const r = state.sheep[state.visitingRam.id];
     if (r) out.push(`🐏 ${r.name}, a visiting ram, is here this season only${state.hiredRam === r.id ? " — hired!" : ` (${state.visitingRam.fee} coins to hire).`}`);

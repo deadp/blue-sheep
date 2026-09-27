@@ -1,5 +1,5 @@
 /** Codex: discovery card collection and concept cards that unlock with the story. */
-import { PUNNET_GENES, punnetSquare, seasonLabel, type GameState } from "../core/index.js";
+import { PUNNET_GENES, TUTORIAL_STEPS, punnetSquare, seasonLabel, type GameState } from "../core/index.js";
 import { punnetHtml } from "./punnet.js";
 import { discoveryText, discoveryTitle, esc, numbersOn, LOCUS_FRIENDLY } from "./util.js";
 import type { View } from "./view.js";
@@ -24,7 +24,7 @@ export const CONCEPTS: Concept[] = [
   {
     id: "punnet", title: "Punnet square", icon: "🔲",
     text: "Every sheep has two copies of each gene and gives a lamb one, at random. Put one parent's copies along the top, the other's down the side: the four boxes are four equally likely lambs. Two polled parents that each carry a horns copy: three polled lambs for one horned. It works for hidden colour and dilute too.",
-    unlocked: (s) => s.unlocks.includes("cards") || (s.tutorial?.step ?? 0) > 4, hint: "Old Tom will draw one for you.",
+    unlocked: (s) => s.unlocks.includes("cards") || (s.tutorial?.step ?? 0) > TUTORIAL_STEPS.findIndex((t) => t.id === "punnet") + 1, hint: "Old Tom will draw one for you.",
     figure: punnetFigure,
   },
   {
