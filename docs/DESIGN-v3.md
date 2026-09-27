@@ -998,3 +998,8 @@ and tuning is a separate commit only if a target is badly missed.
     Foxes never raid before dogs are on sale. The first letter asks for horns.
 14. **Brushing gesture:** press and hold on the sheep (all devices) instead of a
     drag.
+15. **Tutorial over three lambings (user, 2026-09-27):** don't front-load. Lamb 1
+    (season 1) is a normal white polled lamb and only teaches the loop; lamb 2
+    (season 2) is the 1-in-4 horned lamb, after which Old Tom introduces the
+    Punnet square; lamb 3 (season 3) is the black lamb, explained with the same
+    square. Then market and the goal. Short steps, one concept each.
