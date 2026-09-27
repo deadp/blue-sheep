@@ -5,3 +5,4 @@ dist/
 packages/game/probe/out/
 packages/game/probe/.build/
 packages/genetics/out/
+packages/game/src/stylelab/shots/
