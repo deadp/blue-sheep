@@ -1030,3 +1030,9 @@ and tuning is a separate commit only if a target is badly missed.
     Gameplay phases (pigment colours in game, breeds, wool store/market,
     woolshed, fantasy wools, chapters, birds) follow and build on the chosen
     look. The Blender model refresh stays last and optional.
+19. **Colour tuning (user, 2026-09-27, after the Phase 1 palette):** keep
+    pastel founders with vivid colours ripening over generations; keep blue
+    allele frequency and the true-blue bar for now and check in the Phase-2
+    blind sims; Icelandic sheep only appear at the market in a later chapter
+    (reward after learning colour breeding); add "slate" and "olive" as colour
+    names for muted cool hues (usable in orders and words).
