@@ -69,6 +69,12 @@ export interface WorldHandlers {
   onPortraitClick?(id: string): void;
   /** A dog or the cat was clicked in the field. */
   onPet?(id: PetKind): void;
+  /**
+   * The live portrait's fleece is being brushed (click-and-drag over the sheep). "stroke": a stretch of
+   * brushing (for a swish sound, a few times a second at most); "done": one full brushing has been given,
+   * reported when the drag ends (at most once per mounted sheep until it is mounted afresh).
+   */
+  onBrush?(id: string, phase: "stroke" | "done"): void;
 }
 
 export interface WorldOptions {

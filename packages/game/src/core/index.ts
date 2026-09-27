@@ -3,27 +3,28 @@ export * from "./types.js";
 export * from "./config.js";
 export {
   species, seasonLabel, seasonOfYear, yearOf, ageOf, isAdult, isIll, canBreed, flockSheep, pedigreeOf, genomeOf,
-  newGame, serialize, deserialize, migrateV1, nextFairSeason, fairCategoryFor, unlocksUpTo, addLog,
+  newGame, serialize, deserialize, migrateV1, nextFairSeason, fairCategoryFor, unlocksUpTo, addLog, marketSize,
 } from "./state.js";
 export { advanceSeason, renameSheep, twinChance } from "./sim.js";
 export { planMating, unplanMating, plannedPairings, ramLoad, ramAvailable, lambRoom, overCap, growingLambs } from "./breeding.js";
 export { buySheep, sellSheep, sheepValue, buyPrice, ramPrice, woolIncome, finenessMultiplier } from "./economy.js";
 export { vetTest, forecastVet, isTestLocus } from "./vet.js";
 export {
-  buyUpgrade, forecastUpgrade, upgradeBlocked, upgradeDef, hasUpgrade, upgradeCapBonus, feedPerHead, chanceWords, type UpgradeForecast,
+  buyUpgrade, forecastUpgrade, upgradeBlocked, upgradeOffered, upgradeDef, hasUpgrade, upgradeCapBonus, feedPerHead, chanceWords, type UpgradeForecast,
 } from "./upgrades.js";
 export {
   fondnessOf, defaultFondness, fondnessWord, fondnessHearts, fondWoolMultiplier, greetAnimal, giveTreat, treatBlocked,
+  brushAnimal, brushedThisSeason, forecastBrush,
   forecastTreat, greetedThisSeason, treatedThisSeason, isPetId, isOwnAnimal, ownedPets, petEffort, fleeceAt, seasonCare,
   type TreatForecast,
 } from "./care.js";
 export { hasCat, catCatch, miceCost, miceNow, miceComingText, MICE_ANNOUNCE } from "./mice.js";
 export {
-  acceptOrder, declineOrder, forecastOrder, forecastOrderFor, sheepMatchesOrder,
+  acceptOrder, declineOrder, forecastOrder, forecastOrderFor, sheepMatchesOrder, orderBoardLimit,
 } from "./orders.js";
 export { enterFair, forecastFair, fairScore, fairOdds, fieldMean } from "./fair.js";
 export { hireVisitingRam, forecastVisitor } from "./visitor.js";
-export { announceText, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
+export { announceText, eventPool, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
   forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, GOALS, type Goal,
 } from "./forecast.js";
@@ -41,6 +42,12 @@ export {
 } from "./personality.js";
 export { EWE_NAMES, RAM_NAMES, VILLAGERS } from "./names.js";
 export {
-  TUTORIAL_STEPS, MENTOR, NEIGHBOUR, newTutorialGame, advanceTutorial, skipTutorial, tutorialInfo, tutorialActive, tutorialStep,
+  PACING, paceStep, unlockedAt, latestUnlock, nextUnlock, grantUnlock, checkPacing, type PaceStep,
+} from "./pacing.js";
+export {
+  PUNNET_GENES, punnetSquare, punnetLook, knownCopies, knownPunnet, type PunnetGene, type PunnetSquare, type PunnetCell,
+} from "./punnet.js";
+export {
+  TUTORIAL_STEPS, MENTOR, newTutorialGame, advanceTutorial, skipTutorial, tutorialInfo, tutorialActive, tutorialStep,
   cheapestMarketEwe, isTutorialFirstMating, colourOf, type TutorialStepId, type TutorialStepDef, type TutorialInfo,
 } from "./tutorial.js";

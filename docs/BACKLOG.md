@@ -5,9 +5,6 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-- **Tutorial + pacing + brushing (v2, now):** Punnet square with horns in the tutorial; remove the post-tutorial flock handover (player grows from the tutorial flock); one concept at a time; brushing on the live portrait. See DESIGN-v3.md §15 items 10–12.
-- **Brushing** (user, 2026-09-27): keep the name Fondness and its numbers; add a hands-on brushing action on the live portrait as a third way to build fondness (once per animal per season, like greeting). Dogs stay as built (they join, stack protection, eat 1–3 coins a season).
-
 Nothing in progress. The v3 design pass is written: **`docs/DESIGN-v3.md`** (pigment genetics,
 breeds and wool types, fantasy wools, woolshed pipeline, items, demand meters, birds, river
 valley, chapters and the Golden Fleece, save migration, ten implementation phases, open
@@ -89,6 +86,14 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- Tutorial + pacing + brushing (COMMIT_HASH): Punnet square with horns in the tutorial (2×2, pictures and
+  words, 3 polled : 1 horned, hover/click interactive, letters only with numbers) and again for the surprise
+  colour; codex "Punnet square" card; reusable `ui/punnet.ts`. No handover: every farm (tutorial, skip,
+  `?seed`) starts with the same two sheep; concepts open one a season via `core/pacing.ts` (cards → orders →
+  vet → farm → dogs → cat, then numbers/fair, tree/visitor with their acts); quieter first-year market and a
+  one-letter order board to start. Brushing on the live portrait (+6 once a season; a pat for dogs and the
+  cat). Balance rerun for the small start (blind 97 % ending, median season 29, median end money 582).
 
 - Care mechanics (abffc28): fondness hearts per sheep, dog and cat (greet once a
   season, 1-coin treats, slow fade; up to +15% wool); three dogs (terrier,

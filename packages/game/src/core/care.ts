@@ -6,7 +6,7 @@
  * that loves you works a little harder. Deterministic: plain numbers in `state.care`.
  */
 import {
-  CAT_CATCH_FLOOR, DOG_FOND_FLOOR, FOND_DECAY, FOND_GRACE, FOND_GREET, FOND_LAMB_BASE, FOND_LAMB_FROM_DAM,
+  CAT_CATCH_FLOOR, DOG_FOND_FLOOR, FOND_BRUSH, FOND_DECAY, FOND_GRACE, FOND_GREET, FOND_LAMB_BASE, FOND_LAMB_FROM_DAM,
   FOND_PET_START, FOND_START, FOND_TREAT, FOND_WOOL_FROM, FOND_WOOL_LOW, FOND_WOOL_LOW_FROM, FOND_WOOL_MAX,
   FOND_WORDS, PET_FEED, PET_IDS, PET_NAME, SHEARING_BONUS, TREAT_COST,
 } from "./config.js";
@@ -101,6 +101,38 @@ export function greetAnimal(state: GameState, id: string): number {
   return r.level - before;
 }
 
+export function brushedThisSeason(state: GameState, id: string): boolean {
+  return state.care?.[id]?.brushed === state.season;
+}
+
+/**
+ * Brush a sheep's fleece on its live portrait (a dog or the cat: a pat). Counts once per animal per season,
+ * +FOND_BRUSH. Returns the fondness gained (0 when already brushed this season or not your animal).
+ */
+export function brushAnimal(state: GameState, id: string): number {
+  if (!isOwnAnimal(state, id) || brushedThisSeason(state, id)) return 0;
+  const r = record(state, id);
+  const before = r.level;
+  r.level = clamp100(r.level + FOND_BRUSH);
+  r.brushed = state.season;
+  r.cared = state.season;
+  addLog(state, `${nameOf(state, id)} ${isPetId(id) ? "had a good pat" : "had a good brush"} and leaned into it.`);
+  return r.level - before;
+}
+
+/** What brushing would do now, in words (fondness before → after), or null when it can't be done. */
+export function forecastBrush(state: GameState, id: string): { before: number; after: number; text: string } | null {
+  if (!isOwnAnimal(state, id) || brushedThisSeason(state, id)) return null;
+  const before = fondnessOf(state, id);
+  const after = clamp100(before + FOND_BRUSH);
+  const verb = isPetId(id) ? "A pat" : "A brush";
+  const text = after === before ? `${verb} would feel lovely, but ${nameOf(state, id)} couldn't be any fonder of you.`
+    : fondnessWord(after) !== fondnessWord(before)
+      ? `${verb} would take ${nameOf(state, id)} from ${fondnessWord(before).toLowerCase()} to ${fondnessWord(after).toLowerCase()}.`
+      : `${verb} would make ${nameOf(state, id)} a little fonder of you.`;
+  return { before, after, text };
+}
+
 /** Why a treat can't be given now (null when it can). */
 export function treatBlocked(state: GameState, id: string): string | null {
   if (!isOwnAnimal(state, id)) return "Only your own animals can have treats.";
@@ -157,7 +189,9 @@ export function forecastTreat(state: GameState, id: string): TreatForecast {
   const word = fondnessWord(after);
   const text = after === before
     ? `${name} couldn't be any fonder of you.`
-    : `${name} would go from ${fondnessWord(before).toLowerCase()} to ${word.toLowerCase()}.${tail}`;
+    : word === fondnessWord(before)
+      ? `${name} would grow a little fonder of you.${tail}`
+      : `${name} would go from ${fondnessWord(before).toLowerCase()} to ${word.toLowerCase()}.${tail}`;
   return { before, after, woolBefore, woolAfter, text };
 }
 

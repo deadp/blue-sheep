@@ -46,11 +46,17 @@ export interface CareRecord {
   greeted: number;
   /** Season it last had a treat (-1: never). */
   treated: number;
-  /** Season of the last greeting or treat (decay starts a while after this). */
+  /** Season of the last greeting, treat or brushing (decay starts a while after this). */
   cared: number;
+  /** Season it was last brushed (a dog or the cat: patted). Absent: never. */
+  brushed?: number;
 }
 
-export type Unlock = "numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards";
+/**
+ * Concepts that open up over the game, one at a time (core/pacing.ts): `farm` = farm improvements and winter
+ * weather, `dogs` = dogs at the market and foxes, `cat` = the cat and mice.
+ */
+export type Unlock = "numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards" | "farm" | "dogs" | "cat";
 
 export type Locus = "A" | "B" | "D" | "S" | "P";
 
@@ -213,11 +219,9 @@ export interface ActStart { season: number; ordersFilled: number; fairsWon: numb
 export interface TutorialState {
   step: number;
   done: boolean;
-  /** The tutorial's white ewe and ram (both carry hidden colour). */
+  /** The tutorial's white ewe and ram (both carry hidden colour and horns). */
   ewe: string;
   ram: string;
-  /** The normal starter flock of newGame(seed), minded by a neighbour until the handover. */
-  held: Sheep[];
   /** Coins the mentor chipped in at the market step (0 if none were needed). */
   gift: number;
 }
@@ -266,6 +270,11 @@ export interface GameState {
   mice?: number | null;
   /** Legacy v1 notebook/achievements, kept for old saves. */
   achievements: string[];
+  /**
+   * The season each paced concept arrived (core/pacing.ts). Absent in older saves: whatever is already in
+   * `unlocks` counts as long since arrived.
+   */
+  paced?: Partial<Record<Unlock, number>>;
   /** Tutorial progress; null when there is no tutorial (absent in older saves: loaded as null). */
   tutorial: TutorialState | null;
 }
@@ -314,6 +323,8 @@ export interface SeasonReport {
   /** True when mice were announced for the coming season. */
   miceComing: boolean;
   actAdvanced: ActInfo | null;
+  /** The concept that opened up this season (at most one; core/pacing.ts), or null. Absent in old reports. */
+  unlocked?: Unlock | null;
   /** True if the act-4 registry goal was reached this season. */
   endingReached: boolean;
   messages: string[];

@@ -179,6 +179,23 @@ export function bleatSeries(v: Voice, rnd: () => number = Math.random): BleatSte
   return steps;
 }
 
+/**
+ * Being brushed (or patted): contented, soft and low. A sheep gives two short humming "mm"s that rise at the
+ * end; a dog a soft, high "whuff" or two; the cat a long low mew (the nearest a synth gets to a purr). Always
+ * quieter than a greeting. Deterministic (no randomness).
+ */
+export function happySeries(v: Voice): BleatStep[] {
+  if (v.species === "dog") return [
+    { at: 0, dur: 0.7, pitch: 1.12, gain: 0.45, glide: 2 },
+    { at: v.duration * 0.7 + 0.12, dur: 0.6, pitch: 1.18, gain: 0.4, glide: 3 },
+  ];
+  if (v.species === "cat") return [{ at: 0, dur: 1.3, pitch: 0.82, gain: 0.5, glide: 1.5 }];
+  return [
+    { at: 0, dur: 0.38, pitch: 0.9, gain: 0.5, glide: 0.8 },
+    { at: v.duration * 0.38 + 0.16, dur: 0.55, pitch: 0.95, gain: 0.55, glide: Math.abs(v.glide) * 0.4 + 2 },
+  ];
+}
+
 function sheepSeries(v: Voice, rnd: () => number): BleatStep[] {
   const x = rnd();
   const one = (dur = 1): BleatStep[] => [{ at: 0, dur, pitch: 1, gain: 1, glide: v.glide }];

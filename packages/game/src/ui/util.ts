@@ -142,6 +142,14 @@ export const UNLOCK_WORDS: Record<Unlock, string> = {
   fair: "The village fair every autumn",
   tree: "Family trees",
   visitor: "Visiting rams each spring",
+  farm: "Farm improvements and winter weather",
+  dogs: "Dogs at the market (and foxes)",
+  cat: "A farm cat (and mice)",
+};
+
+/** An icon per concept, for the report's "new on the farm" banner. */
+export const UNLOCK_ICON: Record<Unlock, string> = {
+  cards: "📖", vet: "🩺", orders: "📮", numbers: "🔢", fair: "🎪", tree: "🌳", visitor: "🐏", farm: "🛖", dogs: "🐕", cat: "🐈",
 };
 
 export const LOCUS_FRIENDLY: Record<string, string> = {

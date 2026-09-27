@@ -3,12 +3,16 @@
 // visits that sheep; closing the card (or opening another panel) unmounts it and releases the sheep;
 // body[data-panel] keeps tracking the open panel.
 // Care: the dogs and the cat are in the world exactly when owned; buying a dog changes the predator forecast;
-// greeting (opening a card) raises fondness once a season; a treat costs a coin; each animal has its own voice;
+// greeting (opening a card) raises fondness once a season; a treat costs a coin; brushing (a drag across the
+// live portrait) raises it once a season and a dog gets a pat the same way; each animal has its own voice;
 // the report shows the happy-sheep wool line. With motion on it also saves frame sequences (life-sheep-*.png, life-world-*.png,
 // life-report-*.png) and notes draw calls and frame rate, for a human or agent to look at. Voices: a lamb, a ewe
 // and a ram bleat in three different voices, lamb > ewe > ram in pitch; shy is softer and smoother than bold.
+import fs from "node:fs";
+import path from "node:path";
 import { isMain, runSteps } from "./lib/harness.mjs";
 import { ProbeError } from "./lib/browser.mjs";
+import { OUT_DIR } from "./lib/paths.mjs";
 
 const FRAMES = 6;
 const GAP_MS = 300;
@@ -184,6 +188,136 @@ export const life = {
       await g.close();
     }
 
+    // ---- 2d. brushing: click-and-drag across the live portrait's fleece
+    // Rules: a full brushing raises the sheep's fondness by the brushing amount (+6) once per season: the care
+    // box then says "Brushed this season"; brushing again the same season adds nothing; next season it counts
+    // again. While brushing, tufts of wool drift off and hearts float up (motion on). A dog gets a pat the same
+    // way by rubbing its picture on the animal card.
+    {
+      const g = await ctx.newPage();
+      await g.boot("?seed=7&fresh=1");
+      const st = await g.state();
+      const a = st.flock[0];
+      const fond = () => g.page.evaluate((id) => /** @type {any} */ (window).__game.debug.fondness(id), a);
+      await g.act({ type: "open", panel: "sheep", id: a });
+      await g.waitPanel("sheep");
+      await g.page.waitForTimeout(400);
+      const f0 = await fond();
+      const mark0 = await g.page.evaluate(() => document.querySelector("#overlay .care [data-brushed]")?.getAttribute("data-brushed"));
+      if (mark0 !== "0") throw new ProbeError(`before brushing the care box should offer a brush (data-brushed="0"), got ${mark0}`);
+      /** Drag back and forth across the portrait; screenshots at a few points mid-stroke. @param {string[]} frames */
+      const brushDrag = async (frames = []) => {
+        const b = await g.page.locator("#overlay canvas[data-live-portrait]").boundingBox();
+        if (!b) throw new ProbeError("no live portrait to brush");
+        const cx = b.x + b.width * 0.5, cy = b.y + b.height * 0.56;
+        await g.page.mouse.move(cx - 45, cy);
+        await g.page.mouse.down();
+        for (let i = 0; i < 10; i++) {
+          await g.page.mouse.move(cx + (i % 2 ? -45 : 45), cy + ((i % 3) - 1) * 10, { steps: 8 });
+          const k = [3, 6, 9].indexOf(i);
+          if (k >= 0 && frames[k]) ctx.artifact(await g.screenshot(frames[k]));
+        }
+        const mid = (await world(g)).portrait;
+        await g.page.mouse.up();
+        await g.page.waitForTimeout(150);
+        return mid;
+      };
+      const mid = await brushDrag(["brush-0", "brush-1", "brush-2"]);
+      const f1 = await fond();
+      if (f1 - f0 !== 6) throw new ProbeError(`a full brushing should raise fondness by 6 once: ${f0} -> ${f1} (brushed ${mid.brush}px over the fleece)`);
+      if (!(mid.brush >= 140)) throw new ProbeError(`the drag should count as brushing over the fleece (${mid.brush}px)`);
+      if (!(mid.fluff > 0) || !(mid.hearts > 0)) throw new ProbeError(`brushing should send tufts of wool and hearts up: ${JSON.stringify(mid)}`);
+      const done = await g.page.evaluate(() => document.querySelector("#overlay .care [data-brushed]")?.textContent ?? "");
+      if (!/Brushed this season/.test(done)) throw new ProbeError(`the care box should say "Brushed this season", says "${done}"`);
+      ctx.artifact(await g.screenshot("brush-done"));
+      // A frame read straight back from the portrait mid-stroke (headless Chrome starves animation frames while a
+      // real mouse button is held, so the page screenshots above can lag): tufts of wool drifting off the brush.
+      const mid2 = await g.page.evaluate(async () => {
+        const c = /** @type {HTMLCanvasElement} */ (document.querySelector("#overlay canvas[data-live-portrait]"));
+        const r = c.getBoundingClientRect();
+        const cx = r.left + r.width / 2, cy = r.top + r.height * 0.56;
+        const ev = (/** @type {string} */ type, /** @type {number} */ x, /** @type {number} */ y) => c.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerId: 7, bubbles: true, button: 0, buttons: 1, pointerType: "mouse" }));
+        ev("pointerdown", cx - 40, cy);
+        for (let i = 0; i <= 16; i++) ev("pointermove", cx - 40 + i * 5, cy + (i % 2) * 6);
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(res))));
+        const url = c.toDataURL("image/png");
+        const fluff = /** @type {any} */ (window).__game.debug.world().portrait.fluff;
+        ev("pointerup", cx + 40, cy);
+        return { url, fluff };
+      });
+      if (!(mid2.fluff > 0)) throw new ProbeError(`a brush stroke should send tufts of wool off the fleece (${mid2.fluff})`);
+      const fluffPng = path.join(OUT_DIR, "brush-fluff.png");
+      fs.writeFileSync(fluffPng, Buffer.from(mid2.url.split(",")[1] ?? "", "base64"));
+      ctx.artifact(fluffPng);
+      const f2 = await fond();
+      if (f2 !== f1) throw new ProbeError(`brushing twice in a season should count once: ${f1} -> ${f2}`);
+      g.assertNoErrors("brushing");
+      await g.close();
+      // Next season it counts again (reduced motion: the same drag, without the slow animated night).
+      const n = await ctx.newPage();
+      await n.boot("?seed=7&fresh=1&nomotion=1");
+      const fondN = () => n.page.evaluate((id) => /** @type {any} */ (window).__game.debug.fondness(id), a);
+      const dragN = async () => {
+        const bb = await n.page.locator("#overlay canvas[data-live-portrait]").boundingBox();
+        if (!bb) throw new ProbeError("no live portrait to brush (reduced motion)");
+        const cx = bb.x + bb.width * 0.5, cy = bb.y + bb.height * 0.56;
+        await n.page.mouse.move(cx - 45, cy);
+        await n.page.mouse.down();
+        for (let i = 0; i < 6; i++) await n.page.mouse.move(cx + (i % 2 ? -45 : 45), cy + ((i % 3) - 1) * 10, { steps: 6 });
+        await n.page.mouse.up();
+        await n.page.waitForTimeout(100);
+      };
+      await n.act({ type: "open", panel: "sheep", id: a });
+      await n.waitPanel("sheep");
+      const n0 = await fondN();
+      await dragN();
+      const n1 = await fondN();
+      await dragN();
+      const n2 = await fondN();
+      await n.act({ type: "close" });
+      await n.act({ type: "sleep" });
+      await n.waitPanel("report", 10_000);
+      await n.act({ type: "close" });
+      await n.act({ type: "open", panel: "sheep", id: a });
+      await n.waitPanel("sheep");
+      const f3 = await fondN();
+      await dragN();
+      const f4 = await fondN();
+      if (n1 - n0 !== 6 || n2 !== n1) throw new ProbeError(`with reduced motion a brushing should also count once a season: ${n0} -> ${n1} -> ${n2}`);
+      if (f4 - f3 !== 6) throw new ProbeError(`next season a brushing should count again: ${f3} -> ${f4}`);
+      n.assertNoErrors("brushing (reduced motion)");
+      await n.close();
+      ctx.note(`brushing: fondness ${f0} -> ${f1} (+6, ${mid.brush}px over the fleece, ${mid2.fluff} tufts mid-stroke, ${mid.hearts} hearts) -> again ${f2}; reduced motion ${n0} -> ${n1} -> again ${n2} -> next season ${f3} -> ${f4}`);
+    }
+    {
+      // A pat for a dog: rub its picture on the animal card.
+      const g = await ctx.newPage();
+      await g.boot("?seed=7&fresh=1&nomotion=1&act=3");
+      await g.page.evaluate(() => { /** @type {any} */ (window).__game.state().money = 2000; });
+      const st = await g.state();
+      if (!(st.upgrades ?? []).includes("collie")) await g.act({ type: "upgrade", id: "collie" });
+      await g.act({ type: "open", panel: "animal", id: "collie" });
+      await g.waitPanel("animal");
+      const fd = () => g.page.evaluate(() => /** @type {any} */ (window).__game.debug.fondness("collie"));
+      const p0 = await fd();
+      const b = await g.page.locator("#overlay .pet-stage").boundingBox();
+      if (!b) throw new ProbeError("the animal card should have a picture to pat");
+      const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+      await g.page.mouse.move(cx - 40, cy);
+      await g.page.mouse.down();
+      for (let i = 0; i < 6; i++) await g.page.mouse.move(cx + (i % 2 ? -40 : 40), cy, { steps: 6 });
+      await g.page.mouse.up();
+      await g.page.waitForTimeout(150);
+      const p1 = await fd();
+      if (p1 - p0 !== 6) throw new ProbeError(`rubbing the collie's picture should pat her (+6 once a season): ${p0} -> ${p1}`);
+      const pat = await g.page.evaluate(() => document.querySelector("#overlay .care [data-brushed]")?.textContent ?? "");
+      if (!/Patted this season/.test(pat)) throw new ProbeError(`the collie's care box should say "Patted this season", says "${pat}"`);
+      ctx.artifact(await g.screenshot("brush-pat"));
+      ctx.note(`pat: collie fondness ${p0} -> ${p1}`);
+      g.assertNoErrors("patting");
+      await g.close();
+    }
+
     // ---- 2c. the report: happy sheep's wool, mice with the cat, a wolf seen off by the Maremma (staged for review)
     {
       const g = await ctx.newPage();
@@ -222,7 +356,7 @@ export const life = {
     // ewes higher than rams; a shy sheep is softer and smoother than a bold one; with voices off, nothing plays.
     {
       const g = await ctx.newPage();
-      // seed 2 at act 3 has lambs, ewes, rams and both a shy and a bold adult
+      // seed 2 at act 3 has lambs, ewes and rams
       await g.boot("?seed=2&fresh=1&nomotion=1&act=3");
       const st = await g.state();
       /** @type {Record<string, any>} */
@@ -252,18 +386,37 @@ export const life = {
       if (!(L.duration < R.duration)) throw new ProbeError(`a lamb's bleat should be shorter than a ram's: ${L.duration} vs ${R.duration}`);
       for (const v of [L, E, R]) if (key(v) !== key(voices[v.id])) throw new ProbeError(`${v.id} should always sound the same (stable voice)`);
       ctx.note(`voices: lamb ${L.pitch} Hz/${L.duration}s, ewe ${E.pitch} Hz/${E.duration}s, ram ${R.pitch} Hz/${R.duration}s (played: ${L.played}${L.reason ? `, ${L.reason}` : ""})`);
-      // temperaments: look through the flock and the market (market sheep have cards too)
-      const pool = [...st.flock, ...st.market.filter((/** @type {string} */ id) => !st.flock.includes(id))];
-      Object.assign(voices, await g.page.evaluate((ids) => Object.fromEntries(ids.map((id) => [id, /** @type {any} */ (window).__game.debug.voiceOf(id)])), pool));
-      const byTemper = (/** @type {string} */ p) => pool.find((/** @type {string} */ id) => voices[id].personality === p && voices[id].age !== "lamb");
-      const shy = byTemper("shy");
-      const bold = byTemper("bold");
-      if (!shy || !bold) throw new ProbeError(`need a shy and a bold adult in seed 2's act-3 flock or market to compare voices (shy ${shy}, bold ${bold})`);
+      // temperaments: the first act-3 farm (from seed 2 on) with a shy and a bold adult among its sheep on record
       {
-        const S = await hello(shy), B = await hello(bold);
+        const t = await ctx.newPage();
+        /** @type {string | undefined} */ let shy;
+        /** @type {string | undefined} */ let bold;
+        let tseed = 2;
+        for (; tseed <= 12 && !(shy && bold); tseed++) {
+          await t.boot(`?seed=${tseed}&fresh=1&nomotion=1&act=3`);
+          const ts = await t.state();
+          const pool = [...new Set([...ts.flock, ...ts.market, ...Object.keys(ts.sheep)])];
+          const tv = await t.page.evaluate((ids) => Object.fromEntries(ids.map((id) => [id, /** @type {any} */ (window).__game.debug.voiceOf(id)])), pool);
+          const byTemper = (/** @type {string} */ p) => pool.find((/** @type {string} */ id) => tv[id]?.personality === p && tv[id]?.age !== "lamb");
+          shy = byTemper("shy"); bold = byTemper("bold");
+        }
+        if (!shy || !bold) throw new ProbeError(`need a shy and a bold adult on some act-3 farm (seeds 2–12) to compare voices (shy ${shy}, bold ${bold})`);
+        const tlast = () => t.page.evaluate(() => /** @type {any} */ (window).__game.debug.lastSound());
+        const thello = async (/** @type {string} */ id) => {
+          await t.act({ type: "open", panel: "sheep", id });
+          await t.waitPanel("sheep");
+          await t.page.waitForTimeout(400);
+          await t.page.click("#overlay canvas[data-live-portrait]");
+          const v = await tlast();
+          if (v?.id !== id) throw new ProbeError(`clicking ${id}'s portrait should make it bleat, last sound was ${v?.id}`);
+          return v;
+        };
+        const S = await thello(shy), B = await thello(bold);
         if (!(S.loudness < B.loudness && S.roughness < B.roughness)) throw new ProbeError(`a shy sheep should bleat softer and smoother than a bold one: ${JSON.stringify({ shy: [S.loudness, S.roughness], bold: [B.loudness, B.roughness] })}`);
         if (!(S.length < B.length)) throw new ProbeError(`a shy bleat should be shorter than a bold one: ${S.length} vs ${B.length}`);
-        ctx.note(`voices: shy ${shy} loudness ${S.loudness} rough ${S.roughness} (${S.steps.length} bleat) vs bold ${bold} loudness ${B.loudness} rough ${B.roughness} (${B.steps.length} bleats)`);
+        ctx.note(`voices (seed ${tseed - 1}): shy ${shy} loudness ${S.loudness} rough ${S.roughness} (${S.steps.length} bleat) vs bold ${bold} loudness ${B.loudness} rough ${B.roughness} (${B.steps.length} bleats)`);
+        t.assertNoErrors("comparing temperaments");
+        await t.close();
       }
       // Voices off (settings toggle): a click is still recorded, but plays nothing.
       await g.act({ type: "open", panel: "settings" });

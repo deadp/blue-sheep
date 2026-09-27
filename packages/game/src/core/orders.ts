@@ -4,7 +4,7 @@ import { sheep as sheepDefs } from "@blue-sheep/genetics";
 import { forecastQuantitative } from "@blue-sheep/inference";
 import { plannedPairings, ramAvailable } from "./breeding.js";
 import {
-  MAX_ACCEPTED_ORDERS, MAX_OPEN_ORDERS, MAX_AGE, ORDER_FAIL_REPUTATION, ORDER_MIN_PFILL, ORDER_REP_BONUS_CAP, ORDER_OFFER_SEASONS, RAM_CAPACITY,
+  MAX_ACCEPTED_ORDERS, MAX_OPEN_ORDERS, MAX_AGE, ORDER_BOARD_RAMP, ORDER_FAIL_REPUTATION, ORDER_MIN_PFILL, ORDER_REP_BONUS_CAP, ORDER_OFFER_SEASONS, RAM_CAPACITY,
 } from "./config.js";
 import { removeFromFlock } from "./economy.js";
 import { flockStats, traitRecords } from "./forecast.js";
@@ -215,9 +215,10 @@ function blankOrder(state: GameState, rng: Rng): Order {
   };
 }
 
-function proposeOrder(state: GameState, rng: Rng): Order | null {
+function proposeOrder(state: GameState, rng: Rng, first = false): Order | null {
   const o = blankOrder(state, rng);
-  const kinds: Order["kind"][] = state.act >= 2 ? ["colour", "colour", "wool", "wool", "horns"] : ["colour", "colour", "horns"];
+  // The very first letter asks for horns: the Punnet square from the tutorial, put to work.
+  const kinds: Order["kind"][] = first ? ["horns"] : state.act >= 2 ? ["colour", "colour", "wool", "wool", "horns"] : ["colour", "colour", "horns"];
   o.kind = kinds[rng.int(kinds.length)]!;
   if (o.kind === "wool") {
     const adults = flockSheep(state).filter((s) => isAdult(s, state.season));
@@ -250,14 +251,20 @@ function proposeOrder(state: GameState, rng: Rng): Order | null {
   return o;
 }
 
+/** Letters the board shows at most right now: a gentle ramp as orders are filled (ORDER_BOARD_RAMP). */
+export function orderBoardLimit(state: GameState): number {
+  const ramp = ORDER_BOARD_RAMP;
+  return Math.min(MAX_OPEN_ORDERS, ramp[Math.min(ramp.length - 1, state.stats.ordersFilled)]!);
+}
+
 /** Post new orders up to the board limit. Uses the game rng; forecasts stay knowledge-limited. */
 export function generateOrders(state: GameState, rng: Rng): Order[] {
   if (!state.unlocks.includes("orders")) return [];
   const fresh: Order[] = [];
   let tries = 0;
-  while (state.orders.length < MAX_OPEN_ORDERS && tries++ < 8) {
+  while (state.orders.length < orderBoardLimit(state) && tries++ < 8) {
     if (fresh.length >= 1) break;
-    const o = proposeOrder(state, rng);
+    const o = proposeOrder(state, rng, state.nextOrderId === 1 && tries <= 4);
     if (!o) continue;
     state.nextOrderId++;
     state.orders.push(o);

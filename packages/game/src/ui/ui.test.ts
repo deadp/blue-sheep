@@ -18,6 +18,10 @@ const VOCAB = new Set([
   "volume",
   // not actions: the controller's mount point for the sheep card's live portrait
   "live-portrait-slot",
+  // not actions: the care box's brushing marker, the report's new-concept banner, codex concept ids
+  "brushed", "unlocked", "concept",
+  // not actions: the Punnet square's markers (gene, counts, copy picks, cell row/column/look) for CSS and probes
+  "gene", "dom", "rec", "pick", "r", "c", "look",
 ]);
 
 function view(p: Partial<View> = {}): View {
@@ -143,8 +147,12 @@ describe("panel content", () => {
     expect(h).toContain(`data-sell="${ewe}"`);
     expect(h).toContain(`data-rename="${ewe}"`);
     expect(h).toContain('class="dot');
-    expect(h).toContain(`data-open="vet"`);
+    expect(h).not.toContain(`data-open="vet"`); // the vet arrives later (pacing)
     expect(h).not.toContain(`data-open="tree"`);
+    expect(h).toContain('data-brushed="0"');
+    const s2 = fx("act2").state;
+    const e2 = s2.flock.find((id) => s2.sheep[id]!.sex === "ewe")!;
+    expect(renderPanel(s2, view({ panel: "sheep", sheepId: e2 }))).toContain(`data-open="vet"`);
     expect(factsFor(s, ewe).length).toBeGreaterThan(0);
     const lamb = s.flock.find((id) => s.sheep[id]!.dam)!;
     const lh = renderPanel(s, view({ panel: "sheep", sheepId: lamb }));
@@ -190,7 +198,7 @@ describe("panel content", () => {
   });
 
   it("vet lists friendly locus names with forecasts and tests", () => {
-    const s = fx("afterFirst").state;
+    const s = fx("act2").state;
     const h = renderPanel(s, view({ panel: "vet", tab: s.flock[1]! }));
     for (const w of ["hidden colour", "brown", "dilute", "spotting", "horns"]) expect(h).toContain(w);
     expect(h).toContain(`data-test="${s.flock[1]}:D"`);
@@ -406,7 +414,7 @@ describe("presentation", () => {
     const f = renderPanel(s, view({ panel: "fair" }));
     for (const w of ODDS_SCALE) expect(f).toContain(`>${w}<`);
     expect(f).toContain('role="meter"');
-    const vet = renderPanel(fx("afterFirst").state, view({ panel: "vet" }));
+    const vet = renderPanel(fx("act2").state, view({ panel: "vet" }));
     expect(vet).toContain('class="meter2 learn');
     expect(vet).toContain(">loads<");
     const fore = renderPanel(fx("afterFirst").state, view({ panel: "forecast" }));
@@ -491,41 +499,73 @@ describe("tutorial", () => {
     expect(tutorialTarget(g, v)).toEqual({ kind: "html", selectors: ["#overlay [data-findmate]"] });
     v = view({ panel: "forecast", sheepId: t.ram });
     advanceTutorial(g, "forecast");
-    // 4: plan — one chance in ten
-    expect(check(v)).toContain("one chance in ten");
+    // 4: the Punnet square — two copies, 3 polled : 1 horned, tied to the forecast; no letters before numbers
+    const pq = check(v);
+    expect(pq).toContain("one chance in ten");
+    expect(pq).toContain('class="punnet');
+    expect(pq).toContain('data-dom="3" data-rec="1"');
+    expect(pq).toContain("one lamb in four has horns");
+    expect(pq).toContain("no-horns copy");
+    expect(pq).toContain("horns copy");
+    expect(pq).not.toContain('class="p-let"');
+    expect(pq).toContain('data-tutorial="ack"');
+    expect(tutorialTarget(g, v)).toEqual({ kind: "html", selectors: ["#overlay .legend.extras .xkey:first-child"] });
+    expect(renderPanel(g, v)).toContain("one in four horned");
+    // With the numbers unlock the same square shows the letters.
+    const withNums = structuredClone(g) as GameState;
+    withNums.unlocks.push("numbers");
+    expect(mentorHtml(withNums, v)).toContain('<span class="p-let">P</span>');
+    advanceTutorial(g, "punnet");
+    // 5: plan
+    expect(check(v)).toContain("Plan this mating");
     expect(renderPanel(g, v)).toContain(`data-plan="${t.ewe}:${t.ram}"`);
     planMating(g, t.ewe, t.ram);
     expect(tutorialStepMet(g, v)).toBe(true);
     advanceTutorial(g, "plan");
-    // 5: sleep
+    // 6: sleep
     check(v);
     const r = advanceSeason(g);
     v = view({ panel: "report", report: r });
     expect(tutorialStepMet(g, v)).toBe(true);
     advanceTutorial(g, "sleep");
-    // 6: the reveal
+    // 7: the reveal (only the codex arrives with it)
     const lamb = r.lambs[0]!;
     expect(check(v)).toContain(`${lamb.name}</b> is <b>${String(lamb.phenotype["colour"])}`);
-    expect(renderPanel(g, v)).toContain('class="dcard');
+    const rep = renderPanel(g, v);
+    expect(rep).toContain('class="dcard');
+    expect(rep).toContain('data-unlocked="cards"');
+    expect(rep).not.toContain("orders at the mailbox");
     v = view();
+    expect(tutorialStepMet(g, v)).toBe(true);
     advanceTutorial(g, "reveal");
-    // 7: lambs grow up
+    // 8: why that colour — the same square with the hidden colour copy
+    const why = check(v);
+    expect(why).toContain('class="punnet');
+    expect(why).toContain('data-gene="colour"');
+    expect(why).toContain('data-dom="3" data-rec="1"');
+    expect(why).toContain("colour copy");
+    expect(tutorialStepMet(g, v)).toBe(false);
+    advanceTutorial(g, "why");
+    // 9: lambs grow up
     expect(check(v)).toContain("two seasons");
     expect(tutorialTarget(g, v)).toMatchObject({ kind: "sheep", id: lamb.id });
     advanceTutorial(g, "grow");
-    // 8: the market
+    // 10: the market
     v = view({ panel: "market" });
     expect(check(v)).toContain("nothing known");
     buySheep(g, cheapestMarketEwe(g)!.id);
     expect(tutorialStepMet(g, v)).toBe(true);
     advanceTutorial(g, "market");
-    // 9: the goal, in plain words
+    // 11: the goal, in plain words
     const goal = check(v);
     expect(goal).toContain("dilute");
     expect(goal).toContain('data-tutorial="ack"');
     advanceTutorial(g, "goal");
-    // 10: the flock arrives
-    expect(check(v)).toContain("Granny Moss");
+    // 12: your flock — no neighbour, no extra sheep
+    const done = check(v);
+    expect(done).not.toContain("Granny Moss");
+    for (const id of g.flock) expect(done).toContain(g.sheep[id]!.name);
+    expect(g.flock).toHaveLength(4);
     advanceTutorial(g, "done");
     expect(mentorHtml(g, v)).toBe("");
     expect(seen).toEqual(TUTORIAL_STEPS.map((d) => d.id));

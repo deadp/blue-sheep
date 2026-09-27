@@ -46,20 +46,25 @@ screenshots of old code.
   `life-sheep-bleat`, `life-night`, `life-report-*`) and notes fps and draw calls.
   Voices: opening a card and clicking the portrait of a lamb, a ewe and a ram gives three different
   voices (`__game.debug.lastSound()`), pitch lamb > ewe > ram, stable per sheep; shy is softer, smoother
-  and shorter than bold; the settings toggle mutes.
+  and shorter than bold; the settings toggle mutes. Brushing: a real drag across the portrait raises
+  fondness by 6 once a season ("Brushed this season"), with tufts and hearts (`brush-*` frames,
+  `brush-fluff.png` read back from the canvas mid-stroke); rubbing the collie's picture pats her.
 - **voices.mjs**: we can't listen headless, so it renders lamb/ewe/ram × shy/calm/curious/bold bleats
   offline (`__game.debug.renderVoice`), measures length, peak/RMS and pitch (YIN), asserts the ordering,
   and writes `out/voices/*.wav` (plus `series-*.wav`, the 1–3 bleat series as played) and `stats.txt`.
-- **tutorial.mjs**: boots `?tutorial=1&fresh=1&nomotion=1` and plays all ten
+- **tutorial.mjs**: boots `?tutorial=1&fresh=1&nomotion=1` and plays all twelve
   tutorial steps with real clicks. World sheep are clicked where the tutorial's
   arrow points, with `open` as a fallback that the summary reports. It asserts
   that each step advances on its action and that the mentor card never covers
-  a ringed target, the arrow's tip or the panel's primary button. It also
-  asserts that the first lamb is coloured and earns a discovery card, that a
-  ewe is bought at the market, and that the final flock is the `?seed=<same>`
-  starter flock plus the tutorial's ewe, ram, lamb and bought ewe. Skipping is
-  checked too. Screenshots: `tut-01..tut-10.png`, `tut-04-1024.png` and
-  `tut-end.png`.
+  a ringed target, the arrow's tip or the panel's primary button. The Punnet step
+  must show 3 polled : 1 horned for the carrier pair with no allele letters,
+  light the right copies/cells on hover and click, and fit at 1280×800 and
+  1024×768. It also asserts that the first lamb is coloured, earns discovery cards
+  and brings only the codex; that the colour square follows; that a ewe is bought;
+  that the final flock is just the tutorial's ewe, ram, lamb and bought ewe (no
+  handover); that the codex keeps the Punnet card; and that the next season brings
+  only the letters. Skipping is checked too. Screenshots: `tut-01..tut-12.png`,
+  `tut-04-hover`, `tut-04-pick`, `tut-04-1024`, `tut-codex`, `tut-end`, `tut-after`.
 - **video.mjs**: records 10 s of the idle world with motion on to `idle.webm`.
   Watch it for flicker and jitter.
 

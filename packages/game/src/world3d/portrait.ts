@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { buildFullRig, buildSheepGeos, disposeGeos, EAR_REST, restPose, sheepKey, SheepMaterials, type FullRig, type SheepGeos, type SheepPose } from "./sheepMesh.js";
 import { Bubble } from "./fx.js";
+import { WOOL_HEX } from "./palette.js";
 import type { Personality, WorldSheep } from "./types.js";
 
 /** What each temperament says. The first line is the greeting; clicks cycle through the rest. */
@@ -40,9 +41,28 @@ interface Live {
   pointer: THREE.Vector2 | null;
   bleats: number;
   lookX: number; lookY: number;
+  // brushing
+  /** Seconds of contented squint left (set while being brushed). */
+  brushT: number;
+  /** Brushing distance (CSS px over the fleece) in the current drag, and in all drags since mounting. */
+  stroke: number;
+  brushed: number;
+  /** A full brushing has been given since mounting (reported once). */
+  brushDone: boolean;
 }
 
-export interface PortraitStats { mounted: boolean; id: string | null; calls: number; frames: number }
+/** CSS px of brushing over the fleece that make one full brushing. */
+export const BRUSH_NEEDED = 140;
+
+export interface PortraitStats {
+  mounted: boolean; id: string | null; calls: number; frames: number;
+  /** Brushing since this sheep was mounted (CSS px over the fleece), fluff tufts in the air, hearts shown. */
+  brush: number; fluff: number; hearts: number; brushDone: boolean;
+  /** Where the newest tuft is in the portrait (px from its top-left) and its size in px, or null. */
+  fluffAt?: { x: number; y: number; px: number } | null;
+}
+
+interface Fluff { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; max: number }
 
 export class LivePortrait {
   private renderer: THREE.WebGLRenderer | null = null;
@@ -58,8 +78,22 @@ export class LivePortrait {
   private tokens = 0;
   private frames = 0;
   private readonly ray = new THREE.Raycaster();
+  private readonly fluffGeo = new THREE.IcosahedronGeometry(1, 0);
+  /** Drawn over the sheep (tufts fly off towards you, never lost inside the fleece). */
+  private readonly fluffMat = new THREE.MeshLambertMaterial({ color: "#ffffff", flatShading: true, depthTest: false, depthWrite: false });
+  private fluff: Fluff[] = [];
+  /** The mounted sheep's height in world units (fluff is sized and flung relative to it). */
+  private unit = 1;
+  private heartsShown = 0;
+  /** The drag in progress (pointer down on the portrait). */
+  private drag: { x: number; y: number; moved: number; lastFluff: number; lastStroke: number; lastHeart: number } | null = null;
+  private suppressClick = false;
 
-  constructor(private readonly reduced: boolean, private readonly onClick: (id: string) => void = () => {}) {
+  constructor(
+    private readonly reduced: boolean,
+    private readonly onClick: (id: string) => void = () => {},
+    private readonly onBrush: (id: string, phase: "stroke" | "done") => void = () => {},
+  ) {
     this.scene.add(new THREE.HemisphereLight("#fffaf0", "#b8a890", 1.55));
     const key = new THREE.DirectionalLight("#fff1dc", 2.2);
     key.position.set(4, 6, 5);
@@ -88,7 +122,11 @@ export class LivePortrait {
   get canvas(): HTMLCanvasElement | null { return this.renderer?.domElement ?? null; }
 
   stats(): PortraitStats {
-    return { mounted: !!this.live, id: this.live?.id ?? null, calls: this.renderer?.info.render.calls ?? 0, frames: this.frames };
+    return {
+      mounted: !!this.live, id: this.live?.id ?? null, calls: this.renderer?.info.render.calls ?? 0, frames: this.frames,
+      brush: Math.round(this.live?.brushed ?? 0), fluff: this.fluff.length, hearts: this.heartsShown, brushDone: this.live?.brushDone ?? false,
+      fluffAt: this.fluffScreen(),
+    };
   }
 
   mount(el: HTMLElement, ws: WorldSheep): () => void {
@@ -124,15 +162,27 @@ export class LivePortrait {
       yaw: 0, pitch: 0, roll: 0, vyaw: 0, vpitch: 0, tYaw: 0.25, tPitch: 0.05, tRoll: 0,
       nextLook: 1.2, blinkIn: rnd(0.8, 2.5), blinkT: -1, earIn: rnd(0.5, 2), earT: [-1, -1],
       hop: -1, landed: 99, pointer: null, bleats: 0, lookX: 0, lookY: 0,
+      brushT: 0, stroke: 0, brushed: 0, brushDone: false,
     };
+    // Tufts in the wool's colour, a shade warmer and darker so white fluff still reads against the pale stage.
+    // Tufts in the wool's colour, a shade warmer and darker so white fluff still reads against the pale stage.
+    this.fluffMat.color.set(WOOL_HEX[ws.colour] ?? "#ffffff").lerp(new THREE.Color("#a8845a"), ws.colour === "white" ? 0.32 : 0.12);
     el.appendChild(r.domElement);
     el.classList.add("live");
     this.size();
     this.frame3d();
     const cv = r.domElement;
-    cv.onpointermove = (ev) => this.onPointer(ev);
+    cv.style.touchAction = "none";
+    cv.onpointerdown = (ev) => this.onDown(ev);
+    cv.onpointermove = (ev) => { this.onPointer(ev); this.onDrag(ev); };
+    cv.onpointerup = () => this.onUp();
+    cv.onpointercancel = () => this.onUp();
     cv.onpointerleave = () => { if (this.live) { this.live.pointer = null; if (this.reduced) this.draw(); } };
-    cv.onclick = () => { this.bleat(); if (this.live) this.onClick(this.live.id); };
+    cv.onclick = () => {
+      if (this.suppressClick) { this.suppressClick = false; return; }
+      this.bleat();
+      if (this.live) this.onClick(this.live.id);
+    };
     if (this.reduced) {
       this.draw();
     } else {
@@ -159,6 +209,139 @@ export class LivePortrait {
     L.nextLook = 1.4;
   }
 
+  // ---- brushing: click-and-drag over the fleece ----------------------------------------------
+
+  private onDown(ev: PointerEvent): void {
+    if (!this.live || ev.button > 0) return;
+    this.drag = { x: ev.clientX, y: ev.clientY, moved: 0, lastFluff: 0, lastStroke: 0, lastHeart: 0 };
+    this.live.stroke = 0;
+    try { (ev.target as Element).setPointerCapture?.(ev.pointerId); } catch { /* not capturable */ }
+  }
+
+  /** Where the pointer meets the sheep (world point), or null when it's off the sheep. */
+  private hitSheep(ev: PointerEvent): THREE.Vector3 | null {
+    const L = this.live, r = this.renderer;
+    if (!L || !r) return null;
+    const rect = r.domElement.getBoundingClientRect();
+    const p = new THREE.Vector2(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+    this.ray.setFromCamera(p, this.camera);
+    const hit = this.ray.intersectObject(L.full.rig.root, true)[0];
+    return hit ? hit.point.clone() : null;
+  }
+
+  private onDrag(ev: PointerEvent): void {
+    const L = this.live, d = this.drag;
+    if (!L || !d) return;
+    const step = Math.hypot(ev.clientX - d.x, ev.clientY - d.y);
+    d.x = ev.clientX; d.y = ev.clientY;
+    d.moved += step;
+    if (d.moved > 8) this.suppressClick = true;
+    const at = this.hitSheep(ev);
+    if (!at || step <= 0) return;
+    // Over the fleece: it counts, the sheep leans in, tufts of wool drift off, now and then a heart.
+    L.stroke += step;
+    L.brushed += step;
+    L.brushT = 0.7;
+    if (L.stroke - d.lastFluff >= 10) { d.lastFluff = L.stroke; this.puff(at, 3); }
+    if (L.stroke - d.lastHeart >= 70) { d.lastHeart = L.stroke; this.heart(ev, 1); }
+    if (L.stroke - d.lastStroke >= 90) { d.lastStroke = L.stroke; this.onBrush(L.id, "stroke"); }
+    if (this.reduced) this.draw();
+  }
+
+  private onUp(): void {
+    const L = this.live, d = this.drag;
+    this.drag = null;
+    if (!L || !d) return;
+    if (d.moved <= 8) this.suppressClick = false;
+    if (!L.brushDone && L.brushed >= BRUSH_NEEDED) {
+      L.brushDone = true;
+      // The controller re-renders the card (so the hearts go up after it, via cheer()).
+      this.onBrush(L.id, "done");
+    }
+  }
+
+  /** A full brushing: a contented bubble and a burst of hearts over the portrait (call after re-rendering the card). */
+  cheer(): void {
+    const L = this.live;
+    if (!L) return;
+    this.heart(null, 5);
+    L.bubble.show(L.id, L.ws.personality === "bold" ? "Mmmh!" : L.ws.personality === "shy" ? "…mm♥" : "Mmm…", 1.6, !this.reduced);
+    L.brushT = Math.max(L.brushT, 1.2);
+    if (this.reduced) this.draw();
+  }
+
+  /** Tufts of fleece drift off the brush (cosmetic; skipped with reduced motion). */
+  private puff(at: THREE.Vector3, n: number): void {
+    if (this.reduced || this.fluff.length > 90) return;
+    for (let i = 0; i < n; i++) {
+      const mesh = new THREE.Mesh(this.fluffGeo, this.fluffMat);
+      const u = this.unit;
+      // a little towards the camera, so tufts fly off the front of the fleece
+      mesh.position.copy(at).addScaledVector(this.camera.position.clone().sub(at).normalize(), 0.08 * u)
+        .add(new THREE.Vector3(rnd(-0.04, 0.04) * u, rnd(0, 0.04) * u, rnd(-0.04, 0.04) * u));
+      mesh.rotation.set(rnd(0, 3), rnd(0, 3), rnd(0, 3));
+      mesh.renderOrder = 10;
+      mesh.userData["size"] = rnd(0.028, 0.05) * u;
+      mesh.scale.setScalar(mesh.userData["size"] as number);
+      // flung outwards from the middle of the sheep and up, so they drift clear of the fleece
+      const out = new THREE.Vector3(at.x - this.center.x, 0, at.z - this.center.z);
+      if (out.lengthSq() < 1e-6) out.set(rnd(-1, 1), 0, rnd(-1, 1));
+      out.normalize().multiplyScalar(rnd(0.45, 0.9));
+      const vel = new THREE.Vector3(out.x + rnd(-0.25, 0.25), rnd(0.55, 1.0), out.z + rnd(-0.1, 0.3)).multiplyScalar(u);
+      const max = rnd(1.1, 1.7);
+      this.scene.add(mesh);
+      this.fluff.push({ mesh, vel, life: max, max });
+    }
+  }
+
+  private stepFluff(dt: number): void {
+    for (const f of this.fluff) {
+      f.life -= dt;
+      f.vel.y -= 0.5 * this.unit * dt;
+      f.vel.multiplyScalar(1 - dt * 1.5);
+      f.mesh.position.addScaledVector(f.vel, dt);
+      f.mesh.rotation.x += dt * 2;
+      f.mesh.scale.setScalar((f.mesh.userData["size"] as number) * Math.max(0.05, Math.min(1, (f.life / f.max) * 1.6)));
+    }
+    const dead = this.fluff.filter((f) => f.life <= 0);
+    for (const f of dead) this.scene.remove(f.mesh);
+    if (dead.length) this.fluff = this.fluff.filter((f) => f.life > 0);
+  }
+
+  /** Little hearts float up over the portrait (DOM): at the pointer, or a burst over the sheep. */
+  private heart(ev: PointerEvent | null, n: number): void {
+    const L = this.live;
+    if (!L) return;
+    const rect = L.el.getBoundingClientRect();
+    for (let i = 0; i < n; i++) {
+      const h = document.createElement("span");
+      h.className = "brush-heart";
+      h.textContent = "♥";
+      const x = ev ? ev.clientX - rect.left : rect.width * (0.35 + 0.3 * Math.random());
+      const y = ev ? ev.clientY - rect.top - 10 : rect.height * (0.25 + 0.2 * Math.random());
+      h.style.left = `${Math.round(x + (n > 1 ? rnd(-30, 30) : 0))}px`;
+      h.style.top = `${Math.round(y)}px`;
+      h.style.animationDelay = `${(i * 0.09).toFixed(2)}s`;
+      L.el.appendChild(h);
+      this.heartsShown++;
+      window.setTimeout(() => h.remove(), 1300 + i * 90);
+    }
+  }
+
+  private fluffScreen(): { x: number; y: number; px: number } | null {
+    const f = this.fluff[this.fluff.length - 1], L = this.live;
+    if (!f || !L) return null;
+    const p = f.mesh.position.clone().project(this.camera);
+    const q = f.mesh.position.clone().add(new THREE.Vector3(0, f.mesh.scale.x, 0)).project(this.camera);
+    const w = L.el.clientWidth, h = L.el.clientHeight;
+    return { x: Math.round(((p.x + 1) / 2) * w), y: Math.round(((1 - p.y) / 2) * h), px: Math.round(Math.abs(q.y - p.y) * h) };
+  }
+
+  private clearFluff(): void {
+    for (const f of this.fluff) this.scene.remove(f.mesh);
+    this.fluff = [];
+  }
+
   private unmount(token: number): void {
     if (!this.live || this.live.token !== token) return;
     this.teardown();
@@ -170,6 +353,8 @@ export class LivePortrait {
     const L = this.live;
     if (!L) return;
     this.live = null;
+    this.drag = null;
+    this.clearFluff();
     this.scene.remove(L.full.rig.root);
     disposeGeos(L.geos);
     L.faceMat.dispose();
@@ -180,7 +365,7 @@ export class LivePortrait {
 
   private ensureRenderer(): THREE.WebGLRenderer {
     if (this.renderer) return this.renderer;
-    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
+    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power", preserveDrawingBuffer: true }); // (so probes can read a frame back)
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.setClearColor(0x000000, 0);
@@ -214,6 +399,7 @@ export class LivePortrait {
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root);
     const size = box.getSize(new THREE.Vector3());
+    this.unit = Math.max(0.2, size.y);
     box.getCenter(this.center);
     this.center.y += size.y * 0.1; // headroom for hops and the bubble
     const tanH = Math.tan((this.camera.fov * Math.PI) / 360);
@@ -307,6 +493,9 @@ export class LivePortrait {
     } else L.landed += dt;
     if (L.landed < 0.22) squash = 1 - 0.16 * Math.sin((L.landed / 0.22) * Math.PI);
     L.bubble.step(dt);
+    this.stepFluff(dt);
+    if (L.brushT > 0) L.brushT = Math.max(0, L.brushT - dt);
+    const bliss = Math.min(1, L.brushT / 0.3);
 
     const p = L.pose;
     p.bob = hopY;
@@ -327,6 +516,13 @@ export class LivePortrait {
       p.earSweep[i] = 0.4 * f;
     }
     p.blink = L.blinkT >= 0 ? Math.sin(clamp(L.blinkT / 0.15, 0, 1) * Math.PI) : 0;
+    if (bliss > 0) {
+      // Being brushed: eyes half closed, head tipped into it, ears relaxed.
+      p.blink = Math.max(p.blink, 0.72 * bliss);
+      p.headRoll += 0.22 * bliss;
+      p.headPitch -= 0.08 * bliss;
+      for (let i = 0; i < 2; i++) p.earDroop[i] = p.earDroop[i]! + 0.25 * bliss;
+    }
     p.lookX += (L.lookX - p.lookX) * (1 - Math.exp(-dt * 10));
     p.lookY += (L.lookY - p.lookY) * (1 - Math.exp(-dt * 10));
   }
@@ -355,6 +551,8 @@ export class LivePortrait {
 
   dispose(): void {
     this.teardown();
+    this.fluffGeo.dispose();
+    this.fluffMat.dispose();
     this.mats.dispose();
     this.ground.geometry.dispose();
     (this.ground.material as THREE.Material).dispose();

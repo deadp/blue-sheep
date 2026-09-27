@@ -12,7 +12,8 @@ describe("family tree", () => {
     expect(t.self.id).toBe(lamb.id);
     expect(t.ancestors.dam?.id).toBe(lamb.dam);
     expect(t.ancestors.sire?.id).toBe(lamb.sire);
-    expect(t.ancestors.dam?.dam).toBeNull(); // founders have no recorded parents
+    // The starter pair's mothers are on record (horned; see addStarterPair), their parents are not.
+    expect(t.ancestors.dam?.dam?.id).toBe(g.sheep[lamb.dam!]!.dam);
     const up = familyTree(g, lamb.sire!);
     expect(up.descendants.map((d) => d.id)).toContain(lamb.id);
     expect(up.descendants.find((d) => d.id === lamb.id)!.mate?.id).toBe(lamb.dam);

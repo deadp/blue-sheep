@@ -51,14 +51,14 @@ describe("orders", () => {
 
   it("new orders are usually fillable (forecast at posting >= the minimum)", () => {
     const g = actOneGame(3);
-    enterAct(g, 2);
+    enterAct(g, 2, undefined, { grant: true });
     const fresh = generateOrders(g, createRng(7));
     for (const o of fresh) expect(forecastOrderFor(g, o).pFill).toBeGreaterThanOrEqual(0.3);
   });
 
   it("forecast is higher for a colour the flock can make than for one it cannot", () => {
     const g = newGame(30);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     const white = order(g, { colour: "white" });
     const blue = order(g, { colour: "blue", deadline: g.season + 1 });
     expect(forecastOrder(g, white.id).pFill).toBeGreaterThan(forecastOrder(g, blue.id).pFill);
@@ -68,7 +68,7 @@ describe("orders", () => {
 
   it("accepting is limited to two; declining an open order removes it without penalty", () => {
     const g = newGame(31);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     const a = order(g, { colour: "white" }), b = order(g, { colour: "black" }), c = order(g, { colour: "brown" });
     acceptOrder(g, a.id);
     acceptOrder(g, b.id);
@@ -82,7 +82,7 @@ describe("orders", () => {
 
   it("a colour order is filled by a newly bred matching lamb, which goes to the villager", () => {
     const g = newGame(32);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     const o = order(g, { colour: "white", deadline: g.season + 3, reward: 33 });
     acceptOrder(g, o.id);
     const ram = flockSheep(g).find((s) => s.sex === "ram")!;
@@ -104,7 +104,7 @@ describe("orders", () => {
 
   it("existing sheep do not fill colour orders (they must be bred after posting)", () => {
     const g = newGame(33);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     const colour = String(flockSheep(g)[0]!.phenotype["colour"]);
     const o = order(g, { colour, deadline: g.season + 1 });
     acceptOrder(g, o.id);
@@ -117,7 +117,7 @@ describe("orders", () => {
 
   it("wool orders take fleece at shearing instead of the market", () => {
     const g = newGame(34);
-    enterAct(g, 2);
+    enterAct(g, 2, undefined, { grant: true });
     const kg = flockSheep(g).reduce((t, s) => t + Number(s.phenotype["fleeceWeight"]), 0);
     const o = order(g, { kind: "wool", kg: Math.floor(kg / 2), microns: 99, reward: 50 });
     expect(forecastOrder(g, o.id).pFill).toBe(1);
@@ -132,7 +132,7 @@ describe("orders", () => {
 
   it("unaccepted offers expire", () => {
     const g = newGame(35);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     const o = order(g, { colour: "white", expires: g.season + 1 });
     const r = advanceSeason(g);
     expect(r.orderResults.find((x) => x.order.id === o.id)?.outcome).toBe("expired");

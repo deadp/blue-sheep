@@ -7,9 +7,17 @@ import { addLog, flockSheep, isAdult, seasonOfYear } from "./state.js";
 import { hasUpgrade } from "./upgrades.js";
 import type { DogId, EventKind, EventRecord, GameState, PendingEvent, Sheep } from "./types.js";
 
-const KINDS: EventKind[] = ["hardWinter", "fox", "woolBoom"];
-/** From WOLF_MIN_ACT a wolf can come down from the hills instead. */
-const LATE_KINDS: EventKind[] = ["hardWinter", "fox", "woolBoom", "wolf"];
+/**
+ * Winter weather comes with the `farm` concept (core/pacing.ts); foxes only once `dogs` has arrived (so the
+ * market sells an answer), and from WOLF_MIN_ACT a wolf can come down from the hills instead.
+ */
+export function eventPool(state: GameState): EventKind[] {
+  if (!state.unlocks.includes("farm")) return [];
+  const pool: EventKind[] = ["hardWinter", "woolBoom"];
+  if (state.unlocks.includes("dogs")) pool.splice(1, 0, "fox");
+  if (state.unlocks.includes("dogs") && state.act >= WOLF_MIN_ACT) pool.push("wolf");
+  return pool;
+}
 
 export type Predator = "fox" | "wolf";
 
@@ -47,10 +55,11 @@ export function announceText(kind: EventKind, colour: string | null): string {
   }
 }
 
-/** Pick next winter's event (called when autumn begins, act 1+). */
+/** Pick next winter's event (called when autumn begins, act 1+, once winter weather has arrived). */
 export function announceEvent(state: GameState, rng: Rng): PendingEvent | null {
   if (state.act < 1 || seasonOfYear(state.season + 1) !== 3) return null;
-  const pool = state.act >= WOLF_MIN_ACT ? LATE_KINDS : KINDS;
+  const pool = eventPool(state);
+  if (!pool.length) return null;
   const kind = pool[rng.int(pool.length)]!;
   let colour: string | null = null;
   if (kind === "woolBoom") {

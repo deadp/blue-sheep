@@ -3,7 +3,7 @@ import { advanceSeason, announceText, enterAct, FEED_COST, flockSheep, newGame, 
 
 function atWinter(seed: number, kind: EventKind, colour: string | null = null): GameState {
   const g = newGame(seed);
-  enterAct(g, 1);
+  enterAct(g, 1, undefined, { grant: true });
   g.money = 500;
   g.season = 3;
   g.pendingEvent = { kind, season: 3, colour, text: announceText(kind, colour) };
@@ -13,7 +13,7 @@ function atWinter(seed: number, kind: EventKind, colour: string | null = null): 
 describe("winter events", () => {
   it("are announced in autumn, a season ahead, from act 1", () => {
     const g = newGame(70);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     g.money = 500;
     advanceSeason(g); advanceSeason(g); // → autumn (season 2)
     expect(g.pendingEvent).not.toBeNull();
@@ -40,7 +40,7 @@ describe("winter events", () => {
     const ill = g.sheep[r.event!.sheep!]!;
     expect(ill.ill).toBe(true);
     const smallest3 = flockSheep(g).filter((s) => isAdult(s, 3)).map((s) => Number(s.phenotype["size"])).sort((a, b) => a - b).slice(0, 3);
-    expect(Number(ill.phenotype["size"])).toBeLessThanOrEqual(smallest3[2]!);
+    expect(Number(ill.phenotype["size"])).toBeLessThanOrEqual(smallest3[smallest3.length - 1]!);
     expect(r.event!.text).toContain(ill.name);
     advanceSeason(g); // spring: rests
     expect(ill.ill).toBe(false);

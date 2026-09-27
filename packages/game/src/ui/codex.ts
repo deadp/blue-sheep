@@ -1,11 +1,32 @@
 /** Codex: discovery card collection and concept cards that unlock with the story. */
-import { seasonLabel, type GameState } from "../core/index.js";
-import { discoveryText, discoveryTitle, esc, LOCUS_FRIENDLY } from "./util.js";
+import { PUNNET_GENES, punnetSquare, seasonLabel, type GameState } from "../core/index.js";
+import { punnetHtml } from "./punnet.js";
+import { discoveryText, discoveryTitle, esc, numbersOn, LOCUS_FRIENDLY } from "./util.js";
 import type { View } from "./view.js";
 
-export interface Concept { id: string; title: string; icon: string; text: string; unlocked: (s: GameState) => boolean; hint: string }
+export interface Concept {
+  id: string; title: string; icon: string; text: string; unlocked: (s: GameState) => boolean; hint: string;
+  /** Optional picture under the text (full-width card). */
+  figure?: (s: GameState) => string;
+}
+
+/** The square for two horn carriers: the tutorial pair's names when they're still about. */
+function punnetFigure(s: GameState): string {
+  const t = s.tutorial;
+  const dam = t && s.sheep[t.ewe] ? s.sheep[t.ewe]!.name : "A ewe";
+  const sire = t && s.sheep[t.ram] ? s.sheep[t.ram]!.name : "A ram";
+  const g = PUNNET_GENES.horns;
+  const sq = punnetSquare(g, [g.dominant, g.recessive], [g.dominant, g.recessive]);
+  return punnetHtml({ square: sq, damName: dam, sireName: sire, letters: numbersOn(s), size: "md", id: "codex-horns" });
+}
 
 export const CONCEPTS: Concept[] = [
+  {
+    id: "punnet", title: "Punnet square", icon: "🔲",
+    text: "Every sheep has two copies of each gene and gives a lamb one, at random. Put one parent's copies along the top, the other's down the side: the four boxes are four equally likely lambs. Two polled parents that each carry a horns copy: three polled lambs for one horned. It works for hidden colour and dilute too.",
+    unlocked: (s) => s.unlocks.includes("cards") || (s.tutorial?.step ?? 0) > 4, hint: "Old Tom will draw one for you.",
+    figure: punnetFigure,
+  },
   {
     id: "hidden", title: "Hidden traits", icon: "🫥",
     text: "Two white sheep can have a black lamb. Each parent passes on one of two copies of every trait, and a white copy can cover up a coloured one. What you see is only half the story — the rest is hiding.",
@@ -49,7 +70,7 @@ export function codexHtml(state: GameState, view: View): string {
   const cards = shown.map((d) =>
     `<div class="dcard"><div class="d-top">✨ ${esc(discoveryTitle(d))}</div><div>${esc(discoveryText(state, d))}</div><div class="meta">${esc(seasonLabel(d.season))}${state.sheep[d.sheep] ? ` · <button class="link" data-sheep="${esc(d.sheep)}">${esc(state.sheep[d.sheep]!.name)}</button>` : ""}</div></div>`).join("");
   const concepts = CONCEPTS.map((c) => c.unlocked(state)
-    ? `<div class="concept"><span class="c-icon">${c.icon}</span><h4>${esc(c.title)}</h4><p>${esc(c.text)}</p></div>`
+    ? `<div class="concept${c.figure ? " wide" : ""}" data-concept="${esc(c.id)}"><span class="c-icon">${c.icon}</span><h4>${esc(c.title)}</h4><p>${esc(c.text)}</p>${c.figure ? `<div class="c-figure">${c.figure(state)}</div>` : ""}</div>`
     : `<div class="concept locked" aria-label="Locked concept"><span class="c-icon">🔒</span><h4>???</h4><p class="meta">${esc(c.hint)}</p></div>`).join("");
   return `<h2>Codex</h2>
     <p class="meta">Every surprise lamb teaches you something. Cards collect here.</p>

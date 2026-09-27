@@ -1,6 +1,6 @@
 /** Deterministic game states at different points of the story, for UI tests and the dev preview. Uses only core actions. */
 import {
-  advanceSeason, acceptOrder, canBreed, deserialize, enterAct, greetAnimal, lambRoom, newGame, ownedPets, planMating, rankCandidates, sellSheep,
+  ACTS, advanceSeason, acceptOrder, canBreed, deserialize, enterAct, grantUnlock, greetAnimal, lambRoom, newGame, ownedPets, planMating, rankCandidates, sellSheep,
   seasonOfYear, serialize, sheepValue, hireVisitingRam, enterFair, isAdult,
   type GameState, type SeasonReport,
 } from "../core/index.js";
@@ -25,6 +25,12 @@ export function greedySeason(s: GameState): SeasonReport {
 
 function clone(s: GameState): GameState { return deserialize(serialize(s)); }
 
+/** Enter act `a` (if not there yet) with every concept up to it open, as the debug fast-forward does. */
+function toAct(s: GameState, a: 1 | 2 | 3 | 4): void {
+  if (s.act < a) enterAct(s, a, undefined, { grant: true });
+  else for (const x of ACTS) if (x.act <= a) for (const u of x.unlocks) grantUnlock(s, u);
+}
+
 export interface Fixture { name: string; state: GameState; report: SeasonReport | null }
 
 /** fresh (act 0), afterFirst (act 1 + report), midAct1, act2 (numbers), act3 (visitor, tree), act4 ending. */
@@ -42,7 +48,7 @@ export function fixtures(seed = 7): Fixture[] {
   out.push({ name: "midAct1", state: clone(a1), report: r });
 
   const a2 = clone(a1);
-  if (a2.act < 2) enterAct(a2, 2);
+  toAct(a2, 2);
   let r2 = greedySeason(a2);
   r2 = greedySeason(a2);
   const eligible = a2.flock.find((id) => isAdult(a2.sheep[id]!, a2.fair.nextSeason));
@@ -50,14 +56,14 @@ export function fixtures(seed = 7): Fixture[] {
   out.push({ name: "act2", state: clone(a2), report: r2 });
 
   const a3 = clone(a2);
-  if (a3.act < 3) enterAct(a3, 3);
+  toAct(a3, 3);
   let r3 = greedySeason(a3);
   for (let i = 0; i < 4 && seasonOfYear(a3.season) !== 0; i++) r3 = greedySeason(a3);
   if (a3.visitingRam && a3.money >= a3.visitingRam.fee) { try { hireVisitingRam(a3); } catch { /* ignore */ } }
   out.push({ name: "act3", state: clone(a3), report: r3 });
 
   const a4 = clone(a3);
-  if (a4.act < 4) enterAct(a4, 4);
+  toAct(a4, 4);
   const r4 = greedySeason(a4);
   a4.ending = { shown: false, season: a4.season };
   out.push({ name: "act4", state: a4, report: r4 });

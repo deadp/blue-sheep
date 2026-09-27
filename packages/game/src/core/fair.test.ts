@@ -19,7 +19,7 @@ describe("fair", () => {
 
   it("finer wool gives better odds in the finest-wool class", () => {
     const g = newGame(40);
-    enterAct(g, 2);
+    enterAct(g, 2, undefined, { grant: true });
     g.fair.category = "fine";
     const [a, b] = flockSheep(g);
     a!.phenotype["fineness"] = 19; b!.phenotype["fineness"] = 27;
@@ -31,7 +31,7 @@ describe("fair", () => {
   it("is only open from act 2 and judges in autumn, paying prizes and rosettes", () => {
     const g = newGame(41);
     expect(() => enterFair(g, g.flock[0]!)).toThrow(/isn't open/);
-    enterAct(g, 2);
+    enterAct(g, 2, undefined, { grant: true });
     expect(g.fair.nextSeason).toBe(2);
     const star = flockSheep(g)[0]!;
     star.phenotype["fineness"] = 5; star.phenotype["fleeceWeight"] = 20; star.phenotype["size"] = 200; star.phenotype["colour"] = "blue";
@@ -50,7 +50,7 @@ describe("fair", () => {
 
   it("a poor entry is usually unplaced; no entry still records the fair", () => {
     const g = newGame(42);
-    enterAct(g, 2);
+    enterAct(g, 2, undefined, { grant: true });
     const res = judgeFair(g, createRng(1));
     expect(res.entry).toBeNull();
     expect(res.place).toBeNull();

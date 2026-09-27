@@ -19,6 +19,7 @@ import type { CrossForecast, GameState, SeasonReport, Sheep } from "./types.js";
 import { feedPerHead, hasUpgrade } from "./upgrades.js";
 import { departVisitingRam, offerVisitingRam } from "./visitor.js";
 import { isTutorialFirstMating, tutorialLambGenome } from "./tutorial.js";
+import { checkPacing } from "./pacing.js";
 
 /** Chance of twins for a mating whose lambs would have inbreeding f. */
 export function twinChance(f: number): number {
@@ -35,7 +36,7 @@ export function advanceSeason(state: GameState): SeasonReport {
   for (const p of pairings) { forecastsSeen[p.ewe] = forecastCross(state, p.ewe, p.ram); matings[p.ewe] = p.ram; }
   const report: SeasonReport = {
     season: t, endedSeason: t, lambs: [], income: 0, shedBonus: 0, fondBonus: 0, mice: null, miceComing: false, feed: 0, deaths: [], autoSold: [], discoveries: [], orderResults: [],
-    newOrders: [], fairResult: null, event: null, announced: null, actAdvanced: null, endingReached: false, messages: [],
+    newOrders: [], fairResult: null, event: null, announced: null, actAdvanced: null, unlocked: null, endingReached: false, messages: [],
     forecastsSeen, matings,
   };
   const say = (m: string) => { report.messages.push(m); };
@@ -175,6 +176,9 @@ export function advanceSeason(state: GameState): SeasonReport {
   report.actAdvanced = checkActAdvance(state, baseline);
   if (report.actAdvanced) say(`“${report.actAdvanced.line}”`);
   report.endingReached = checkEnding(state);
+
+  // 11b. At most one new concept arrives with the new season (core/pacing.ts).
+  report.unlocked = checkPacing(state);
 
   // 12. Visitors, events, market, new orders for the new season.
   departVisitingRam(state);

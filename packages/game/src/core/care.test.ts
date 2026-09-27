@@ -3,6 +3,7 @@ import {
   advanceSeason, announceText, buyUpgrade, deserialize, enterAct, flockSheep, fondnessOf, fondWoolMultiplier, forecastTreat,
   forecastUpgrade, giveTreat, greetAnimal, isAdult, newGame, predatorRisk, serialize, treatBlocked, woolIncome,
   FOND_GREET, FOND_TREAT, FOND_START, TREAT_COST, MICE_WOOL, PET_FEED, type GameState,
+  grantUnlock, brushAnimal, brushedThisSeason, forecastBrush, FOND_BRUSH,
 } from "./index.js";
 import { announceEvent } from "./events.js";
 import { announceMice } from "./mice.js";
@@ -32,6 +33,7 @@ describe("fondness", () => {
     expect(greetAnimal(g, g.market[0]!)).toBe(0);
     expect(greetAnimal(g, "collie")).toBe(0); // no dog yet
     g.money = 500;
+    grantUnlock(g, "dogs");
     buyUpgrade(g, "collie");
     expect(greetAnimal(g, "collie")).toBe(FOND_GREET);
   });
@@ -49,7 +51,7 @@ describe("fondness", () => {
     expect(treatBlocked(g, id)).toMatch(/already|this season/);
     expect(() => giveTreat(g, id)).toThrow();
     g.money = 0;
-    expect(treatBlocked(g, g.flock[2]!)).toMatch(/coin/);
+    expect(treatBlocked(g, g.flock[0]!)).toMatch(/coin/);
   });
 
   it("fades slowly when an animal is ignored for a few seasons", () => {
@@ -143,7 +145,7 @@ describe("dogs and predators", () => {
 
   it("buying a dog changes the predator forecast, shown before buying", () => {
     const g = newGame(312);
-    enterAct(g, 2);
+    enterAct(g, 2, undefined, { grant: true });
     g.money = 1000;
     for (const s of flockSheep(g)) s.phenotype["boldness"] = 2;
     const t = forecastUpgrade(g, "terrier");
@@ -164,7 +166,7 @@ describe("dogs and predators", () => {
     let risk = 0;
     for (let i = 0; i < N; i++) {
       const g = newGame(400 + (i % 5));
-      enterAct(g, 1);
+      enterAct(g, 1, undefined, { grant: true });
       g.money = 500;
       g.rng = 1000 + i;
       buyUpgrade(g, "terrier");
@@ -181,7 +183,7 @@ describe("dogs and predators", () => {
 
   it("a wolf takes a lamb unless a guardian dog stops it, and only comes in later acts", () => {
     const g = newGame(313);
-    enterAct(g, 2);
+    enterAct(g, 2, undefined, { grant: true });
     g.money = 500;
     for (const s of flockSheep(g)) s.phenotype["boldness"] = 9; // bold sheep don't scare wolves
     const lamb = flockSheep(g)[0]!;
@@ -194,12 +196,12 @@ describe("dogs and predators", () => {
     expect(g.flock).not.toContain(lamb.id);
     // wolves are never announced before WOLF_MIN_ACT
     const early = newGame(314);
-    enterAct(early, 1);
+    enterAct(early, 1, undefined, { grant: true });
     const rng = createRng(5);
     const kinds = new Set<string>();
     for (let i = 0; i < 200; i++) { early.season = 2; kinds.add(announceEvent(early, rng)!.kind); }
     expect(kinds.has("wolf")).toBe(false);
-    enterAct(early, 2);
+    enterAct(early, 2, undefined, { grant: true });
     for (let i = 0; i < 200; i++) { early.season = 2; kinds.add(announceEvent(early, rng)!.kind); }
     expect(kinds.has("wolf")).toBe(true);
   });
@@ -209,7 +211,7 @@ describe("upkeep", () => {
   it("the dogs and the cat eat too: their food is on the feed bill", () => {
     const run = (pets: string[]) => {
       const g = newGame(330);
-      enterAct(g, 2);
+      enterAct(g, 2, undefined, { grant: true });
       g.money = 1000;
       for (const p of pets) buyUpgrade(g, p);
       g.mice = null;
@@ -224,7 +226,7 @@ describe("mice and the cat", () => {
     const g = newGame(320);
     const rng = createRng(9);
     for (let i = 0; i < 50; i++) expect(announceMice(g, rng)).toBe(false);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     let n = 0;
     while (!announceMice(g, rng) && n++ < 100) { /* keep asking */ }
     expect(g.mice).toBe(g.season + 1);
@@ -234,7 +236,7 @@ describe("mice and the cat", () => {
   it("spoil wool and eat hay; the cat catches most of them, and the forecast says so first", () => {
     const setup = (cat: boolean) => {
       const g = newGame(321);
-      enterAct(g, 1);
+      enterAct(g, 1, undefined, { grant: true });
       g.money = 500;
       if (cat) buyUpgrade(g, "cat");
       g.mice = g.season;
@@ -258,5 +260,50 @@ describe("mice and the cat", () => {
     expect(r1.mice!.wool + r1.mice!.feed).toBeLessThan(r0.mice!.wool + r0.mice!.feed);
     expect(r1.mice!.text).toMatch(/Mog/);
     expect(r1.feed).toBeLessThan(r0.feed);
+  });
+});
+
+describe("brushing", () => {
+  it("counts once per animal per season, alongside greeting and a treat", () => {
+    const g = newGame(310);
+    const id = g.flock[0]!;
+    const f0 = fondnessOf(g, id);
+    expect(FOND_BRUSH).toBe(6);
+    expect(forecastBrush(g, id)!.after).toBe(f0 + FOND_BRUSH);
+    expect(brushedThisSeason(g, id)).toBe(false);
+    expect(brushAnimal(g, id)).toBe(FOND_BRUSH);
+    expect(brushedThisSeason(g, id)).toBe(true);
+    expect(forecastBrush(g, id)).toBeNull();
+    expect(brushAnimal(g, id)).toBe(0); // again this season: nothing
+    expect(greetAnimal(g, id)).toBe(FOND_GREET); // the three ways stack
+    giveTreat(g, id);
+    expect(fondnessOf(g, id)).toBe(f0 + FOND_BRUSH + FOND_GREET + FOND_TREAT);
+    advanceSeason(g);
+    expect(brushedThisSeason(g, id)).toBe(false);
+    expect(brushAnimal(g, id)).toBe(FOND_BRUSH); // a new season: counts again
+  });
+
+  it("only your own animals; a dog or the cat gets a pat the same way", () => {
+    const g = newGame(311);
+    expect(brushAnimal(g, g.market[0]!)).toBe(0);
+    expect(brushAnimal(g, "cat")).toBe(0);
+    grantUnlock(g, "cat");
+    g.act = 1;
+    g.money = 500;
+    buyUpgrade(g, "cat");
+    expect(brushAnimal(g, "cat")).toBe(FOND_BRUSH);
+    expect(forecastBrush(g, g.flock[0]!)!.text).not.toMatch(GENOTYPE_RE);
+  });
+
+  it("is deterministic state and loads from saves without it (absent = never brushed)", () => {
+    const g = newGame(312);
+    const id = g.flock[1]!;
+    greetAnimal(g, id);
+    const raw = JSON.parse(serialize(g)) as { care: Record<string, Record<string, unknown>> };
+    expect("brushed" in raw.care[id]!).toBe(false);
+    const back = deserialize(JSON.stringify(raw));
+    expect(brushedThisSeason(back, id)).toBe(false);
+    expect(brushAnimal(back, id)).toBe(FOND_BRUSH);
+    expect(serialize(deserialize(serialize(back)))).toBe(serialize(back));
   });
 });

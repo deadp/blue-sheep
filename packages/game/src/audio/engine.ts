@@ -278,6 +278,34 @@ export class Voices {
     return this.record(rec);
   }
 
+  /**
+   * A soft brush stroke: a short burst of filtered noise (no voice). Quiet, cosmetic; skipped when muted or
+   * locked. Returns true if it played.
+   */
+  swish(gain = 0.35): boolean {
+    if (!this.on || this.volume <= 0 || !this.ctx || !this.master || this.ctx.state !== "running") return false;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      const src = this.ctx.createBufferSource();
+      src.buffer = noise(this.ctx);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.setValueAtTime(2600, t);
+      bp.frequency.linearRampToValueAtTime(4200, t + 0.16);
+      bp.Q.value = 0.9;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain * 0.5, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      src.connect(bp).connect(g).connect(this.master);
+      src.start(t, Math.random() * 1.2); // cosmetic
+      src.stop(t + 0.22);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private record(r: SoundRecord): SoundRecord {
     this.last = r;
     return r;

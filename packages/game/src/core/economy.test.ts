@@ -31,9 +31,9 @@ describe("economy", () => {
     g.money = 1000;
     g.flockCap = 20;
     for (const id of [...g.market]) buySheep(g, id);
-    g.flockCap = 5;
+    g.flockCap = 3;
     const r = advanceSeason(g);
-    expect(g.flock.length).toBeLessThanOrEqual(5);
+    expect(g.flock.length).toBeLessThanOrEqual(3);
     expect(r.autoSold.some((a) => a.reason === "room")).toBe(true);
   });
 

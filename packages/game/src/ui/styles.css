@@ -648,3 +648,64 @@ body.gallery-mode #hud { position: sticky; top: 0; height: 110px; }
 .mcard .m-body { min-width: 0; }
 .pet-odds .m-row { flex-wrap: wrap; row-gap: 1px; }
 .pet-odds.two .p-cell { min-width: 0; }
+
+/* ---- Punnet square (ui/punnet.ts) ---------------------------------------- */
+#mentor:has(.m-wide) { width: 380px; max-height: calc(100vh - 112px); }
+#mentor .m-figure { margin: 8px 0 2px; display: flex; justify-content: center; }
+#mentor .m-after p { margin: 5px 0; }
+.punnet { display: inline-flex; flex-direction: column; align-items: center; gap: 6px; }
+.punnet .pgrid { display: grid; grid-template-columns: 82px repeat(2, 104px); grid-auto-rows: auto; gap: 4px; }
+.punnet.md .pgrid { grid-template-columns: 96px repeat(2, 118px); gap: 6px; }
+.punnet .pcorner { display: flex; flex-direction: column; justify-content: space-between; font-size: 0.66rem; font-weight: 800; color: var(--muted); padding: 2px 4px; line-height: 1.15; }
+.punnet .pcorner .pk-sire { text-align: right; }
+.punnet .pcopy { position: relative; display: flex; align-items: center; gap: 4px; padding: 3px 5px; border-radius: 9px; border: 2px dashed #cbbfa9; background: #fffdf7; cursor: pointer; font-size: 0.7rem; font-weight: 800; line-height: 1.1; transition: background 0.15s, border-color 0.15s, transform 0.15s; }
+.punnet .pcopy.col { flex-direction: column; text-align: center; justify-content: center; }
+.punnet .pcopy input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+.punnet .pcopy.rec { color: #9a5b2c; }
+.punnet .pcopy.dom { color: var(--accent-dark); }
+.punnet .pcopy:hover { border-color: var(--ink); }
+.punnet .pcopy:has(input:checked) { border-style: solid; border-color: var(--ink); background: var(--note); transform: scale(1.04); }
+.punnet .pcell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 3px 4px 4px; border-radius: 10px; border: 2px solid var(--ink); background: #eef6ea; min-height: 56px; font-size: 0.72rem; font-weight: 800; transition: background 0.15s, box-shadow 0.15s, transform 0.15s; }
+.punnet.md .pcell { min-height: 80px; font-size: 0.8rem; }
+.punnet .pcell.rec { background: #fbe3cf; }
+.punnet .pcell .pl-carry { font-size: 0.6rem; font-weight: 700; color: var(--muted); }
+.punnet .p-let { font-family: ui-monospace, "SFMono-Regular", monospace; font-size: 0.7rem; color: var(--blue-deep); }
+.punnet .psum { display: flex; gap: 12px; font-size: 0.8rem; }
+.punnet .psum .ps { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: #eef6ea; border: 1.5px solid #bcd4b4; }
+.punnet .psum .ps.rec { background: #fbe3cf; border-color: #e5bb98; }
+.p-head .ph-face { fill: #f3e7da; stroke: var(--ink); stroke-width: 1.4; }
+.p-head .ph-ear { fill: #eeddcc; stroke: var(--ink); stroke-width: 1.2; }
+.p-head .ph-wool circle { stroke: var(--ink); stroke-width: 1.2; }
+.p-head .ph-eye { fill: var(--ink); }
+.p-head .ph-nose { fill: #d9a8a0; }
+.p-head .ph-horn-o { fill: none; stroke: var(--ink); stroke-width: 5.4; stroke-linecap: round; }
+.p-head .ph-horn { fill: none; stroke: #d9b07a; stroke-width: 3.2; stroke-linecap: round; }
+.p-wool circle { stroke: var(--ink); stroke-width: 1; }
+/* hover a lamb: the two copies that made it light up */
+.punnet .pcell:hover { box-shadow: 0 0 0 3px var(--sun); transform: scale(1.04); }
+.punnet:has(.pcell[data-r="0"]:hover) .pcopy[data-pick="d0"], .punnet:has(.pcell[data-r="1"]:hover) .pcopy[data-pick="d1"],
+.punnet:has(.pcell[data-c="0"]:hover) .pcopy[data-pick="s0"], .punnet:has(.pcell[data-c="1"]:hover) .pcopy[data-pick="s1"] { background: var(--note); border-style: solid; border-color: var(--ink); }
+/* pick (or point at) a copy: the lambs it goes to light up */
+.punnet:has(input[data-pick="d0"]:checked) .pcell[data-r="0"], .punnet:has(input[data-pick="d1"]:checked) .pcell[data-r="1"],
+.punnet:has(input[data-pick="s0"]:checked) .pcell[data-c="0"], .punnet:has(input[data-pick="s1"]:checked) .pcell[data-c="1"],
+.punnet:has(.pcopy[data-pick="d0"]:hover) .pcell[data-r="0"], .punnet:has(.pcopy[data-pick="d1"]:hover) .pcell[data-r="1"],
+.punnet:has(.pcopy[data-pick="s0"]:hover) .pcell[data-c="0"], .punnet:has(.pcopy[data-pick="s1"]:hover) .pcell[data-c="1"] { box-shadow: 0 0 0 3px var(--sun); }
+.concept.wide { grid-column: 1 / -1; }
+.concept .c-figure { display: flex; justify-content: center; margin-top: 8px; }
+.act-banner.new-thing { background: linear-gradient(135deg, #fff6d6, #e6f2e2); }
+.act-banner.new-thing .act { font-size: 1.02rem; }
+
+/* ---- Brushing and patting (care box, live portrait) ----------------------- */
+.care .c-brush { font-size: 0.86rem; color: var(--ink-soft); }
+.care .c-brush.done { color: #6a9a5c; font-weight: 700; }
+.sc-stage .brush-heart { position: absolute; pointer-events: none; font-size: 18px; color: #e8577e; text-shadow: 0 1px 0 #fff; animation: brush-heart 1.1s ease-out forwards; z-index: 3; }
+@keyframes brush-heart { 0% { opacity: 0; transform: translate(-50%, 0) scale(0.6); } 15% { opacity: 1; transform: translate(-50%, -8px) scale(1.1); } 100% { opacity: 0; transform: translate(-50%, -64px) scale(0.9); } }
+.sc-stage.brushing { cursor: grab; }
+.sc-stage.pet-stage img { touch-action: none; cursor: grab; user-select: none; -webkit-user-drag: none; }
+.sc-stage .pat-fluff { position: absolute; pointer-events: none; width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #0000001a; animation: pat-fluff 0.8s ease-out forwards; }
+@keyframes pat-fluff { to { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.4); } }
+@media (max-width: 1200px) {
+  #mentor:has(.m-wide) { width: 340px; }
+  body.tut-on:has(#mentor .m-wide) #overlay:not(.side) { padding-left: 366px; }
+  #mentor .punnet .pgrid { grid-template-columns: 78px repeat(2, 96px); }
+}

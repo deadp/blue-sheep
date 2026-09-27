@@ -1,6 +1,6 @@
 /** Debug fast-forward for `?act=N`: a real game played with a greedy policy, then nudged into act N. */
 import {
-  enterAct, hireVisitingRam, enterFair, isAdult, newGame, seasonOfYear,
+  ACTS, enterAct, grantUnlock, hireVisitingRam, enterFair, isAdult, newGame, seasonOfYear,
   type ActNumber, type GameState, type SeasonReport,
 } from "./core/index.js";
 import { greedySeason } from "./ui/fixtures.js";
@@ -17,9 +17,11 @@ export function fastForward(seed: number, act: number): FastForward {
   if (target === 0) return { state: s, report: null };
   let r: SeasonReport = greedySeason(s);
   for (let i = 0; i < 4; i++) r = greedySeason(s);
-  if (s.act < 1) enterAct(s, 1);
+  if (s.act < 1) enterAct(s, 1, undefined, { grant: true });
+  else for (const u of ACTS[1]!.unlocks) grantUnlock(s, u);
   for (let a = 2; a <= target; a++) {
-    if (s.act < a) enterAct(s, a as ActNumber);
+    if (s.act < a) enterAct(s, a as ActNumber, undefined, { grant: true });
+    else for (const u of ACTS[a]!.unlocks) grantUnlock(s, u);
     r = greedySeason(s);
     if (a === 2) {
       r = greedySeason(s);

@@ -1,6 +1,6 @@
 import { petVoiceFor } from "./voice.js";
 import { describe, expect, it } from "vitest";
-import { bleatSeries, seriesLength, voiceFor, type VoiceInput, type VoicePersonality } from "./voice.js";
+import { bleatSeries, happySeries, seriesLength, voiceFor, type VoiceInput, type VoicePersonality } from "./voice.js";
 
 const base = (o: Partial<VoiceInput> = {}): VoiceInput => ({ id: "s1", sex: "ewe", adult: true, ageSeasons: 6, size: 60, personality: "calm", ...o });
 const PERS: VoicePersonality[] = ["shy", "calm", "curious", "bold"];
@@ -120,5 +120,23 @@ describe("fondness and farm animals", () => {
     expect(bleatSeries(t, () => 0.9).length).toBe(3); // yap-yap-yap
     expect(bleatSeries(m, () => 0.1).length).toBe(1); // one deep WOOF
     expect(bleatSeries(cat, () => 0.9).length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("happySeries (being brushed or patted)", () => {
+  it("is soft, deterministic and a little lower than a greeting for sheep", () => {
+    for (const p of PERS) {
+      const v = voiceFor(base({ personality: p }));
+      const steps = happySeries(v);
+      expect(happySeries(v)).toEqual(steps);
+      expect(steps.length).toBeGreaterThanOrEqual(1);
+      for (const s of steps) { expect(s.gain).toBeLessThanOrEqual(0.6); expect(s.pitch).toBeLessThan(1); }
+      expect(seriesLength(v, steps)).toBeLessThan(2);
+    }
+  });
+
+  it("dogs whuff and the cat mews low", () => {
+    expect(happySeries(petVoiceFor("collie")).length).toBe(2);
+    expect(happySeries(petVoiceFor("cat"))[0]!.pitch).toBeLessThan(1);
   });
 });

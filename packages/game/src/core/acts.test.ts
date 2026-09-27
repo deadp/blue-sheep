@@ -5,7 +5,7 @@ import {
 import { GENOTYPE_RE, planAll } from "./testkit.js";
 
 describe("acts", () => {
-  it("act 0 → 1 when the first lambs are born, unlocking cards, vet and orders", () => {
+  it("act 0 → 1 when the first lambs are born; only the codex arrives with it (one concept at a time)", () => {
     const g = newGame(11);
     expect(currentAct(g).act).toBe(0);
     expect(g.unlocks).toEqual([]);
@@ -13,7 +13,8 @@ describe("acts", () => {
     const r = advanceSeason(g);
     expect(r.actAdvanced?.act).toBe(1);
     expect(r.actAdvanced?.line).toBe(ACTS[1]!.line);
-    expect(g.unlocks).toEqual(expect.arrayContaining(["cards", "vet", "orders"]));
+    expect(g.unlocks).toEqual(["cards"]);
+    expect(r.unlocked).toBe("cards");
   });
 
   it("a rosette won in the season an act begins counts toward that act's goal", () => {
@@ -38,14 +39,14 @@ describe("acts", () => {
     expect(currentAct(g).progress).toBe(0);
   });
 
-  it("goals advance one act at a time with the right unlocks and caps", () => {
+  it("goals advance one act at a time with the right caps; the fast-forward grants each act's concepts", () => {
     const g = newGame(12);
     g.stats.lambsBorn = 1;
     expect(checkActAdvance(g)?.act).toBe(1);
     expect(checkActAdvance(g)).toBeNull(); // no blue yet
     g.stats.bluesBorn = 1;
     expect(checkActAdvance(g)?.act).toBe(2);
-    expect(g.unlocks).toEqual(expect.arrayContaining(["numbers", "fair"]));
+    expect(g.unlocks).toEqual([]); // concepts come later, one at a time (pacing.test.ts)
     expect(currentAct(g).progress).toBe(0);
     g.stats.ordersFilled += 2;
     expect(currentAct(g).progress).toBeCloseTo(2 / 3);
@@ -53,7 +54,9 @@ describe("acts", () => {
     g.stats.ordersFilled += 1;
     expect(checkActAdvance(g)?.act).toBe(3);
     expect(g.flockCap).toBe(16);
-    expect(g.unlocks).toEqual(expect.arrayContaining(["tree", "visitor"]));
+    const ff = newGame(12);
+    enterAct(ff, 3, undefined, { grant: true });
+    expect(ff.unlocks).toEqual(expect.arrayContaining(["cards", "orders", "vet", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]));
     g.stats.fairsWon += 1;
     expect(checkActAdvance(g)?.act).toBe(4);
     expect(g.flockCap).toBe(24);
@@ -79,8 +82,12 @@ describe("acts", () => {
     expect(currentAct(g).progress).toBeLessThan(1);
     // Make six unrelated fine blue sheep.
     for (const s of flockSheep(g)) { s.phenotype["colour"] = "blue"; s.phenotype["fineness"] = 20; }
-    const extra = g.market.slice(0, 1);
+    const extra = g.market.slice(0, 2);
     for (const id of extra) { g.flock.push(id); g.sheep[id]!.phenotype["colour"] = "blue"; g.sheep[id]!.phenotype["fineness"] = 20; }
+    // …and the two long-gone mothers of the starter pair, back on the farm for the photo (unrelated founders).
+    for (const s of Object.values(g.sheep).filter((x) => !g.flock.includes(x.id) && !g.market.includes(x.id))) {
+      g.flock.push(s.id); s.born = g.season - 4; s.phenotype["colour"] = "blue"; s.phenotype["fineness"] = 20;
+    }
     expect(registryStatus(g).met).toBe(true);
     const r = advanceSeason(g);
     expect(r.endingReached).toBe(true);

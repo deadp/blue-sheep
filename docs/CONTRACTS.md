@@ -26,13 +26,43 @@ Read `docs/DESIGN.md` first for intent; this file is the mechanics.
 Turn-based cozy breeding game. One season per "sleep". Story arc of five acts,
 then endless mode.
 
-| Act | Hook / villager line | Goal to advance | Unlocks on entry |
+| Act | Hook / villager line | Goal to advance | Concepts that open during it (one at a time, see Pacing) |
 |-----|----------------------|-----------------|------------------|
 | 0 | "The old farm is yours. Let's see what the flock gives us." | First lambs born (any planned mating produces a lamb) | Forecast panel (icons only), notebook facts |
-| 1 | Surprise lamb → "Hidden colours! Breed me a **blue** sheep." | A blue lamb is born | Discovery cards, vet carrier test, orders board |
-| 2 | Wool buyer: "I pay for fineness." | Fulfil 3 wool/colour orders (any); up to 2 filled before act 2 count, so at least one is filled in act 2 (`ORDERS_CARRIED`) | Fleece range bars, `numbers` unlock (percentages), village fair |
-| 3 | Small inbred lambs → "Blood too close. Bring in fresh rams." | Win a village fair (1st place, any category) | Family tree page, visiting rams, flock cap 16 |
+| 1 | Surprise lamb → "Hidden colours! Breed me a **blue** sheep." | A blue lamb is born | `cards`, `orders`, `vet`, `farm`, `dogs`, `cat` |
+| 2 | Wool buyer: "I pay for fineness." | Fulfil 3 wool/colour orders (any); up to 2 filled before act 2 count, so at least one is filled in act 2 (`ORDERS_CARRIED`) | `numbers` (percentages, range bars), `fair` |
+| 3 | Small inbred lambs → "Blood too close. Bring in fresh rams." | Win a village fair (1st place, any category) | `tree`, `visitor`; flock cap 16 |
 | 4 | "Found your own breed." | Registry: ≥6 living blue sheep, flock mean fineness ≤ 24 µm, mean inbreeding of those six < 0.125 | Ending screen, endless mode, flock cap 24 |
+
+**Start (every farm, tutorial or not; `newGame(seed)`, `addStarterPair`):** one white adult ewe and one
+white adult ram, `START_MONEY` (50) coins, an empty act-0 `unlocks`, and a first-year market of one ewe and
+one ram (`MARKET_SIZE_YEAR1`; `MARKET_SIZE` 3 from year 2). The pair: both `a/Aw` (white, carry hidden
+colour, black underneath), both `B/B`, the ewe `d/D` and the ram `D/D` (no lamb of the pair is blue), both
+polled horn carriers `p/P`. Their mothers (white, horned `p/p`, origin founder, never in the flock) are on
+record as the pair's dams, so the farm proves from day one that each carries one horns copy
+(`state.known[id].P` is pre-set; no discovery card for it) and the first forecast shows about one horned
+lamb in four. The skip-tutorial start and `?seed=N` are exactly this farm (the old four-ewe-one-ram start
+and the neighbour's handover are gone); the smoke probe's `?seed=7&fresh=1` has one adult ewe and one
+adult ram. The 50 coins buy the tutorial's market ewe without Old Tom's gift for seeds 1–30 (tested; the
+gift remains as a safety net).
+
+**Pacing (`core/pacing.ts`):** concepts open one at a time, at the start of a season (`checkPacing` at the
+end of `advanceSeason`; `SeasonReport.unlocked`, a "New on the farm" banner with Old Tom's one-line
+introduction). The ladder, in order: `cards` (the first lamb is born) → `orders` (the tutorial is over; one
+letter to start) → `vet` → `farm` (farm improvements at the market; winter weather: hard winters and wool
+booms) → `dogs` (dogs at the market; foxes) → `cat` (Mog at the market; mice) → `numbers` (act 2) → `fair`
+(act 2; first fair the autumn after it opens) → `tree` (act 3) → `visitor` (act 3). Rules: at most one a
+season; each early concept waits until the one before it has been used (an order taken, a vet test, an
+improvement / dog / cat bought) or `PACE_WAIT` (3) seasons have passed; story concepts (`numbers`, `fair`,
+`tree`, `visitor`) jump ahead of any waiting early concept once their act begins and don't wait for the
+previous one to be used (the act earned them), but still come one a season. `state.paced` records the
+season each arrived (optional; older saves treat existing unlocks as long since arrived). `enterAct(state,
+act, baseline, { grant: true })` opens everything up to that act at once and is used only by the debug
+fast-forward (`?act=N`) and test fixtures. Improvements carry `UpgradeDef.unlock`; `upgradeOffered(state,
+id)`; the market lists only offered ones. `eventPool(state)`: none before `farm`, fox only with `dogs`,
+wolf with `dogs` from `WOLF_MIN_ACT`. Mice only with `cat`. Orders: the board shows at most
+`ORDER_BOARD_RAMP[ordersFilled]` letters (1, 2, 2, then 3; `orderBoardLimit`), and the very first letter asks
+for a horned or polled lamb when the flock can plausibly fill it (the Punnet square, put to work).
 
 Other systems (all pure TS in `packages/game/src/core`, all tested):
 
@@ -75,7 +105,13 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
   founder 30, market/visitor 10, farm-born lamb 40 + 0.3 × its dam's, a new dog or
   cat 20). Opening an own animal's card greets it: +8 once per animal per season
   (`greetAnimal`). A treat (`giveTreat`, data-treat) costs 1 coin, +15, once per
-  animal per season, with `forecastTreat` shown before the button. Ignored for 2+
+  animal per season, with `forecastTreat` shown before the button. Brushing
+  (`brushAnimal`, `FOND_BRUSH` +6, once per animal per season, `CareRecord.brushed?`
+  = the season, absent = never; `forecastBrush` in the care box): click-and-drag across
+  a sheep's live portrait until `BRUSH_NEEDED` (140 CSS px) of stroke has passed over the
+  fleece, counted when the drag ends; a dog or the cat gets a pat the same way by rubbing its
+  picture on the animal card. The care box says "🪮 Brushed this season ✓" / "✋ Patted this
+  season ✓" (`[data-brushed="1"]`, else `"0"` with the forecast). Ignored for 2+
   seasons: −4 a season (`seasonCare`, end of each season; records of sheep that
   left are dropped). Effects: wool price × `fondWoolMultiplier` (1 from 20 to 40,
   up to ×1.15 at 100, down to ×0.92 at 0), reported as `SeasonReport.fondBonus`
@@ -117,7 +153,25 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
 - **Ageing**: adults at 2 seasons, ewes breed until age 20, death at 24.
 - **Litter rule**: a valid planned mating always produces ≥1 lamb unless the
   ewe is ill; twins possible. (The "no lamb" bug must not return.)
-- **Tutorial** (`core/tutorial.ts`, `ui/tutorial.ts`): new games from the title start in it unless the
+- **Tutorial** (`core/tutorial.ts`, `ui/tutorial.ts`), current rules (the paragraph after this one is the
+  superseded v1 text, kept for history): `newTutorialGame(seed)` is exactly `newGame(seed)` (the starter pair
+  above) plus `state.tutorial = { step, done, ewe, ram, gift }`. Twelve steps, one idea each: `ewe` → `ram` →
+  `forecast` (Find a mate) → `punnet` (ack: Old Tom's 2×2 Punnet square for horns, 3 polled : 1 horned, tied
+  to the forecast's "about one in four horned"; the forecast's horn legend is ringed) → `plan` → `sleep` →
+  `reveal` (the surprise coloured lamb; only `cards` arrives with it) → `why` (ack: the same square for the
+  hidden colour copy, 3 white : 1 coloured, from `state.known`) → `grow` → `market` (buy a ewe; `gift` tops up
+  coins only if needed) → `goal` (ack) → `done` (ack, "Let's farm!": names the four sheep; no handover; the
+  open panel closes). The first mating still gives a single coloured, never blue, lamb. `skipTutorial` just
+  ends it (no sheep arrive). Old saves mid-tutorial: `held` is dropped and the step is remapped to the same
+  step id. The Punnet model is `core/punnet.ts` (`punnetSquare(gene, damCopies, sireCopies)`, `PUNNET_GENES`
+  horns/colour, `knownPunnet(state, gene, dam, sire)` from farm knowledge only); the reusable view is
+  `ui/punnet.ts` `punnetHtml({ square, damName, sireName, letters, lambColour?, size?, id? })`: copies as
+  small pictures with words ("no-horns copy", "horns copy") on the edges, four lamb cells ("polled",
+  "carries horns"), a "3 in 4 / 1 in 4" summary; hovering a cell lights its two copies and clicking a copy
+  lights its cells (CSS `:has()`, hidden radios; markers `data-gene`, `data-dom`, `data-rec`, `data-pick`,
+  `data-r`, `data-c`, `data-look`). Allele letters (`.p-let`) render only with `numbers`. The codex keeps a
+  "Punnet square" concept card (`data-concept="punnet"`) with the square.
+- *(Superseded v1 text.)* **Tutorial**: new games from the title start in it unless the
   player skips. `newTutorialGame(seed)` is `newGame(seed)` with its starter flock held back
   (`state.tutorial.held`) and one white ewe and one white ram instead. Both carry hidden colour and are
   black underneath; the ewe also carries one dilute copy and the ram none, so no tutorial lamb is blue. Their
@@ -183,6 +237,14 @@ export function hireVisitingRam(state): void;
 export function renameSheep(state, id, name): void;
 export function buyUpgrade(state, id): void;                // farm improvement or animal (see §1)
 export function greetAnimal(state, id): number;             // fondness gained (0 if already greeted this season / not yours)
+export function brushAnimal(state, id): number;             // +FOND_BRUSH (6) once a season (a sheep's brushing, a pet's pat)
+export function forecastBrush(state, id): { before; after; text } | null;
+// pacing (see §1)
+export function checkPacing(state): Unlock | null;          // end of advanceSeason: at most one concept arrives
+export function nextUnlock(state): Unlock | null; export function grantUnlock(state, id): void;
+// Punnet square (see §1 Tutorial)
+export function punnetSquare(gene, dam: [a, b], sire: [a, b]): PunnetSquare;
+export function knownPunnet(state, gene, damId, sireId): PunnetSquare | null; // from state.known only
 export function giveTreat(state, id): number;               // 1 coin, once per animal per season; throws otherwise
 
 // tutorial (see §1)
@@ -222,7 +284,8 @@ State fields added in v2 (names are fixed so UI and probes can rely on them):
 `visitingRam: { id, fee, season } | null`, `hiredRam: string|null`,
 `events: EventRecord[]`, `pendingEvent: ...|null`, `unlocks: string[]`
 (values: `"numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards"`),
-`tutorial: { step, done, ewe, ram, held: Sheep[], gift } | null` (absent in older saves → `null`),
+`unlocks` also takes `"farm" | "dogs" | "cat"` (pacing), `paced?: Partial<Record<Unlock, number>>`,
+`tutorial: { step, done, ewe, ram, gift } | null` (absent in older saves → `null`; an old `held` is dropped),
 `ending: { shown: boolean; season: number } | null`, `stats` (lambs born,
 blues born, coins earned, discoveries, fairs won).
 
@@ -281,6 +344,10 @@ export class WorldView {
     // live animated 3D portrait (own small renderer, canvas[data-live-portrait]) inside el; one at a
     // time; mounting the same sheep again moves the canvas. The disposer stops rendering.
   love(id: string, n?: number): void;  // pink hearts float up from a sheep, dog or cat (greeted / treated)
+  portraitCheer(): void;               // after a full brushing: hearts + a contented bubble in the live portrait
+  // handlers.onBrush?(id, "stroke" | "done"): click-and-drag over the live portrait's fleece brushes it
+  // (tufts of wool drift off, the sheep squints and leans in, hearts rise); "stroke" a few times a second for a
+  // swish sound, "done" once per mount when a drag ends with ≥ BRUSH_NEEDED px brushed. A drag never clicks.
   say(id: PetKind, text: string): void; // speech bubble over a dog or the cat
   petPortrait(id: PetKind, px?: number): string; // PNG data URL of a dog or the cat sitting (animal card)
   sleepTransition(): Promise<void>;    // dusk → night → dawn, ~1.5 s, resolves at darkest point? No: resolves when fully dark; call again with dawn(): Promise<void>
@@ -353,7 +420,9 @@ data-volume               settings' volume slider (<input type=range>, 0–100; 
 
 Tutorial UI (`ui/tutorial.ts`): `mentorHtml(state, view)` is a card docked bottom-left (`#mentor`, above
 the overlay). While it is shown, centred panels are pushed right to make room for it. It shows Old Tom
-(👴, from `VILLAGERS`) with one short idea per step, and Granny Moss (👵) at the handover.
+(👴, from `VILLAGERS`) with one short idea per step (no neighbour, no handover). Steps with a Punnet square
+widen the card (`.m-wide`, 380 px; 340 px under 1200 px wide) and must fit without scrolling at 1280×800 and
+1024×768.
 `tutorialTarget` names what to point at: a world sheep (it gets the "selected" ground ring and a bobbing
 arrow at `screenPoint`) or HTML selectors (a pulsing `.tut-ring`, and the arrow on the first one, from the
 left for panel buttons). The HUD's goal pill tracks the tutorial until the goal step. The title offers
@@ -373,7 +442,7 @@ is an SVG-connected tree with portrait nodes. `actTrack` draws the five acts in 
 Care UI: `heartMeter` (five hearts, the word, faint hearts for what a treat would add, /100 only with
 numbers). The sheep card (own flock sheep only) and the animal card have a care box: Fondness hearts,
 "♥ said hello this season", what fondness does to its wool (coins; % with numbers), the treat forecast and
-"Give a treat · 1 coin" (or "Treat given ✓"). `animalCardHtml` (panel `animal`, a right-docked side panel
+"Give a treat · 1 coin" (or "Treat given ✓"), and the brushing line (above). `animalCardHtml` (panel `animal`, a right-docked side panel
 like the sheep card): portrait from `view.petArt(id)`, what the dog does (fox/wolf risk meters with all your
 dogs) or the cat does (mice caught, mice coming), the care box, and the other animals. Risk meters use
 `oddsMeter(..., {risk: true})` (warm colours). The report adds "💗 Happy sheep: +N coins this shearing" (or
@@ -405,7 +474,7 @@ discovery/concept cards.
   animation, `?fresh=1` clear save.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
-  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?}`.
+  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"brush", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?}`.
   Opening an own sheep's card (`open` sheep) or an animal's card (`open` animal with a PetId) greets it
   (fondness, once per season; hearts in the field; saved). The animal card also glides the camera to the
   animal, which speaks (bubble + bark/mew).
@@ -463,20 +532,30 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    seasons; after buying all four they are in `snapshot().upgrades`/`pets` and the world (`dogs`, `cat`); each
    animal card greets it and it speaks (barks terrier > collie > Maremma in pitch). Greeting a sheep raises
    fondness once per season (a second greeting the same season does not; next season it does) and floats
-   hearts; a treat costs exactly 1 coin, gives more than a greeting and is refused the second time. A staged
+   hearts; a treat costs exactly 1 coin, gives more than a greeting and is refused the second time. Brushing:
+   a real drag across the live portrait raises fondness by exactly 6 once, the care box then says "Brushed
+   this season", tufts of wool and hearts appear (`debug.world().portrait.brush/fluff/hearts`), a second
+   brushing the same season adds nothing and next season it counts again; rubbing the collie's picture pats
+   her (+6). Screenshots `brush-0..2`, `brush-done`, `brush-fluff` (a frame read back from the portrait
+   mid-stroke), `brush-pat`. A staged
    season shows "Happy sheep: +N", a wolf and mice in the report. Screenshots `care-*` (sheep card, treat,
    market pets, each animal card, report, and motion close-ups `care-close-<pet>-*`).
 6b. Voices (`voices.mjs`): renders lamb/ewe/ram × shy/calm/curious/bold offline in the real build,
    measures length, peak/RMS level and pitch (YIN), asserts measured pitch lamb > ewe > ram per temperament
    and near the designed pitch, lambs shorter than rams, shy ≥ 3 dB quieter than bold, and writes
    `out/voices/*.wav` plus `stats.txt` for a human to listen to.
-7. Tutorial (`tutorial.mjs`): boots `?tutorial=1&fresh=1&nomotion=1` and plays all ten steps with real
+7. Tutorial (`tutorial.mjs`): boots `?tutorial=1&fresh=1&nomotion=1` and plays all twelve steps with real
    clicks (world sheep are clicked where the arrow points; `open` is only a fallback). It asserts that each
    step advances on its action, that the mentor card never covers a ringed target, the arrow's tip or the
-   panel's primary button, that the first lamb is coloured and earns a discovery card, that the market step
-   buys a ewe, and that the end flock is `?seed=<same>`'s starter flock plus the four tutorial sheep. It
-   also checks skipping and that `?seed` alone has no tutorial. Screenshots `tut-01`…`tut-10`,
-   `tut-04-1024`, `tut-end`.
+   panel's primary button; the Punnet step shows 3 polled : 1 horned for the carrier pair, no allele letters
+   or genotype strings (numbers not unlocked), ties to "one lamb in four has horns", rings the horn legend,
+   2–3 of the ten forecast lambs wear horns, hovering the horned cell lights both horns copies and clicking the
+   ram's horns copy lights its column, and the card fits at 1280×800 and 1024×768; the first lamb is coloured,
+   earns discovery cards and only `cards` arrives; the colour square (3 : 1) follows; the market step buys a
+   ewe; the end flock is exactly the ewe, ram, lamb and bought ewe (no handover); the codex has the Punnet
+   card; the next season brings only `orders` and no sheep; skipping keeps two sheep; `?seed` alone has no
+   tutorial and the same two sheep and coins. Screenshots `tut-01`…`tut-12`, `tut-04-hover`, `tut-04-pick`,
+   `tut-04-1024`, `tut-codex`, `tut-end`, `tut-after`.
 8. Records a 10 s webm of the idle world.
 
 Exit code non-zero on any failure; prints a one-screen summary. Artifacts in
@@ -499,7 +578,8 @@ Exit code non-zero on any failure; prints a one-screen summary. Artifacts in
   `document.body.dataset.panel` mirrors the open panel name or `""`.
 - Panel names the probe deep-links: title, help, sheep, animal, forecast, board, market,
   settings, report (any act); orders, vet, codex (act ≥ 1); fair (act ≥ 2);
-  tree (act ≥ 3); ending (act 4 via `?act=4`).
+  tree (act ≥ 3); ending (act 4 via `?act=4`). `?act=N` grants every concept up to act N at once
+  (`enterAct(…, { grant: true })`); a normal game opens them one at a time (Pacing, §1).
 - Chrome needs `--enable-unsafe-swiftshader` (already in the probe harness).
 - Act numbering: `state.act` and `?act=N` use the core index 0–4. Every player-facing
   label (HUD goal pill, board goal card, report act banner) shows it 1-based, so core

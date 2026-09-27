@@ -2,7 +2,8 @@
 import {
   ACTS, ORDERS_CARRIED, ORDERS_FOR_ACT2, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
 } from "./config.js";
-import { addLog, flockSheep, nextFairSeason, fairCategoryFor } from "./state.js";
+import { addLog, flockSheep } from "./state.js";
+import { grantUnlock } from "./pacing.js";
 import { upgradeCapBonus } from "./upgrades.js";
 import type { ActInfo, ActNumber, GameState, Sheep } from "./types.js";
 import { numberWord } from "./words.js";
@@ -99,18 +100,18 @@ export function checkActAdvance(state: GameState, baseline?: ActBaseline): ActIn
   return currentAct(state);
 }
 
-/** Set the act and apply its unlocks (also used by debug fast-forward). Progress counts from `baseline` (default: now). */
-export function enterAct(state: GameState, act: ActNumber, baseline?: ActBaseline): void {
+/**
+ * Set the act (also used by debug fast-forward). Progress counts from `baseline` (default: now). In play the
+ * act's concepts arrive later, one at a time (core/pacing.ts); `grant` (debug fast-forward only) opens every
+ * concept up to this act at once.
+ */
+export function enterAct(state: GameState, act: ActNumber, baseline?: ActBaseline, opts: { grant?: boolean } = {}): void {
   state.act = act;
   const b = baseline ?? state.stats;
   state.actStart = { season: state.season, ordersFilled: b.ordersFilled, fairsWon: b.fairsWon };
   const def = ACTS[act]!;
-  for (const a of ACTS) if (a.act <= act) for (const u of a.unlocks) if (!state.unlocks.includes(u)) state.unlocks.push(u);
+  if (opts.grant) for (const a of ACTS) if (a.act <= act) for (const u of a.unlocks) grantUnlock(state, u);
   state.flockCap = Math.max(state.flockCap, def.flockCap + upgradeCapBonus(state));
-  if (def.unlocks.includes("fair")) {
-    state.fair.nextSeason = nextFairSeason(state.season);
-    state.fair.category = fairCategoryFor(state.fair.nextSeason);
-  }
   addLog(state, `“${def.line}”`);
 }
 

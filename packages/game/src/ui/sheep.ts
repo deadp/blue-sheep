@@ -1,6 +1,6 @@
 /** Sheep card and family tree. */
 import {
-  FAIR_LABEL, PERSONALITY_ICON, PERSONALITY_WORD, TREAT_COST, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
+  FAIR_LABEL, PERSONALITY_ICON, PERSONALITY_WORD, TREAT_COST, brushedThisSeason, forecastBrush, isPetId, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
   forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
@@ -29,9 +29,16 @@ export function careHtml(state: GameState, id: string, effect: string): string {
   const act = treated
     ? `<span class="tag ok">Treat given ✓</span>`
     : `<button class="secondary treat" data-treat="${esc(id)}" ${blocked ? "disabled" : ""}>Give a treat · ${TREAT_COST} coin</button>${blocked && state.money < TREAT_COST ? `<span class="meta">Not enough coins</span>` : ""}`;
+  const pet = isPetId(id);
+  const brushed = brushedThisSeason(state, id);
+  const fb = brushed ? null : forecastBrush(state, id);
+  const brush = brushed
+    ? `<div class="c-brush done" data-brushed="1">${pet ? "✋ Patted" : "🪮 Brushed"} this season ✓</div>`
+    : `<div class="c-brush" data-brushed="0">${pet ? "✋ <b>Pat</b>: rub the picture above." : "🪮 <b>Brush</b>: drag across the fleece in the picture above."}${fb ? ` ${esc(fb.text)}` : ""}</div>`;
   return `<div class="care" data-care="${esc(id)}">
     <div class="c-top"><span class="c-lbl">Fondness</span>${heartMeter(state, level, fc && fc.after > level ? { to: fc.after } : {})}${said}</div>
     ${effect ? `<div class="c-wool">${effect}</div>` : ""}
+    ${brush}
     <div class="c-fore">${treated ? "Had a treat this season. Say hello again next season." : esc(fc!.text)}</div>
     <div class="c-act">${act}</div>
   </div>`;
@@ -88,7 +95,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
   return `<div class="sheep-card">
     <div class="sc-stage" style="--bg:${PORTRAIT_BG[colour] ?? "#dde8f0"}">
       <div class="sc-portrait" data-live-portrait-slot="${esc(s.id)}">${portrait(view, s, "lg")}</div>
-      <div class="sc-hello meta" aria-hidden="true">click to say hello</div>
+      <div class="sc-hello meta" aria-hidden="true">${own ? "click to say hello · drag to brush" : "click to say hello"}</div>
     </div>
     <div class="sc-main">
       <div class="sc-name"><h2>${esc(s.name)} ${sexMark(s)}</h2>${own ? `<button class="icon" data-rename="${esc(s.id)}" title="Rename" aria-label="Rename ${esc(s.name)}">✎</button>` : ""}</div>

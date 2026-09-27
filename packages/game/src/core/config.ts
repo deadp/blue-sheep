@@ -13,6 +13,8 @@ export const FEED_COST = 2; // per sheep per season in year 1
 export const FEED_GROWTH = 0.5;
 export const FEED_MAX = 6;
 export const MARKET_SIZE = 3;
+/** In the first year the market is quieter: one ewe and one ram, so a new farmer isn't flooded. */
+export const MARKET_SIZE_YEAR1 = 2;
 
 /** Wool price per kg by colour; blue is the prize. */
 export const WOOL_PRICE: Record<string, number> = { white: 0.8, black: 1.2, brown: 1.2, fawn: 1.8, blue: 2.4 };
@@ -40,6 +42,8 @@ export interface UpgradeDef {
   price: number;
   /** Earliest act (core index) it can be bought in. */
   minAct: number;
+  /** The paced concept (core/pacing.ts) that brings it to the market. */
+  unlock: Unlock;
   /** Must own this one first. */
   requires: UpgradeId | null;
   /** Flock cap added on purchase. */
@@ -50,14 +54,14 @@ export interface UpgradeDef {
   done: string;
 }
 export const UPGRADES: UpgradeDef[] = [
-  { id: "paddock", name: "Open the far paddock", icon: "🌿", price: 120, minAct: 0, requires: null, cap: 4, blurb: "Mend the fence on the second paddock: room for four more sheep.", done: "The far paddock is open — room for four more sheep." },
-  { id: "terrier", name: "Pip, a yappy terrier", icon: "🐕", price: 40, minAct: 0, requires: null, cap: 0, blurb: "Small, scruffy and very loud. Her barking scares a fox off some of the time, but a wolf just laughs.", done: "Pip the terrier has arrived. Yap yap yap!" },
-  { id: "collie", name: "Bess, a border collie", icon: "🐕", price: 90, minAct: 0, requires: null, cap: 0, blurb: "Herds the lambs in close at night. Good against foxes, a little help against a wolf.", done: "Meet Bess, your border collie. Foxes, beware!" },
-  { id: "maremma", name: "Samson, a Maremma guardian dog", icon: "🐕‍🦺", price: 180, minAct: 2, requires: null, cap: 0, blurb: "A big white guardian who lives with the flock. Stands up to foxes and wolves alike.", done: "Samson the Maremma has moved in with the flock. Nothing gets past him." },
-  { id: "cat", name: "Mog, a farm cat", icon: "🐈", price: 45, minAct: 1, requires: null, cap: 0, blurb: "Naps on the barn roof and catches mice, so they can't spoil the wool or eat the hay.", done: "Mog the cat has taken up residence on the barn roof." },
-  { id: "barn", name: "A snug barn", icon: "🛖", price: 110, minAct: 0, requires: null, cap: 0, blurb: "Draught-proof the barn, so no sheep falls ill in a hard winter.", done: "The barn is snug and ready for winter." },
-  { id: "shearing", name: "A shearing shed", icon: "✂️", price: 220, minAct: 1, requires: null, cap: 0, blurb: "Cleaner, better-sorted fleeces: all wool fetches a quarter more.", done: "The shearing shed is built. Your wool will fetch more." },
-  { id: "meadow", name: "Rent the long meadow", icon: "🌾", price: 300, minAct: 3, requires: "paddock", cap: 6, blurb: "Graze the meadow by the river: room for six more sheep.", done: "The long meadow is yours to graze — room for six more sheep." },
+  { id: "paddock", name: "Open the far paddock", icon: "🌿", price: 120, minAct: 0, unlock: "farm", requires: null, cap: 4, blurb: "Mend the fence on the second paddock: room for four more sheep.", done: "The far paddock is open — room for four more sheep." },
+  { id: "terrier", name: "Pip, a yappy terrier", icon: "🐕", price: 40, minAct: 0, unlock: "dogs", requires: null, cap: 0, blurb: "Small, scruffy and very loud. Her barking scares a fox off some of the time, but a wolf just laughs.", done: "Pip the terrier has arrived. Yap yap yap!" },
+  { id: "collie", name: "Bess, a border collie", icon: "🐕", price: 90, minAct: 0, unlock: "dogs", requires: null, cap: 0, blurb: "Herds the lambs in close at night. Good against foxes, a little help against a wolf.", done: "Meet Bess, your border collie. Foxes, beware!" },
+  { id: "maremma", name: "Samson, a Maremma guardian dog", icon: "🐕‍🦺", price: 180, minAct: 2, unlock: "dogs", requires: null, cap: 0, blurb: "A big white guardian who lives with the flock. Stands up to foxes and wolves alike.", done: "Samson the Maremma has moved in with the flock. Nothing gets past him." },
+  { id: "cat", name: "Mog, a farm cat", icon: "🐈", price: 45, minAct: 1, unlock: "cat", requires: null, cap: 0, blurb: "Naps on the barn roof and catches mice, so they can't spoil the wool or eat the hay.", done: "Mog the cat has taken up residence on the barn roof." },
+  { id: "barn", name: "A snug barn", icon: "🛖", price: 110, minAct: 0, unlock: "farm", requires: null, cap: 0, blurb: "Draught-proof the barn, so no sheep falls ill in a hard winter.", done: "The barn is snug and ready for winter." },
+  { id: "shearing", name: "A shearing shed", icon: "✂️", price: 220, minAct: 1, unlock: "farm", requires: null, cap: 0, blurb: "Cleaner, better-sorted fleeces: all wool fetches a quarter more.", done: "The shearing shed is built. Your wool will fetch more." },
+  { id: "meadow", name: "Rent the long meadow", icon: "🌾", price: 300, minAct: 3, unlock: "farm", requires: "paddock", cap: 6, blurb: "Graze the meadow by the river: room for six more sheep.", done: "The long meadow is yours to graze — room for six more sheep." },
 ];
 
 // ---- Farm animals: dogs and the cat ----------------------------------------
@@ -106,6 +110,8 @@ export const FOND_LAMB_FROM_DAM = 0.3;
 export const FOND_PET_START = 20;
 /** Greeting (opening its card), once a season. */
 export const FOND_GREET = 8;
+/** Brushing (drag across the fleece on the live portrait; a pat for a dog or the cat), once a season. */
+export const FOND_BRUSH = 6;
 /** A treat, once a season, for TREAT_COST coins. */
 export const FOND_TREAT = 15;
 export const TREAT_COST = 1;
@@ -122,9 +128,17 @@ export const FOND_WORDS = ["Skittish", "Wary", "Friendly", "Fond of you", "Devot
 /** Wool price multiplier with the shearing shed. */
 export const SHEARING_BONUS = 1.25;
 
+// Pacing (core/pacing.ts): a concept waits for the one before it to be used, at most this many seasons.
+export const PACE_WAIT = 3;
+
 // Orders
 export const MAX_OPEN_ORDERS = 3; // visible on the board (offered + accepted)
 export const MAX_ACCEPTED_ORDERS = 2;
+/**
+ * Gentle start: the board shows at most ORDER_BOARD_RAMP[n] letters once n orders have been filled
+ * (1 until the first is filled, 2 until the third, then MAX_OPEN_ORDERS).
+ */
+export const ORDER_BOARD_RAMP = [1, 2, 2, 3] as const;
 export const ORDER_OFFER_SEASONS = 2; // an offer stays up this long
 export const ORDER_MIN_PFILL = 0.3; // only post orders the player could plausibly fill
 export const ORDER_FAIL_REPUTATION = 1;
@@ -155,6 +169,10 @@ export interface ActDef {
   title: string;
   line: string;
   goalText: string;
+  /**
+   * Concepts that become available during this act. In play they arrive one at a time through the pacing
+   * ladder (core/pacing.ts); only the debug fast-forward (`?act=N`) grants them all at once.
+   */
   unlocks: Unlock[];
   flockCap: number;
 }
@@ -166,7 +184,7 @@ export const ACTS: ActDef[] = [
   },
   {
     act: 1, title: "Hidden colours", line: "Hidden colours! Breed me a blue sheep.",
-    goalText: "Breed a blue lamb.", unlocks: ["cards", "vet", "orders"], flockCap: 10,
+    goalText: "Breed a blue lamb.", unlocks: ["cards", "orders", "vet", "farm", "dogs", "cat"], flockCap: 10,
   },
   {
     act: 2, title: "The wool buyer", line: "I pay for fineness.",

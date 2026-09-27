@@ -1,6 +1,6 @@
 /** Market (buy, sell, visiting ram), vet and fair panels. */
 import {
-  FAIR_LABEL, FAIR_PRIZES, PET_NAME, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, fondnessOf, forecastUpgrade, hasUpgrade, isPetId, upgradeBlocked, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
+  FAIR_LABEL, FAIR_PRIZES, PET_NAME, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, fondnessOf, forecastUpgrade, hasUpgrade, isPetId, upgradeBlocked, upgradeOffered, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
   isAdult, oddsLabel, seasonLabel, sheepValue, yearOf,
   type CrossForecast, type GameState, type Sheep,
 } from "../core/index.js";
@@ -71,8 +71,11 @@ function upgradeCard(state: GameState, u: (typeof UPGRADES)[number]): string {
 
 /** Farm animals (dogs, the cat) and farm improvements, each with its forecast before buying. */
 function upgradesHtml(state: GameState): string {
-  const pets = UPGRADES.filter((u) => isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
-  const rows = UPGRADES.filter((u) => !isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
+  // Only what has arrived at the market so far (core/pacing.ts): improvements, then dogs, then the cat.
+  const offered = UPGRADES.filter((u) => upgradeOffered(state, u.id));
+  const pets = offered.filter((u) => isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
+  const rows = offered.filter((u) => !isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
+  if (!pets && !rows) return "";
   const feed = feedPerHead(state.season);
   const year = yearOf(state.season);
   let rise = "That's as dear as hay gets.";
@@ -80,12 +83,13 @@ function upgradesHtml(state: GameState): string {
     const f = feedPerHead(y * 4);
     if (f > feed) { rise = `It goes up to ${f} in Year ${y + 1}.`; break; }
   }
-  return `<h3>Dogs and a cat</h3>
-    <p class="meta">Dogs keep watch together: each one you add makes the lambs safer. The bars show the odds a predator gets a lamb, now and with that dog.</p>
-    ${pets}
-    <h3>Farm improvements</h3>
+  const dogs = offered.some((u) => u.id === "terrier");
+  return `${pets ? `<h3>${dogs && upgradeOffered(state, "cat") ? "Dogs and a cat" : dogs ? "Dogs" : "A cat"}</h3>
+    ${dogs ? `<p class="meta">Dogs keep watch together: each one you add makes the lambs safer. The bars show the odds a predator gets a lamb, now and with that dog.</p>` : ""}
+    ${pets}` : ""}
+    ${rows ? `<h3>Farm improvements</h3>
     <p class="meta">One-time purchases. Feed costs ${feed} coins a sheep this season. ${rise}</p>
-    ${rows}`;
+    ${rows}` : ""}`;
 }
 
 export function marketHtml(state: GameState, view: View): string {

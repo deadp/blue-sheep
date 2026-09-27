@@ -561,8 +561,13 @@ export class WorldView {
    */
   mountPortrait(el: HTMLElement, sheep: WorldSheep): () => void {
     if (this.disposed) return () => {};
-    if (!this.live) this.live = new LivePortrait(this.reduced, (id) => this.handlers.onPortraitClick?.(id));
+    if (!this.live) this.live = new LivePortrait(this.reduced, (id) => this.handlers.onPortraitClick?.(id), (id, phase) => this.handlers.onBrush?.(id, phase));
     return this.live.mount(el, { ...sheep, personality: personalityOf(sheep) });
+  }
+
+  /** The live portrait's sheep has just had a full brushing: hearts and a contented bubble in the card. */
+  portraitCheer(): void {
+    if (!this.disposed) this.live?.cheer();
   }
 
   private glide(to: THREE.Vector3, zoom: number, loose = false): void {
@@ -646,7 +651,7 @@ export class WorldView {
       calls: i.render.calls, triangles: i.render.triangles, sheep: this.ents.size, geometries: i.memory.geometries,
       dog: DOG_KINDS.some((k) => this.dogs[k].visible), dogs: DOG_KINDS.filter((k) => this.dogs[k].visible), cat: this.cat.visible,
       hearts: this.hearts.active, attended: this.attended, bubble: this.bubble.id ? this.bubble.el.textContent : null,
-      portrait: this.live?.stats() ?? { mounted: false, id: null, calls: 0, frames: 0 },
+      portrait: this.live?.stats() ?? { mounted: false, id: null, calls: 0, frames: 0, brush: 0, fluff: 0, hearts: 0, brushDone: false },
     };
   }
 

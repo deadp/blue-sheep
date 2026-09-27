@@ -1,5 +1,5 @@
 /**
- * Mice in the barn: from act 1, some seasons are announced a season ahead as mouse seasons. When they come,
+ * Mice in the barn: once the cat concept has arrived (core/pacing.ts), some seasons are announced a season ahead as mouse seasons. When they come,
  * mice spoil part of the wool clip (MICE_WOOL) and eat hay (MICE_FEED coins a head). The farm cat catches
  * most of them (CAT_CATCH_FLOOR, rising to all of them when the cat is devoted to you).
  */
@@ -28,7 +28,7 @@ export function miceNow(state: GameState): boolean {
 /** Called as a new season begins: maybe announce mice for the season after. Returns true if announced. */
 export function announceMice(state: GameState, rng: Rng): boolean {
   if (state.mice !== undefined && state.mice !== null && state.mice < state.season) state.mice = null;
-  if (state.act < 1 || (state.mice ?? null) !== null) return false;
+  if (state.act < 1 || !state.unlocks.includes("cat") || (state.mice ?? null) !== null) return false;
   if (!rng.chance(MICE_CHANCE)) return false;
   state.mice = state.season + 1;
   addLog(state, MICE_ANNOUNCE);

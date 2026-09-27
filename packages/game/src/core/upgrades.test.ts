@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceSeason, announceText, buyUpgrade, deserialize, enterAct, feedPerHead, flockSheep, forecastUpgrade, hasUpgrade,
-  isAdult, newGame, serialize, updateDiscoveries, upgradeBlocked, UPGRADES, woolIncome, type EventKind, type GameState,
+  isAdult, newGame as freshGame, grantUnlock, serialize, updateDiscoveries, upgradeBlocked, UPGRADES, woolIncome, type EventKind, type GameState,
 } from "./index.js";
 import { GENOTYPE_RE, planAll } from "./testkit.js";
 
+/** A new farm whose market already sells every improvement (the pacing ladder has reached the cat). */
+function newGame(seed: number): GameState {
+  const g = freshGame(seed);
+  for (const u of ["farm", "dogs", "cat"] as const) grantUnlock(g, u);
+  return g;
+}
+
 function atWinter(seed: number, kind: EventKind, upgrade: "collie" | "maremma" | "barn"): GameState {
   const g = newGame(seed);
-  enterAct(g, upgrade === "maremma" ? 2 : 1);
+  enterAct(g, upgrade === "maremma" ? 2 : 1, undefined, { grant: true });
   g.money = 500;
   buyUpgrade(g, upgrade);
   g.season = 3;
@@ -32,7 +39,7 @@ describe("farm improvements", () => {
     expect(() => buyUpgrade(g, "paddock")).toThrow(/coins/);
     g.money = 1000;
     expect(upgradeBlocked(g, "shearing")).toMatch(/Act 2/);
-    enterAct(g, 3);
+    enterAct(g, 3, undefined, { grant: true });
     expect(upgradeBlocked(g, "meadow")).toMatch(/paddock/);
     buyUpgrade(g, "paddock");
     expect(upgradeBlocked(g, "meadow")).toBeNull();
@@ -54,7 +61,7 @@ describe("farm improvements", () => {
     expect(forecastUpgrade(g, "paddock").text).toContain(`${cap + 4}`);
     buyUpgrade(g, "paddock");
     expect(g.flockCap).toBe(cap + 4);
-    enterAct(g, 3);
+    enterAct(g, 3, undefined, { grant: true });
     expect(g.flockCap).toBe(16 + 4);
   });
 
@@ -85,7 +92,7 @@ describe("farm improvements", () => {
 
   it("the shearing shed raises wool income, and the report says by how much", () => {
     const g = newGame(206);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     g.money = 500;
     const plain = flockSheep(g).filter((s) => isAdult(s, g.season)).reduce((t, s) => t + woolIncome(s), 0);
     expect(forecastUpgrade(g, "shearing").text).toMatch(/pays for itself/);
@@ -97,7 +104,7 @@ describe("farm improvements", () => {
 
   it("forecast texts are plain sentences", () => {
     const g = newGame(207);
-    enterAct(g, 3);
+    enterAct(g, 3, undefined, { grant: true });
     for (const u of UPGRADES) {
       const t = forecastUpgrade(g, u.id).text;
       expect(t).not.toMatch(GENOTYPE_RE);
@@ -115,7 +122,7 @@ describe("farm improvements", () => {
 describe("discovery cards", () => {
   it("batch everything learned about one sheep in one go into a single card", () => {
     const g = newGame(208);
-    enterAct(g, 1);
+    enterAct(g, 1, undefined, { grant: true });
     g.money = 1000;
     for (let i = 0; i < 6; i++) { planAll(g); advanceSeason(g); }
     const perSheepSeason = new Map<string, number>();

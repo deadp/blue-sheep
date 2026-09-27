@@ -14,7 +14,7 @@ import {
   acceptOrder, advanceSeason, buyPrice, buySheep, canBreed, currentAct, enterFair, fairScore, flockSheep,
   forecastOrder, isAdult, isEnding, lambRoom, markEndingShown, newGame, pedigreeOf, planMating, ramAvailable, RAM_CAPACITY,
   sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
-  ownedPets, fondnessOf, hasUpgrade,
+  ownedPets, fondnessOf, hasUpgrade, brushAnimal,
   type GameState, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
 
@@ -173,11 +173,11 @@ function manageUpgrades(g: GameState): void {
   for (const id of ["paddock", "collie", "cat", "barn", "maremma", "shearing", "meadow"] as const) buy(id);
 }
 
-/** Say hello to every animal each season (free); give treats when coins are plentiful. */
+/** Say hello to and brush (pat) every animal each season (free); give treats when coins are plentiful. */
 function manageCare(g: GameState): void {
   if (process.env["NOCARE"]) return;
   const ids = [...g.flock, ...ownedPets(g)];
-  for (const id of ids) greetAnimal(g, id);
+  for (const id of ids) { greetAnimal(g, id); brushAnimal(g, id); }
   if (g.money < 150) return;
   for (const id of ids) if (fondnessOf(g, id) < 100 && !treatBlocked(g, id)) giveTreat(g, id);
 }

@@ -4,7 +4,7 @@ import {
 } from "./index.js";
 
 function toSpring(g: ReturnType<typeof newGame>) {
-  enterAct(g, 3);
+  enterAct(g, 3, undefined, { grant: true });
   g.money = 500;
   while (!g.visitingRam) advanceSeason(g);
 }

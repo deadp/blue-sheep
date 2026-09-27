@@ -8,7 +8,7 @@ import { GENOTYPE_RE, planAll } from "./testkit.js";
 describe("player-facing text", () => {
   it("never contains genotype strings over a long game with every system on", () => {
     const g = newGame(100);
-    enterAct(g, 3);
+    enterAct(g, 3, undefined, { grant: true });
     g.money = 400;
     const texts: string[] = [];
     for (let t = 0; t < 16; t++) {

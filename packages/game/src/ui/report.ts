@@ -1,9 +1,9 @@
 /** The season report: lambs next to the forecast the player saw, money, orders, fair, event, discoveries, act advance. */
 import {
-  FAIR_LABEL, MICE_ANNOUNCE, PET_NAME, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
+  FAIR_LABEL, MICE_ANNOUNCE, PET_NAME, paceStep, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
 import { lambTile, litterLooks, litterWords } from "./forecast.js";
-import { cap, discoveryText, discoveryTitle, esc, hex, portrait, UNLOCK_WORDS } from "./util.js";
+import { cap, discoveryText, discoveryTitle, esc, hex, portrait, UNLOCK_ICON, UNLOCK_WORDS } from "./util.js";
 import type { View } from "./view.js";
 
 const SURPRISE = 0.2;
@@ -82,8 +82,13 @@ export function reportHtml(state: GameState, view: View): string {
     const a = r.actAdvanced;
     blocks.push(`<div class="act-banner"><div class="act">Act ${a.act + 1} · ${esc(a.title)}</div><blockquote>“${esc(a.line)}”</blockquote>
       <div><b>New goal:</b> ${esc(a.goalText)}</div>
-      ${a.unlocks.length ? `<div class="unlocks">${a.unlocks.map((u) => `<span class="tag ok">🔓 ${esc(UNLOCK_WORDS[u])}</span>`).join("")}</div>` : ""}
       ${a.flockCap > 0 ? `<div class="meta">Room for ${state.flockCap} sheep.</div>` : ""}</div>`);
+  }
+  // At most one new concept a season (core/pacing.ts): named, with Old Tom's one-line introduction.
+  if (r.unlocked) {
+    const u = r.unlocked;
+    blocks.push(`<div class="act-banner new-thing" data-unlocked="${esc(u)}"><div class="act">${UNLOCK_ICON[u]} New on the farm: ${esc(UNLOCK_WORDS[u])}</div>
+      <div><b>Old Tom:</b> “${esc(paceStep(u)?.intro ?? "")}”</div></div>`);
   }
   const blues = r.lambs.filter((l) => l.phenotype["colour"] === "blue");
   if (blues.length && state.stats.bluesBorn === blues.length) {

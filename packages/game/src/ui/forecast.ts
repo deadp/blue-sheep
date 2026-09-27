@@ -25,8 +25,8 @@ export interface LambLook { colour: string; pattern: string; horns: string }
 /** The ten lambs of a forecast, most likely colour first. Horns and spots are spread across them in proportion. */
 export function litterLooks(f: Pick<CrossForecast, "colour" | "horns" | "pattern">): LambLook[] {
   const counts = tenths(f.colour);
-  const hornedN = Math.round((f.horns["horned"] ?? 0) * 10);
-  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10);
+  const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
+  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
   const out: LambLook[] = [];
   let k = 0;
   for (const e of counts) for (let i = 0; i < e.n; i++, k++) {
@@ -65,8 +65,8 @@ export function litterRow(state: GameState, f: Pick<CrossForecast, "colour" | "h
   const legend = counts.filter((e) => e.n > 0 || nums).map((e) =>
     `<span class="key">${keyArt(e.key)}<span><span class="k-name">${esc(e.key)}</span> <span class="k-n">${nums ? `${e.p < 0.01 ? "<1" : Math.round(e.p * 100)}%` : e.n === 10 ? "every lamb" : `${e.n} in 10`}</span></span></span>`).join("");
   const rareNote = rare.length && !nums ? `<div class="meta rare">A ${esc(orList(rare))} lamb could happen, but rarely.</div>` : "";
-  const hornedN = Math.round((f.horns["horned"] ?? 0) * 10);
-  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10);
+  const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
+  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
   const extras: string[] = [];
   if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">♈</b> ${esc(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`)}</span>`);
   if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);

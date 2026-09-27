@@ -1,11 +1,11 @@
 /** Game state: construction, sheep bookkeeping, save/load and v1 migration. */
 import {
-  Pedigree, createRng, discretePhenotype, genomeFromJSON, genomeToJSON, genotypeAt, quantitativePhenotype,
+  Pedigree, createRng, discretePhenotype, genomeFromJSON, genomeToJSON, getLocus, quantitativePhenotype,
   sampleFounder, type Genome, type Rng, type Species,
 } from "@blue-sheep/genetics";
 import { sheep as sheepSpecies } from "@blue-sheep/genetics";
 import {
-  ACTS, ADULT_AGE, EWE_BREED_MAX_AGE, FAIR_CATEGORIES, FAIR_SEASON, MARKET_SIZE, SEASONS, START_MONEY,
+  ACTS, ADULT_AGE, EWE_BREED_MAX_AGE, FAIR_CATEGORIES, FAIR_SEASON, MARKET_SIZE, MARKET_SIZE_YEAR1, SEASONS, START_MONEY,
 } from "./config.js";
 import { EWE_NAMES, RAM_NAMES } from "./names.js";
 import type { ActNumber, FairCategory, GameState, Phenotype, Sex, Sheep, SheepOrigin, Unlock, UpgradeId } from "./types.js";
@@ -193,26 +193,69 @@ export function newGame(seed: number): GameState {
     achievements: [],
     tutorial: null,
   };
-  // Starting flock: 4 ewes + 1 ram, all adults. Resample until blue is reachable:
-  // at least two hidden `d` alleles and one black (a/a B/_) sheep.
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const trial: Sheep[] = [];
-    for (let i = 0; i < 4; i++) trial.push(sampleFounderSheep(state, rng, "ewe", -ADULT_AGE - rng.int(4), "founder"));
-    trial.push(sampleFounderSheep(state, rng, "ram", -ADULT_AGE - rng.int(4), "founder"));
-    const dCount = trial.reduce((n, s) => n + genotypeAt(genomeOf(s), species.map, "D").filter((x) => x === 0).length, 0);
-    const hasBlack = trial.some((s) => s.phenotype["colour"] === "black");
-    if (dCount >= 2 && hasBlack) {
-      state.flock = trial.map((s) => s.id);
-      break;
-    }
-    for (const s of trial) delete state.sheep[s.id];
-    state.nextId = 1;
-  }
-  if (state.flock.length === 0) throw new Error("could not build a solvable starting flock");
+  // Starting flock: one white ewe and one white ram (the tutorial pair; see addStarterPair).
+  addStarterPair(state, rng);
   restockMarket(state, rng);
   saveRng(state, rng);
   addLog(state, ACTS[0]!.line);
   return state;
+}
+
+/** Set alleles at a locus: [maternal, paternal] allele names. */
+export function setLocus(g: Genome, locus: string, alleles: [string, string]): void {
+  const l = getLocus(species.map, locus);
+  const pair = g.chromosomes[l.chromosome]!;
+  pair[0][l.index] = l.alleles.indexOf(alleles[0]);
+  pair[1][l.index] = l.alleles.indexOf(alleles[1]);
+}
+
+/**
+ * The starter pair's genes. Both white, both carry hidden colour (one white copy, one coloured copy) and are
+ * black underneath, so a lamb that shows its colour is black. The ewe also carries one dilute copy, the ram
+ * none, so no lamb of the pair can be blue (that stays the goal). Both are polled carriers of horns (one
+ * no-horns copy, one horns copy): the tutorial's Punnet square. Everything else is an ordinary founder.
+ */
+function starterGenome(rng: Rng, sex: Sex): Genome {
+  const g = sampleFounder(species.map, rng);
+  setLocus(g, "A", ["a", "Aw"]);
+  setLocus(g, "B", ["B", "B"]);
+  setLocus(g, "D", sex === "ewe" ? ["d", "D"] : ["D", "D"]);
+  setLocus(g, "P", ["p", "P"]);
+  return g;
+}
+
+/** The pair's mothers, long gone: white and horned (so the farm's records prove each child carries horns). */
+function starterMotherGenome(rng: Rng, forSex: Sex): Genome {
+  const g = sampleFounder(species.map, rng);
+  setLocus(g, "A", ["a", "Aw"]);
+  setLocus(g, "B", ["B", "B"]);
+  setLocus(g, "D", forSex === "ewe" ? ["d", "D"] : ["D", "D"]);
+  setLocus(g, "P", ["p", "p"]);
+  return g;
+}
+
+/**
+ * Every farm starts small: one white ewe and one white ram, both adult, both secretly carrying colour and
+ * horns. Their mothers (horned, no longer on the farm) are on record, so the player can know from day one
+ * that each carries one horns copy, and the first forecast shows about one horned lamb in four. Those facts
+ * start as known (no discovery card for them). Returns the pair, now in the flock.
+ */
+export function addStarterPair(state: GameState, rng: Rng): { ewe: Sheep; ram: Sheep } {
+  const damE = addSheep(state, rng, { sex: "ewe", born: -ADULT_AGE - 9, dam: null, sire: null, genome: starterMotherGenome(rng, "ewe"), inbreeding: 0, origin: "founder" });
+  const damR = addSheep(state, rng, { sex: "ewe", born: -ADULT_AGE - 10, dam: null, sire: null, genome: starterMotherGenome(rng, "ram"), inbreeding: 0, origin: "founder" });
+  const ewe = addSheep(state, rng, { sex: "ewe", born: -ADULT_AGE - 1, dam: damE.id, sire: null, genome: starterGenome(rng, "ewe"), inbreeding: 0, origin: "founder" });
+  const ram = addSheep(state, rng, { sex: "ram", born: -ADULT_AGE - 2, dam: damR.id, sire: null, genome: starterGenome(rng, "ram"), inbreeding: 0, origin: "founder" });
+  state.flock = [ewe.id, ram.id];
+  state.known[damE.id] = { P: "p/p" };
+  state.known[damR.id] = { P: "p/p" };
+  state.known[ewe.id] = { P: "p/P" };
+  state.known[ram.id] = { P: "p/P" };
+  return { ewe, ram };
+}
+
+/** How many sheep the market offers this season (fewer in the first year). */
+export function marketSize(season: number): number {
+  return yearOf(season) === 0 ? MARKET_SIZE_YEAR1 : MARKET_SIZE;
 }
 
 /** Replace the market stock. Unsold stock leaves the game entirely (it has no relatives here). */
@@ -221,8 +264,9 @@ export function restockMarket(state: GameState, rng: Rng): void {
     if (!state.flock.includes(id) && !hasOffspring(state, id)) { delete state.sheep[id]; delete state.zone[id]; delete state.known[id]; }
   }
   state.market = [];
-  for (let i = 0; i < MARKET_SIZE; i++) {
-    const sex: Sex = i < MARKET_SIZE - 1 ? "ewe" : "ram";
+  const n = marketSize(state.season);
+  for (let i = 0; i < n; i++) {
+    const sex: Sex = i < n - 1 ? "ewe" : "ram";
     state.market.push(sampleFounderSheep(state, rng, sex, state.season - ADULT_AGE - rng.int(6), "market").id);
   }
 }
@@ -250,6 +294,14 @@ export function deserialize(json: string): GameState {
     if (st.mice === undefined) st.mice = null;
     // Saves from before the tutorial have none.
     if (st.tutorial === undefined) st.tutorial = null;
+    // Tutorials saved before the Punnet square: no neighbour's flock any more, and the step moves to its new place.
+    if (st.tutorial && "held" in st.tutorial) {
+      const old = st.tutorial as typeof st.tutorial & { held?: unknown };
+      const OLD = ["ewe", "ram", "forecast", "plan", "sleep", "reveal", "grow", "market", "goal", "done"];
+      const NEW = ["ewe", "ram", "forecast", "punnet", "plan", "sleep", "reveal", "why", "grow", "market", "goal", "done"];
+      old.step = NEW.indexOf(OLD[old.step - 1] ?? "done") + 1 || NEW.length;
+      delete old.held;
+    }
     return st;
   }
   if (raw["version"] === 1) return migrateV1(raw);

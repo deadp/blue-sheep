@@ -23,6 +23,11 @@ export function feedPerHead(season: number): number {
   return Math.min(FEED_MAX, FEED_COST + Math.floor(Math.max(0, yearOf(season) - 1) * FEED_GROWTH));
 }
 
+/** Is this improvement on offer at the market yet (its concept has arrived)? */
+export function upgradeOffered(state: GameState, id: UpgradeId): boolean {
+  return state.unlocks.includes(upgradeDef(id).unlock);
+}
+
 /** Extra flock room from improvements (added on top of each act's cap). */
 export function upgradeCapBonus(state: GameState): number {
   return UPGRADES.filter((u) => hasUpgrade(state, u.id)).reduce((n, u) => n + u.cap, 0);
@@ -32,6 +37,7 @@ export function upgradeCapBonus(state: GameState): number {
 export function upgradeBlocked(state: GameState, id: UpgradeId): string | null {
   const d = upgradeDef(id);
   if (hasUpgrade(state, id)) return "You already have this.";
+  if (!state.unlocks.includes(d.unlock)) return "Not at the market yet.";
   if (state.act < d.minAct) return `Available from Act ${d.minAct + 1}.`;
   if (d.requires && !hasUpgrade(state, d.requires)) return `Needs ${upgradeDef(d.requires).name.toLowerCase()} first.`;
   if (state.money < d.price) return `Costs ${d.price} coins — you have ${state.money}.`;

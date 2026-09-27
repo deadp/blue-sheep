@@ -1,9 +1,13 @@
 // Tutorial probe: a new player's first ten minutes. Boots ?tutorial=1 and plays every step with real clicks
 // (a sheep in the field is clicked where the tutorial's arrow points; __game.act is the fallback only if that
 // misses). Rules checked: each step advances exactly on its action; the mentor card never covers the thing it
-// points at or the open panel's primary button; the first lamb shows a hidden colour and earns a discovery
-// card; the market step buys a ewe; the handover brings exactly the starter flock newGame(seed) would have
-// had; skipping works; ?seed without ?tutorial has no tutorial. Screenshots tut-01..tut-10.
+// points at or the open panel's primary button; the Punnet step shows 3 polled : 1 horned for the carrier
+// pair with no allele letters (numbers not unlocked), hover and click light the right copies and cells, and it
+// fits at 1280×800 and 1024×768; the first lamb shows a hidden colour, earns discovery cards and brings only
+// the codex; the colour square follows; the market step buys a ewe; there is no handover (the end flock is the
+// four tutorial sheep); the codex keeps the Punnet card; the next season brings the letters alone; skipping
+// keeps two sheep; ?seed without ?tutorial has no tutorial. Screenshots tut-01..tut-12, tut-04-hover/-pick/-1024,
+// tut-codex, tut-after.
 import { isMain, runSteps } from "./lib/harness.mjs";
 import { ProbeError } from "./lib/browser.mjs";
 
@@ -41,6 +45,38 @@ async function assertLayout(g, where) {
       if (x >= mr.left && x <= mr.right && y >= mr.top && y <= mr.bottom) out.push("the arrow's tip");
     }
     return out.length ? `mentor card covers ${out.join(", ")}` : "";
+  });
+  if (bad) throw new ProbeError(`${where}: ${bad}`);
+}
+
+/**
+ * What the mentor's Punnet square shows: gene, counts, the cells' looks in order, whether any allele letters
+ * or genotype-like strings are on screen, and its text.
+ * @param {import("./lib/browser.mjs").GamePage} g
+ */
+const punnetFacts = (g) => g.page.evaluate(() => {
+  const p = /** @type {HTMLElement | null} */ (document.querySelector("#mentor .punnet"));
+  const m = document.querySelector("#mentor");
+  if (!p) return { found: false, gene: "", dom: 0, rec: 0, cells: [], letters: false, genotype: "", text: m?.textContent ?? "" };
+  const text = /** @type {HTMLElement} */ (m).innerText;
+  const g = text.match(/\b(?:[PpAaBbDdSs]\/[PpAaBbDdSs]|Aw\/a|a\/Aw|Pp|PP|pp)\b/);
+  return {
+    found: true, gene: p.dataset.gene ?? "", dom: Number(p.dataset.dom), rec: Number(p.dataset.rec),
+    cells: [...p.querySelectorAll(".pcell")].map((c) => /** @type {HTMLElement} */ (c).dataset.look ?? ""),
+    letters: !!p.querySelector(".p-let"), genotype: g ? g[0] : "", text,
+  };
+});
+
+/** The mentor card fits on screen without scrolling (its button visible). @param {import("./lib/browser.mjs").GamePage} g @param {string} where */
+async function assertMentorFits(g, where) {
+  const bad = await g.page.evaluate(() => {
+    const m = /** @type {HTMLElement} */ (document.querySelector("#mentor"));
+    const b = m.querySelector("[data-tutorial=ack]");
+    const r = m.getBoundingClientRect();
+    if (m.scrollHeight > m.clientHeight + 2) return `the mentor card scrolls (${m.scrollHeight} > ${m.clientHeight})`;
+    if (r.bottom > window.innerHeight || r.top < 0) return `the mentor card is off screen (${Math.round(r.top)}–${Math.round(r.bottom)})`;
+    if (b && b.getBoundingClientRect().bottom > window.innerHeight) return "its button is off screen";
+    return "";
   });
   if (bad) throw new ProbeError(`${where}: ${bad}`);
 }
@@ -109,26 +145,57 @@ export const tutorial = {
     await waitStep(g, 3, "after clicking the ram");
     await shot("tut-03");
     await click(g, "#overlay [data-findmate]", "find a mate");
-    // 4. Plan the mating (the forecast).
+    // 4. The Punnet square (forecast open): 3 polled : 1 horned for two horn carriers, tied to the forecast.
     await waitStep(g, 4, "after Find a mate");
     await g.waitPanel("forecast");
+    const pq = await punnetFacts(g);
+    if (!pq.found) throw new ProbeError("step 4 should show a Punnet square in the mentor card");
+    if (pq.gene !== "horns" || pq.dom !== 3 || pq.rec !== 1 || pq.cells.join(",") !== "polled,polled,polled,horned") {
+      throw new ProbeError(`the tutorial pair (both horn carriers) should give 3 polled : 1 horned, the square shows ${JSON.stringify(pq)}`);
+    }
+    if (pq.letters || pq.genotype) throw new ProbeError(`no allele letters before the numbers unlock, the square shows "${pq.genotype || "letters"}"`);
+    if (!/one lamb in four has horns/i.test(pq.text)) throw new ProbeError("step 4 should tie the square to the forecast (one lamb in four has horns)");
+    const legend = await g.page.locator("#overlay .legend.extras").first().textContent();
+    const hornedTiles = await g.page.locator("#overlay .litter .lb.horn").count();
+    if (hornedTiles < 2 || hornedTiles > 3) throw new ProbeError(`about one lamb in four of the ten should wear horns, ${hornedTiles} do`);
+    if (!/one in four horned/i.test(legend ?? "")) throw new ProbeError(`the forecast's horn legend should say one in four, it says "${legend}"`);
+    const ringed = await g.page.locator("#overlay .legend.extras .xkey.tut-ring").first().textContent().catch(() => "");
+    if (!/horned/.test(ringed ?? "")) throw new ProbeError(`step 4 should ring the forecast's horn legend, rings "${ringed}"`);
     await shot("tut-04");
-    // The same moment on a small laptop screen: the forecast still fits beside the mentor.
+    // Interactive: pointing at the horned lamb lights the two horns copies; clicking a copy lights its column.
+    await g.page.locator('#mentor .pcell[data-r="1"][data-c="1"]').hover();
+    await g.page.waitForTimeout(250);
+    const lit = await g.page.evaluate(() => [...document.querySelectorAll("#mentor .pcopy")].filter((el) => getComputedStyle(el).borderStyle === "solid").map((el) => /** @type {HTMLElement} */ (el).dataset.pick).sort().join(","));
+    if (lit !== "d1,s1") throw new ProbeError(`hovering the horned lamb should light the ewe's and ram's horns copies (d1,s1), lit: "${lit}"`);
+    ctx.artifact(await g.screenshot("tut-04-hover"));
+    await g.page.locator('#mentor .pcopy[data-pick="s1"]').click();
+    await g.page.mouse.move(5, 400);
+    await g.page.waitForTimeout(250);
+    const col = await g.page.evaluate(() => [...document.querySelectorAll("#mentor .pcell")].filter((el) => getComputedStyle(el).boxShadow !== "none").map((el) => `${/** @type {HTMLElement} */ (el).dataset.r}${/** @type {HTMLElement} */ (el).dataset.c}`).sort().join(","));
+    if (col !== "01,11") throw new ProbeError(`clicking the ram's horns copy should light the cells it goes to (01,11), lit: "${col}"`);
+    ctx.artifact(await g.screenshot("tut-04-pick"));
+    // The same moment on a small laptop screen: the square and the forecast still fit beside each other.
     await g.page.setViewportSize({ width: 1024, height: 768 });
-    await g.page.waitForTimeout(200);
+    await g.page.waitForTimeout(250);
     await shot("tut-04-1024");
+    await assertMentorFits(g, "step 4 at 1024×768");
     await g.page.setViewportSize({ width: 1280, height: 800 });
     await g.page.waitForTimeout(200);
+    await assertMentorFits(g, "step 4 at 1280×800");
+    await click(g, "#mentor [data-tutorial=ack]", "got it (Punnet square)");
+    // 5. Plan the mating.
+    await waitStep(g, 5, "after the Punnet square");
+    await shot("tut-05");
     await click(g, "#overlay [data-plan]", "plan");
-    // 5. Sleep.
-    await waitStep(g, 5, "after planning");
+    // 6. Sleep.
+    await waitStep(g, 6, "after planning");
     const s5 = await g.state();
     if (s5.plans[T.ewe] !== T.ram) throw new ProbeError(`the plan should be ${T.ewe}×${T.ram}: ${JSON.stringify(s5.plans)}`);
-    await shot("tut-05");
+    await shot("tut-06");
     await click(g, "#hud [data-sleep]", "sleep");
-    // 6. The reveal.
+    // 7. The reveal.
     await g.waitPanel("report", 12_000);
-    await waitStep(g, 6, "after sleeping");
+    await waitStep(g, 7, "after sleeping");
     const s6 = await g.state();
     const lambs = s6.flock.map((/** @type {string} */ id) => s6.sheep[id]).filter((/** @type {any} */ s) => s.dam === T.ewe && s.sire === T.ram);
     if (lambs.length !== 1) throw new ProbeError(`the tutorial mating should give one lamb, got ${lambs.length}`);
@@ -138,46 +205,54 @@ export const tutorial = {
     if (!cards.length) throw new ProbeError("the surprise lamb should earn a discovery card about its parents");
     if (!(await g.page.locator("#overlay .dcard").count())) throw new ProbeError("the report should show the discovery card");
     if (s6.act !== 1) throw new ProbeError(`the first lamb should move the story to act index 1, act is ${s6.act}`);
-    await shot("tut-06");
-    ctx.note(`first lamb: ${lamb.name} (${lamb.phenotype.colour}); ${cards.length} discovery card(s)`);
-    await click(g, "#overlay .row [data-close].primary", "back to the farm");
-    // 7. Lambs need two seasons.
-    await waitStep(g, 7, "after closing the report");
+    // Gentle pacing: only the codex arrives with the first lamb (no orders, vet or dogs yet).
+    if (JSON.stringify(s6.unlocks) !== JSON.stringify(["cards"])) throw new ProbeError(`only the codex should arrive with the first lamb, unlocks: ${JSON.stringify(s6.unlocks)}`);
+    if ((s6.orders ?? []).length) throw new ProbeError("no orders should arrive during the tutorial");
     await shot("tut-07");
-    how.push(`lamb:${await clickSheep(g, lamb.id, 8)}`);
-    // 8. The market.
-    await waitStep(g, 8, "after clicking the lamb");
+    ctx.note(`first lamb: ${lamb.name} (${lamb.phenotype.colour}); ${cards.length} discovery card(s); unlocks after the reveal: ${s6.unlocks.join(",")}`);
+    await click(g, "#overlay .row [data-close].primary", "back to the farm");
+    // 8. Why that colour: the same square, hidden colour copy from each parent.
+    await waitStep(g, 8, "after closing the report");
+    const cq = await punnetFacts(g);
+    if (!cq.found || cq.gene !== "colour" || cq.dom !== 3 || cq.rec !== 1) throw new ProbeError(`step 8 should show the colour square (3 white : 1 coloured), got ${JSON.stringify(cq)}`);
+    if (cq.letters || cq.genotype) throw new ProbeError("no allele letters in the colour square before the numbers unlock");
+    await shot("tut-08");
+    await assertMentorFits(g, "step 8");
+    await click(g, "#mentor [data-tutorial=ack]", "got it (why that colour)");
+    // 9. Lambs need two seasons.
+    await waitStep(g, 9, "after the colour square");
+    await shot("tut-09");
+    how.push(`lamb:${await clickSheep(g, lamb.id, 10)}`);
+    // 10. The market.
+    await waitStep(g, 10, "after clicking the lamb");
     await click(g, "#hud [data-open=market]", "market");
     await g.waitPanel("market");
     await g.page.waitForTimeout(150);
-    await shot("tut-08");
+    await shot("tut-10");
     const money8 = (await g.state()).money;
     await click(g, "#overlay .tut-ring[data-buy]", "buy the ringed ewe");
-    // 9. The goal.
-    await waitStep(g, 9, "after buying a ewe");
+    // 11. The goal.
+    await waitStep(g, 11, "after buying a ewe");
     const s9 = await g.state();
     const bought = s9.flock.map((/** @type {string} */ id) => s9.sheep[id]).filter((/** @type {any} */ s) => s.origin === "market" && s.sex === "ewe");
     if (bought.length !== 1 || !(s9.money < money8)) throw new ProbeError(`the market step should buy one ewe (bought ${bought.length}, coins ${money8} → ${s9.money})`);
-    await shot("tut-09");
+    await shot("tut-11");
     await click(g, "#mentor [data-tutorial=ack]", "got it");
-    // 10. The flock arrives.
-    await waitStep(g, 10, "after the goal");
-    await shot("tut-10");
+    // 12. Your flock: no handover. Exactly the ewe, the ram, their lamb and the bought ewe.
+    await waitStep(g, 12, "after the goal");
+    await shot("tut-12");
     const s10 = await g.state();
+    const expect = [T.ewe, T.ram, lamb.id, bought[0].id].sort();
+    if (JSON.stringify([...s10.flock].sort()) !== JSON.stringify(expect)) throw new ProbeError(`end flock should be just the tutorial sheep (no handover): ${JSON.stringify(s10.flock)} vs ${JSON.stringify(expect)}`);
+    const mentorText = await g.page.locator("#mentor").textContent();
+    if (/Granny Moss|minding the rest/i.test(mentorText ?? "")) throw new ProbeError("the last step should not hand over a neighbour's flock");
 
-    // The handover is exactly newGame(seed)'s starter flock.
+    // ?seed without ?tutorial: no tutorial, the same small farm (two founders, a quiet market).
     const n = await ctx.newPage();
     await n.boot(`?seed=${s0.seed}&fresh=1&nomotion=1`);
     const ns = await n.state();
     if ((await tut(n)) !== null) throw new ProbeError("?seed without ?tutorial must not start a tutorial");
-    const sig = (/** @type {any} */ s, /** @type {number} */ season) => JSON.stringify({ id: s.id, name: s.name, sex: s.sex, age: season - s.born, genome: s.genome, phenotype: s.phenotype });
-    for (const id of ns.flock) {
-      const a = s10.sheep[id];
-      if (!a || !s10.flock.includes(id)) throw new ProbeError(`starter sheep ${ns.sheep[id].name} (${id}) is missing after the handover`);
-      if (sig(a, s10.season) !== sig(ns.sheep[id], ns.season)) throw new ProbeError(`starter sheep ${id} differs from newGame(${s0.seed})'s`);
-    }
-    const expect = [...ns.flock, T.ewe, T.ram, lamb.id, bought[0].id].sort();
-    if (JSON.stringify([...s10.flock].sort()) !== JSON.stringify(expect)) throw new ProbeError(`end flock should be the starter flock plus the tutorial sheep: ${JSON.stringify(s10.flock)} vs ${JSON.stringify(expect)}`);
+    if (JSON.stringify(ns.flock) !== JSON.stringify(s0.flock) || ns.money !== s0.money) throw new ProbeError(`?seed=${s0.seed} should start with the tutorial's two sheep and coins (flock ${JSON.stringify(ns.flock)}, coins ${ns.money})`);
     await n.close();
 
     await click(g, "#mentor [data-tutorial=ack]", "let's farm");
@@ -186,8 +261,27 @@ export const tutorial = {
     if (hud.mentor || hud.arrow) throw new ProbeError(`after the tutorial the mentor and arrow should be gone: ${JSON.stringify(hud)}`);
     if (!/blue lamb/i.test(hud.goal)) throw new ProbeError(`after the tutorial the HUD should show the act goal, shows "${hud.goal}"`);
     ctx.artifact(await g.screenshot("tut-end"));
+    // The codex keeps the Punnet square as a concept card.
+    await click(g, "#hud [data-open=codex]", "codex");
+    await g.waitPanel("codex");
+    const card = g.page.locator('#overlay [data-concept="punnet"]');
+    if (!(await card.count())) throw new ProbeError("the codex should keep the Punnet square as a concept card");
+    if (!(await card.locator(".punnet").count())) throw new ProbeError("the codex's Punnet card should draw the square");
+    await card.scrollIntoViewIfNeeded();
+    await g.page.waitForTimeout(150);
+    ctx.artifact(await g.screenshot("tut-codex"));
+    // One sleep after the tutorial: the next concept (letters) arrives alone, and still no new sheep.
+    await g.act({ type: "close" });
+    const beforeFlock = new Set((await g.state()).flock);
+    await g.act({ type: "sleep" });
+    await g.waitPanel("report", 12_000);
+    const s11 = await g.state();
+    const arrived = s11.flock.filter((/** @type {string} */ id) => !beforeFlock.has(id));
+    if (arrived.length) throw new ProbeError(`no sheep should arrive after the tutorial except bred lambs, got ${arrived.join(",")}`);
+    if (JSON.stringify(s11.unlocks) !== JSON.stringify(["cards", "orders"])) throw new ProbeError(`the season after the tutorial should bring the letters alone, unlocks: ${JSON.stringify(s11.unlocks)}`);
+    ctx.artifact(await g.screenshot("tut-after"));
     g.assertNoErrors("during the tutorial");
-    ctx.note(`seed ${s0.seed}: steps 1–10 advanced on their actions (${how.join(", ")}); handover = newGame(${s0.seed}) flock of ${ns.flock.length} + 4 tutorial sheep`);
+    ctx.note(`seed ${s0.seed}: steps 1–12 advanced on their actions (${how.join(", ")}); Punnet 3:1 (hover and pick work), colour square 3:1; end flock = 4 tutorial sheep, no handover; next season brings only the letters`);
     await g.close();
 
     // Skipping: from the mentor card, the flock arrives at once.
@@ -196,9 +290,9 @@ export const tutorial = {
     await click(k, "#mentor [data-tutorial=skip]", "skip");
     await k.page.waitForFunction(() => /** @type {any} */ (window).__game.tutorial()?.done === true, null, { timeout: 5_000 });
     const ks = await k.state();
-    if (ks.flock.length !== 7) throw new ProbeError(`skipping should hand over the 5 starter sheep (flock ${ks.flock.length}, want 7)`);
+    if (ks.flock.length !== 2) throw new ProbeError(`skipping should keep the two starter sheep and add none (flock ${ks.flock.length})`);
     k.assertNoErrors("skipping the tutorial");
-    ctx.note("skip hands over the starter flock at once");
+    ctx.note("skip keeps the two-sheep farm (no handover)");
     // Settings → Replay the tutorial (behind a confirm) starts a fresh tutorial farm.
     await click(k, "#hud [data-open=settings]", "settings");
     await k.waitPanel("settings");

@@ -7,7 +7,7 @@ import {
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
   seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
-  greetAnimal, giveTreat, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade,
+  greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade,
   type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
 } from "./core/index.js";
 import { WorldView, type Hotspot, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
@@ -17,13 +17,15 @@ import {
   type ActionData, type PanelName, type TutorialTarget, type View,
 } from "./ui/index.js";
 import { fastForward } from "./debug.js";
-import { Voices, bleatSeries, petVoiceFor, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
+import { Voices, bleatSeries, happySeries, petVoiceFor, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
 
 export const SAVE_KEY = "blue-sheep-save-v2";
 const MOTION_KEY = "blue-sheep-reduced-motion";
 export const VERSION = "1.0.0";
 /** Sheep that fit in the first paddock before the rest move to the second one. */
 const PADDOCK_ROOM = 10;
+/** CSS px of rubbing on a dog's or the cat's picture that make one pat (the same as a sheep's brushing). */
+const PAT_NEEDED = 140;
 
 export type Action =
   | { type: "plan"; ewe: string; ram: string }
@@ -39,6 +41,8 @@ export type Action =
   | { type: "upgrade"; id: string }
   /** Give a sheep in the flock, or an owned dog/cat, a treat (1 coin, once a season). Greeting is opening its card. */
   | { type: "treat"; id: string }
+  /** Brush a sheep (pat a dog or the cat): once a season. In the game it is a drag across the live portrait. */
+  | { type: "brush"; id: string }
   | { type: "rename"; id: string; name: string }
   | { type: "newGame"; seed?: number }
   | { type: "open"; panel: PanelName; id?: string }
@@ -159,6 +163,8 @@ export class App {
       // a scratch behind the ears: it bleats, and (cosmetic only) a couple of hearts float up in the field
       onPortraitClick: (id) => { this.bleat(id, true); if (this.state.flock.includes(id)) this.world.love(id, 2); },
       onPet: (id) => this.guard(() => this.onPetClick(id)),
+      // brushing the live portrait: a swish per stroke; a full brushing counts for fondness once a season
+      onBrush: (id, phase) => { if (phase === "stroke") this.voices.swish(); else this.guard(() => this.brush(id)); },
     }, { seed: this.state.seed, reducedMotion: this.reduced });
     this.world.setSnapshot(this.snapshot());
   }
@@ -319,6 +325,7 @@ export class App {
     document.body.dataset.panel = this.view.panel ?? "";
     this.world.setSnapshot(this.snapshot());
     this.syncSheepLife();
+    this.syncPetPat();
     this.renderTutorial();
     for (const [id, n] of this.loveQueue) this.world.love(id, n);
     this.loveQueue.clear();
@@ -343,6 +350,67 @@ export class App {
     this.loveQueue.set(id, 6);
     this.bleat(id, true);
     toast(`${name} loved that!`);
+  }
+
+  /**
+   * A full brushing (a sheep's live portrait) or pat (a dog's or the cat's picture): a contented noise every
+   * time; fondness and hearts in the field once per animal per season (core `brushAnimal`), then the card
+   * re-renders to show "Brushed this season".
+   */
+  private brush(id: string): void {
+    const v = this.voiceOf(id);
+    if (v) this.voices.bleat(v, { steps: happySeries(v), force: true, gain: 0.8 });
+    if (!this.sleeping && brushAnimal(this.state, id) > 0) {
+      const name = isPetId(id) ? PET_NAME[id] : this.state.sheep[id]?.name ?? "It";
+      this.loveQueue.set(id, Math.max(this.loveQueue.get(id) ?? 0, 4));
+      this.persist = true;
+      this.save();
+      toast(isPetId(id) ? `${name} loved that pat!` : `${name} loved that brush!`);
+      this.render();
+    }
+    if (!isPetId(id)) this.world.portraitCheer();
+  }
+
+  /** The animal card's picture: rub it (click-and-drag) to pat the dog or the cat. */
+  private syncPetPat(): void {
+    if (this.view.panel !== "animal") return;
+    const id = this.view.sheepId;
+    const stage = this.overlay.el.querySelector<HTMLElement>(".pet-stage");
+    if (!id || !stage || stage.dataset.pat) return;
+    stage.dataset.pat = id;
+    let drag: { x: number; y: number; moved: number; stroke: number; heart: number } | null = null;
+    const heart = (x: number, y: number) => {
+      const h = document.createElement("span");
+      h.className = "brush-heart";
+      h.textContent = "♥";
+      h.style.left = `${Math.round(x)}px`;
+      h.style.top = `${Math.round(y)}px`;
+      stage.appendChild(h);
+      window.setTimeout(() => h.remove(), 1300);
+    };
+    stage.addEventListener("pointerdown", (e) => {
+      drag = { x: e.clientX, y: e.clientY, moved: 0, stroke: 0, heart: 0 };
+      try { stage.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      e.preventDefault();
+    });
+    stage.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const step = Math.hypot(e.clientX - drag.x, e.clientY - drag.y);
+      drag.x = e.clientX; drag.y = e.clientY;
+      drag.moved += step;
+      if (drag.moved - drag.stroke >= 90) { drag.stroke = drag.moved; this.voices.swish(0.25); }
+      if (drag.moved - drag.heart >= 70) { drag.heart = drag.moved; const r = stage.getBoundingClientRect(); heart(e.clientX - r.left, e.clientY - r.top - 10); }
+    });
+    const up = () => {
+      const d = drag;
+      drag = null;
+      if (!d || d.moved < PAT_NEEDED) return;
+      const r = stage.getBoundingClientRect();
+      for (let i = 0; i < 4; i++) heart(r.width * (0.3 + 0.4 * Math.random()), r.height * 0.3);
+      this.guard(() => this.brush(id));
+    };
+    stage.addEventListener("pointerup", up);
+    stage.addEventListener("pointercancel", up);
   }
 
   // ------------------------------------------------------------------ tutorial
@@ -438,31 +506,18 @@ export class App {
     this.tutFrame = requestAnimationFrame(this.tutorialFrame);
   };
 
-  /** The handover: close any panel so the new arrivals are seen popping into the field, with a sparkle each. */
-  private welcomeFlock(before: Set<string>): void {
-    const arrived = this.state.flock.filter((id) => !before.has(id));
-    if (!arrived.length) return;
-    this.view.panel = null;
-    this.view.tab = null;
-    this.render();
-    this.world.focus(arrived[0]!);
-    for (const id of arrived) this.world.celebrate(id);
-  }
-
   private tutorialOp(op: "start" | "ack" | "skip", seed?: number): void {
     if (op === "start") { this.startNewGame(seed, true); return; }
     if (op === "skip") {
-      const before = new Set(this.state.flock);
       skipTutorial(this.state);
-      this.welcomeFlock(before);
-      toast("The rest of the old farm's flock has arrived. Happy farming!");
+      toast("Tutorial skipped. The farm is yours — happy farming!");
     } else {
       const id = tutorialStep(this.state);
       const def = TUTORIAL_STEPS.find((d) => d.id === id);
       if (!id || !def?.ack) throw new Error("Do what Old Tom asks to carry on.");
-      const before = new Set(this.state.flock);
       advanceTutorial(this.state, id);
-      if (tutorialStep(this.state) === "done") this.welcomeFlock(before);
+      // "Let's farm!": the tutorial is over, so close whatever panel was open and show the farm.
+      if (this.state.tutorial?.done) { this.view.panel = null; this.view.tab = null; }
     }
     this.persist = true;
     this.save();
@@ -635,6 +690,7 @@ export class App {
       case "hire": this.mutate(() => hireVisitingRam(this.state)); break;
       case "upgrade": this.mutate(() => buyUpgrade(this.state, a.id)); break;
       case "treat": this.treat(a.id); break;
+      case "brush": this.brush(a.id); break;
       case "rename": this.mutate(() => renameSheep(this.state, a.id, a.name)); break;
       case "newGame": this.startNewGame(a.seed); return;
       case "tutorial": this.tutorialOp(a.op, a.seed); if (a.op === "start") return; break;
@@ -689,7 +745,7 @@ export class App {
     this.world.dispose();
     this.makeWorld();
     this.render();
-    if (!tutorial) toast(`A new farm (seed ${s}). The old flock is waiting in the paddock.`);
+    if (!tutorial) toast(`A new farm (seed ${s}). Your two sheep are waiting in the paddock.`);
   }
 
   private setReducedMotion(on: boolean): void {
