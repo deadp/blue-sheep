@@ -5,7 +5,6 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-- **Pacing calendar + mini-lessons + hold-to-brush (v2, now):** DESIGN-v3 §15 items 13–14; also fix the forecast litter wrapping to two rows at 1280 px, long names overlapping the candidate hint chip, and CLAUDE.md's stale "ten steps" tutorial line.
 
 Nothing in progress. The v3 design pass is written: **`docs/DESIGN-v3.md`** (pigment genetics,
 breeds and wool types, fantasy wools, woolshed pipeline, items, demand meters, birds, river
@@ -90,6 +89,8 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- Pacing calendar + mini-lessons + three-lamb tutorial + hold-to-brush (6ecfcf6): vet Y2 Spring, improvements Y2 Autumn, dogs/foxes Y3 Spring, cat/mice Y3 Autumn, letters as the tutorial ends; data-driven Old Tom lessons (core/lessons.ts) for every concept; tutorial spread over three lambings (white, horned + Punnet, black); press-and-hold brushing and pats; forecast litter one row, long names ellipsised. Blind 30 seeds: 90% ending, median 26, money 475 (seeds 31–60: 97%, 28, 426).
 
 - Tutorial + pacing + brushing (0af0576): Punnet square with horns in the tutorial (2×2, pictures and
   words, 3 polled : 1 horned, hover/click interactive, letters only with numbers) and again for the surprise
