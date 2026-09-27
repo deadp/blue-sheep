@@ -90,6 +90,8 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Done
 
+- v3 Phase 1, genetics v3 library (7f2ee12): `sheep3` species (W mask, 2 pigment loci per colour, dilution, spotting, horns, double coat, hairy fibre, six fantasy loci with sports at μ 0.001, fleece QTLs incl. staple, lustre, colour strength); `woolColour` paint-mix model with families, intensity, true blue; seven breeds with calibrated founder frequencies and `woolType`; inference honours masking, has breed priors and a locus-swap move, and runs ~3× faster (15 traits × 200 sheep ≈ 0.2–0.3 s). Palette sheet: `packages/genetics/scripts/palette.ts`. The game is unchanged; next is Phase 2.
+
 - Pacing calendar + mini-lessons + three-lamb tutorial + hold-to-brush (6ecfcf6): vet Y2 Spring, improvements Y2 Autumn, dogs/foxes Y3 Spring, cat/mice Y3 Autumn, letters as the tutorial ends; data-driven Old Tom lessons (core/lessons.ts) for every concept; tutorial spread over three lambings (white, horned + Punnet, black); press-and-hold brushing and pats; forecast litter one row, long names ellipsised. Blind 30 seeds: 90% ending, median 26, money 475 (seeds 31–60: 97%, 28, 426).
 
 - Tutorial + pacing + brushing (0af0576): Punnet square with horns in the tutorial (2×2, pictures and
