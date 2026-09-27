@@ -1036,3 +1036,13 @@ and tuning is a separate commit only if a target is badly missed.
     blind sims; Icelandic sheep only appear at the market in a later chapter
     (reward after learning colour breeding); add "slate" and "olive" as colour
     names for muted cool hues (usable in orders and words).
+20. **Style direction, round 1 picks (user, 2026-09-27):** world style leans
+    **C. Misty Pastoral** (soft light, morning mist), but the user wants a
+    second round of concepts that show how the map expands pasture over the
+    game before committing. Panels: **wool felt and fibrey materials** (felt,
+    yarn, knitted and woven textures, embroidered icons, stitching, pom-poms)
+    rather than wood/iron or paper. Sheep: **slightly more realistic**, as in
+    option C (less chibi/toy). Fonts: handwritten/stamped lettering for
+    headings and names only; a clean readable font for numbers, buttons and
+    sentences. Watch-out: mist must not wash out sheep colours (colour is the
+    core mechanic) — keep mist to distance/edges.
