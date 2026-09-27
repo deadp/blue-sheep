@@ -1019,3 +1019,14 @@ and tuning is a separate commit only if a target is badly missed.
     calendar accordingly (Phase 7 / chapters). Act-concept lessons (numbers,
     fair, tree, visiting ram) are kept. Brushing hold stays 1.2 s. For now the
     v2 letters arrive straight after the tutorial.
+18. **Early look-and-feel block (user, 2026-09-27):** reorder phases so that,
+    right after Phase 1 (genetics library), come (a) a **style exploration**:
+    3–4 distinct art/UI directions for the kiwiana-fantasy look, each shown as
+    mockup screenshots of the same scenes (farm overview in the river valley,
+    a sheep card, the forecast, the HUD), for the user to pick from; then
+    (b) **UI foundation** in the chosen direction; then (c) **river valley map
+    + art style + animation pass** (procedural, in code), leaving spaces for the
+    woolshed, the native-bush bird edge and the road to the A&P showground.
+    Gameplay phases (pigment colours in game, breeds, wool store/market,
+    woolshed, fantasy wools, chapters, birds) follow and build on the chosen
+    look. The Blender model refresh stays last and optional.
