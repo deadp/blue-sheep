@@ -109,7 +109,7 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Done
 
-- v3 world pass (COMMIT): the square diorama is replaced by the close-iso Kōwhai Creek valley at play scale
+- v3 world pass (f0f1f73): the square diorama is replaced by the close-iso Kōwhai Creek valley at play scale
   (`world3d/valley.ts`, `farm.ts`): homestead, barn, home paddock, trader's stall and pen, mailbox, woolshed with
   its verandah stations (empty benches) and yards, vet's hut and ute, showground, creek and bridge, native bush
   edge; the creek flats, far bank, rushy corner and terraces as locked land (scrub, rank grass, broken fences, a
