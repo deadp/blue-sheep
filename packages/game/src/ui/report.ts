@@ -2,8 +2,9 @@
 import {
   FAIR_LABEL, MICE_ANNOUNCE, PET_NAME, paceStep, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
-import { lambTile, litterLooks, litterWords } from "./forecast.js";
+import { lambTile, litterLooks } from "./forecast.js";
 import { cap, discoveryText, discoveryTitle, esc, hex, portrait, UNLOCK_ICON, UNLOCK_WORDS } from "./util.js";
+import { btn, head, icon, iconize, nm, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 
 const SURPRISE = 0.2;
@@ -15,18 +16,18 @@ function lambReveal(state: GameState, view: View, l: Sheep, f: CrossForecast | u
   const surprise = !!f && p < SURPRISE;
   const blue = colour === "blue";
   const words = `${colour}${l.phenotype["pattern"] === "spotted" ? ", spotted" : ""}${l.phenotype["horns"] === "horned" ? ", horned" : ""}`;
-  const why = surprise ? (inTen ? "Only a long shot!" : "Not even one of your ten!") : "";
+  const why = surprise ? (inTen ? "A long shot!" : "Not one of your ten!") : "";
   return `<button class="born flip ${surprise ? "surprise" : ""} ${blue ? "blue" : ""}" data-sheep="${esc(l.id)}" style="--d:${k}" aria-label="${esc(`${l.name}, ${words}`)}">
     <span class="flip-inner">
-      <span class="f-back" aria-hidden="true"><span class="q">?</span></span>
+      <span class="f-back" aria-hidden="true">${icon("sheep", "lg")}</span>
       <span class="f-front">
         ${portrait(view, l, "sm")}
-        <span><b>${esc(l.name)}</b> <span class="meta">${l.sex === "ewe" ? "♀" : "♂"}</span><br>
-        <span class="swatch" style="--wool:${hex(colour)}"></span>${esc(words)}${blue ? " — blue!" : ""}
-        ${surprise ? `<br><span class="surprise-tag">✨ Surprise! ${esc(why)}</span>` : ""}${l.inbreeding >= 0.125 ? `<br><span class="meta">a little small — close kin</span>` : ""}</span>
+        <span class="b-txt"><span class="nm">${esc(l.name)}</span> <span class="meta">${l.sex === "ewe" ? "♀" : "♂"}</span><br>
+        <span class="swatch" style="--wool:${hex(colour)}"></span>${esc(words)}${blue ? "!" : ""}
+        ${surprise ? `<br><span class="surprise-tag">${icon("sparkle", "inl")} ${esc(why)}</span>` : ""}${l.inbreeding >= 0.125 ? `<br><span class="meta">small: close kin</span>` : ""}</span>
       </span>
     </span>
-    ${surprise ? `<span class="burst" aria-hidden="true"><i>✦</i><i>✧</i><i>★</i><i>✦</i><i>✧</i><i>★</i></span>` : ""}
+    ${surprise ? `<span class="burst" aria-hidden="true">${icon("sparkle")}${icon("star")}${icon("sparkle")}${icon("star")}${icon("sparkle")}${icon("star")}</span>` : ""}
   </button>`;
 }
 
@@ -59,9 +60,9 @@ function matingRows(state: GameState, view: View, r: SeasonReport): string {
     const lambs = r.lambs.filter((l) => l.dam === e);
     const ex = f ? expectedRow(state, view, f, lambs) : { html: "", inTen: lambs.map(() => true) };
     return `<div class="reveal" style="--row:${row}">
-      <div class="r-pair"><b>${esc(ewe?.name ?? "?")} × ${esc(ram?.name ?? "?")}</b></div>
-      <div class="r-fore"><div class="lbl">You expected</div>${ex.html}<div class="meta">${f ? esc(litterWords(state, f.colour)) : ""}</div></div>
-      <div class="r-arrow" aria-hidden="true">→</div>
+      <div class="r-pair">${nm(esc(ewe?.name ?? "?"))} ${icon("heart", "sm")} ${nm(esc(ram?.name ?? "?"))}</div>
+      <div class="r-fore"><div class="lbl">You expected</div>${ex.html}</div>
+      <div class="r-arrow" aria-hidden="true">${icon("arrow")}</div>
       <div class="r-born"><div class="lbl">Born</div>${lambs.length ? lambs.map((l, k) => lambReveal(state, view, l, f, k, ex.inTen[k] ?? true)).join("") : `<span class="meta">${esc(ewe?.name ?? "She")} was too poorly to lamb.</span>`}</div>
     </div>`;
   }).join("");
@@ -69,9 +70,9 @@ function matingRows(state: GameState, view: View, r: SeasonReport): string {
 
 function latestSummary(state: GameState): string {
   const last = state.log.filter((l) => l.season === state.season).slice(-8);
-  return `<h2>${esc(seasonLabel(state.season))}</h2>
-    ${last.length ? `<ul class="plain">${last.map((l) => `<li>${esc(l.text)}</li>`).join("")}</ul>` : `<p>Nothing has happened yet this season. Plan some matings, then sleep.</p>`}
-    <div class="row"><button class="primary" data-close>Carry on</button></div>`;
+  return `${head("calendar", esc(seasonLabel(state.season)), 2)}
+    ${last.length ? `<ul class="plain">${last.map((l) => `<li>${iconize(esc(l.text))}</li>`).join("")}</ul>` : `<p>Nothing yet this season. Plan some matings, then press Next season.</p>`}
+    <div class="row">${btn("Carry on", { kind: "primary", icon: "check", data: { close: "" } })}</div>`;
 }
 
 export function reportHtml(state: GameState, view: View): string {
@@ -80,58 +81,58 @@ export function reportHtml(state: GameState, view: View): string {
   const blocks: string[] = [];
   if (r.actAdvanced) {
     const a = r.actAdvanced;
-    blocks.push(`<div class="act-banner"><div class="act">Act ${a.act + 1} · ${esc(a.title)}</div><blockquote>“${esc(a.line)}”</blockquote>
-      <div><b>New goal:</b> ${esc(a.goalText)}</div>
-      ${a.flockCap > 0 ? `<div class="meta">Room for ${state.flockCap} sheep.</div>` : ""}</div>`);
+    blocks.push(`<div class="act-banner">${icon("rosette", "xl")}<div><div class="act">Act ${a.act + 1} · ${esc(a.title)}</div><blockquote>“${esc(a.line)}”</blockquote>
+      <div><b>New goal:</b> ${esc(a.goalText)}</div></div></div>`);
   }
   // At most one new concept a season (core/pacing.ts): named, with Old Tom's one-line introduction.
   if (r.unlocked) {
     const u = r.unlocked;
-    blocks.push(`<div class="act-banner new-thing" data-unlocked="${esc(u)}"><div class="act">${UNLOCK_ICON[u]} New on the farm: ${esc(UNLOCK_WORDS[u])}</div>
-      <div><b>Old Tom:</b> “${esc(paceStep(u)?.intro ?? "")}”</div></div>`);
+    blocks.push(`<div class="act-banner new-thing" data-unlocked="${esc(u)}">${icon(UNLOCK_ICON[u], "xl")}<div><div class="act">New: ${esc(UNLOCK_WORDS[u])}</div>
+      <div class="tom-says">${icon("tom", "inl")} “${iconize(esc(paceStep(u)?.intro ?? ""))}”</div></div></div>`);
   }
   const blues = r.lambs.filter((l) => l.phenotype["colour"] === "blue");
   if (blues.length && state.stats.bluesBorn === blues.length) {
-    blocks.push(`<div class="act-banner blue"><div class="act">💙 Your first blue lamb!</div><div>${esc(blues.map((b) => b.name).join(" and "))} ${blues.length > 1 ? "are" : "is"} blue — the colour hiding in the flock all along.</div></div>`);
+    blocks.push(`<div class="act-banner blue">${icon("heart", "xl t-blue")}<div><div class="act">Your first blue lamb!</div><div>${esc(blues.map((b) => b.name).join(" and "))} ${blues.length > 1 ? "are" : "is"} blue.</div></div></div>`);
   }
-  if (r.endingReached) blocks.push(`<div class="act-banner gold"><div class="act">🏅 Your breed is registered!</div><div>The whole village is coming to see.</div></div>`);
+  if (r.endingReached) blocks.push(`<div class="act-banner gold">${icon("rosette", "xl")}<div><div class="act">Your breed is registered!</div><div>The whole village is coming to see.</div></div></div>`);
   const matings = matingRows(state, view, r);
-  blocks.push(`<h3>Lambing</h3>${matings || `<p class="meta">No matings were planned, so no lambs this time.</p>`}`);
+  blocks.push(`${head("sheep", "Lambing")}${matings || `<p class="meta">No matings were planned, so no lambs this time.</p>`}`);
   if (r.discoveries.length) {
     // A big season can turn up a dozen facts; show the first few and send the rest to the codex.
     const shown = r.discoveries.slice(0, MAX_CARDS);
     const more = r.discoveries.length - shown.length;
-    blocks.push(`<h3>New discoveries</h3><div class="dcards">${shown.map((d) =>
-      `<div class="dcard sparkle"><div class="d-top">✨ ${esc(discoveryTitle(d))}</div><div>${esc(discoveryText(state, d))}</div></div>`).join("")}</div>
-      ${more > 0 ? `<p class="meta">…and ${more} more. <button class="link" data-open="codex">See them all in the codex</button></p>` : ""}`);
+    blocks.push(`${head("sparkle", "Discoveries")}<div class="dcards">${shown.map((d) =>
+      `<div class="dcard sparkle"><div class="d-top">${icon("sparkle", "inl")} ${esc(discoveryTitle(d))}</div><div>${esc(discoveryText(state, d))}</div></div>`).join("")}</div>
+      ${more > 0 ? `<p class="meta">…and ${more} more in the ${btn("codex", { kind: "ghost", icon: "book", cls: "inline", data: { open: "codex" } })}</p>` : ""}`);
   }
-  const shed = r.shedBonus ? ` (the shearing shed added ${r.shedBonus})` : "";
-  const money: string[] = [`🧶 Wool sold for <b>${r.income}</b> coins${shed}`, `🌾 feed cost <b>${r.feed}</b>`];
+  const money = (i: IconName, v: string, label: string, cls = "") => `<div class="money ${cls}">${icon(i)}<b>${v}</b><span>${label}</span></div>`;
   const lines: string[] = [];
+  const li = (cls: string, i: IconName, html: string) => lines.push(`<li class="${cls}">${icon(i, "inl")}<span>${html}</span></li>`);
   // Fondness: what happy (or skittish) sheep did to this shearing.
   const fond = r.fondBonus ?? 0;
-  if (fond > 0) lines.push(`<li class="good fond">💗 Happy sheep: <b>+${fond}</b> coin${fond === 1 ? "" : "s"} this shearing. Sheep who are fond of you grow better wool.</li>`);
-  else if (fond < 0) lines.push(`<li class="bad fond">😟 Skittish sheep: <b>−${-fond}</b> coin${fond === -1 ? "" : "s"} this shearing. Say hello to them, or bring a treat.</li>`);
-  if (r.mice) lines.push(`<li class="${r.mice.cat ? "good" : "bad"}">🐭 ${esc(r.mice.text)}${r.mice.wool + r.mice.feed ? ` <b>−${r.mice.wool + r.mice.feed}</b>` : ""}</li>`);
-  for (const o of r.orderResults) lines.push(`<li class="${o.outcome === "filled" ? "good" : "bad"}">${o.outcome === "filled" ? "✉️" : "💔"} ${esc(cap(o.text))}${o.reward ? ` <b>+${o.reward}</b>` : ""}</li>`);
+  if (fond > 0) li("good fond", "heart", `Happy sheep: <b>+${fond}</b> coin${fond === 1 ? "" : "s"} of wool.`);
+  else if (fond < 0) li("bad fond", "heartBroken", `Skittish sheep: <b>−${-fond}</b> coin${fond === -1 ? "" : "s"}. Say hello, or bring a treat.`);
+  if (r.mice) li(`${r.mice.cat ? "good" : "bad"} ev-mice`, "mouse", `${esc(r.mice.text)}${r.mice.wool + r.mice.feed ? ` <b>−${r.mice.wool + r.mice.feed}</b>` : ""}`);
+  for (const o of r.orderResults) li(o.outcome === "filled" ? "good" : "bad", o.outcome === "filled" ? "mail" : "heartBroken", `${esc(cap(o.text))}${o.reward ? ` <b>+${o.reward}</b>` : ""}`);
   if (r.fairResult) {
     const fr = r.fairResult;
-    lines.push(`<li class="${fr.place === 1 ? "good" : ""}">🎪 ${esc(FAIR_LABEL[fr.category])}: ${esc(fr.text)}${fr.prize ? ` <b>+${fr.prize}</b>` : ""}</li>`);
+    li(fr.place === 1 ? "good" : "", "rosette", `${esc(FAIR_LABEL[fr.category])}: ${esc(fr.text)}${fr.prize ? ` <b>+${fr.prize}</b>` : ""}`);
   }
   if (r.event) {
     const k = r.event.kind;
-    const icon = k === "fox" ? "🦊" : k === "wolf" ? "🐺" : k === "hardWinter" ? "❄️" : "📈";
+    const i: IconName = k === "fox" ? "fox" : k === "wolf" ? "wolf" : k === "hardWinter" ? "snow" : "coin";
     const pred = k === "fox" || k === "wolf";
     const cls = pred ? (r.event.saved ? "good" : r.event.sheep ? "bad" : "") : "";
-    lines.push(`<li class="${cls}">${icon} ${esc(r.event.text)}${pred && r.event.dog ? ` <span class="tag ok">Good dog, ${esc(PET_NAME[r.event.dog])}!</span>` : ""}</li>`);
+    li(`${cls} ev-${k}`, i, `${esc(r.event.text)}${pred && r.event.dog ? ` <span class="tag tone-sage ok">${icon("dog", "inl")}Good dog, ${esc(PET_NAME[r.event.dog])}!</span>` : ""}`);
   }
-  for (const d of r.deaths) lines.push(`<li>🕊 ${esc(d.name)} is gone.</li>`);
-  for (const a of r.autoSold) lines.push(`<li class="bad">🛒 The trader took ${esc(a.name)} for ${a.price} coins (${a.reason === "feed" ? "feed money ran short" : "no room"}).</li>`);
-  if (r.announced) lines.push(`<li>📣 ${esc(r.announced.text)}</li>`);
-  if (r.miceComing) lines.push(`<li>🐭 ${esc(MICE_ANNOUNCE)}</li>`);
-  if (r.newOrders.length) lines.push(`<li>✉️ ${r.newOrders.length} new order${r.newOrders.length === 1 ? "" : "s"} in the mailbox.</li>`);
-  blocks.push(`<h3>The farm</h3><p>${money.join(" · ")}. You have ${state.money} coins.</p>${lines.length ? `<ul class="plain events">${lines.join("")}</ul>` : ""}`);
-  return `<h2>${esc(seasonLabel(r.season))} <span class="meta">— a new season</span></h2>
+  for (const d of r.deaths) li("", "dove", `${esc(d.name)} is gone.`);
+  for (const a of r.autoSold) li("bad", "store", `The trader took ${esc(a.name)} for ${a.price} coins (${a.reason === "feed" ? "feed money ran short" : "no room"}).`);
+  if (r.announced) li("", "megaphone", esc(r.announced.text));
+  if (r.miceComing) li("ev-mice", "mouse", esc(MICE_ANNOUNCE));
+  if (r.newOrders.length) li("", "mail", `${r.newOrders.length} new letter${r.newOrders.length === 1 ? "" : "s"} in the mailbox.`);
+  blocks.push(`${head("coin", "The farm")}<div class="money-row">${money("yarn", `+${r.income}`, r.shedBonus ? `wool (shed +${r.shedBonus})` : "wool", "good")}${money("hay", `−${r.feed}`, "feed", "bad")}${money("coin", String(state.money), "coins now")}</div>
+    ${lines.length ? `<ul class="plain events">${lines.join("")}</ul>` : ""}`);
+  return `${head("calendar", `${esc(seasonLabel(r.season))}`, 2)}
     ${blocks.join("")}
-    <div class="row"><button class="primary" data-close>Back to the farm</button>${r.newOrders.length ? `<button class="secondary" data-open="orders">Read the orders</button>` : ""}</div>`;
+    <div class="row">${btn("Back to the farm", { kind: "primary", icon: "house", data: { close: "" } })}${r.newOrders.length ? btn("Read the letters", { icon: "mail", data: { open: "orders" } }) : ""}</div>`;
 }

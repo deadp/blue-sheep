@@ -152,7 +152,11 @@ export class App {
     if (panel) this.openPanel(panel, undefined);
     this.render();
     this.exposeHook();
-    requestAnimationFrame(() => requestAnimationFrame(() => { document.body.dataset.ready = "1"; }));
+    // Ready after the first frame and the felt fonts (so screenshots never catch a fallback face).
+    const fonts = (document as { fonts?: FontFaceSet }).fonts;
+    const ready = () => requestAnimationFrame(() => requestAnimationFrame(() => { document.body.dataset.ready = "1"; }));
+    if (fonts) void Promise.race([fonts.load("16px 'Patrick Hand'").then(() => fonts.load("700 16px Nunito")), new Promise((r) => setTimeout(r, 1500))]).then(ready, ready);
+    else ready();
   }
 
   // ------------------------------------------------------------------ world
@@ -607,6 +611,7 @@ export class App {
     const flock = s.flock.map((x) => s.sheep[x]!);
     if (id !== undefined && !s.sheep[id] && !(panel === "animal" && isPetId(id))) throw new Error("I can't find that sheep.");
     this.view.tab = tab;
+    this.view.tray = false;
     switch (panel) {
       case "forecast":
         this.view.sheepId = id ?? (flock.find((x) => x.sex === "ewe" && canBreed(x, s.season)) ?? flock.find((x) => isAdult(x, s.season)) ?? flock[0])?.id ?? null;
@@ -676,6 +681,7 @@ export class App {
         if (op === "start") return;
       }
       if (d["lesson"]) this.lessonOp(d["lesson"] as "ack" | "skip");
+      else if (d["tray"]) this.view.tray = d["tray"] === "open";
       else if (d["open"]) this.openPanel(d["open"] as PanelName, d["sheepId"], d["tab"] ?? null);
       else if (d["sheep"]) this.openPanel("sheep", d["sheep"]);
       else if (d["findmate"]) this.openPanel("forecast", d["findmate"]);

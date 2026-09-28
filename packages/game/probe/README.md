@@ -8,7 +8,7 @@ passing unit tests do not prove the game runs. Spec: `docs/CONTRACTS.md` §7.
 
 | Command | What it does |
 |---|---|
-| `npm run probe` | build, then smoke → play → panels → life → voices → tutorial → lessons → video; summary table; exit 1 on any failure |
+| `npm run probe` | build, then smoke → play → panels → ui → life → voices → tutorial → lessons → video; summary table; exit 1 on any failure |
 | `npm run probe:quick` | build, then smoke only |
 | `node packages/game/probe/run.mjs play panels` | build, then just the named steps |
 | `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, life, tutorial, video) |
@@ -37,6 +37,11 @@ screenshots of old code.
 - **panels.mjs**: deep-links each panel in `PANELS` (`?panel=<name>`, plus
   `&act=N` for gated panels), waits for `body[data-panel=<name>]`, and
   screenshots `panel-<name>.png`. Fails on console errors.
+- **ui.mjs**: the felt UI rules at 1280×800 and 1024×768: the HUD (fresh and act 3, with the
+  bag's tray closed and open) and every panel in `PANELS` plus a mid-game forecast, sheep card and
+  report. Asserts no overlapping HUD pieces (`[data-hud-piece]`), hit targets of at least 36 px, panels on
+  screen, and no genotype or early "%" text. Screenshots `out/ui/<name>-<width>.png`; visible word counts
+  in `out/ui/words.json`. `UI_PROBE_LENIENT=1` reports instead of failing (for before/after audits).
 - **life.mjs**: the sheep card's live portrait and the world's visit. Asserts one
   `canvas[data-live-portrait]` in the open sheep card, that switching cards moves
   it, that closing (button, `close` action, Escape) removes it and releases the

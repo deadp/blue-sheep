@@ -383,8 +383,8 @@ export const life = {
       await g.waitPanel("report", 10_000);
       const r = await g.page.evaluate(() => ({
         fond: document.querySelector("#overlay li.fond")?.textContent ?? "",
-        wolf: [...document.querySelectorAll("#overlay li")].map((l) => l.textContent ?? "").find((t) => t.includes("🐺")) ?? "",
-        mice: [...document.querySelectorAll("#overlay li")].map((l) => l.textContent ?? "").find((t) => t.includes("🐭")) ?? "",
+        wolf: document.querySelector("#overlay li.ev-wolf")?.textContent ?? "",
+        mice: document.querySelector("#overlay li.ev-mice")?.textContent ?? "",
       }));
       if (!/Happy sheep: \+\d+/.test(r.fond)) throw new ProbeError(`the report should show what happy sheep added: "${r.fond}"`);
       if (!r.wolf || !r.mice) throw new ProbeError(`the report should show the wolf and the mice: ${JSON.stringify(r)}`);

@@ -114,6 +114,8 @@ async function clickSheep(g, id, nextStep) {
 async function click(g, sel, what) {
   const el = g.page.locator(sel).first();
   if (!(await el.count())) throw new ProbeError(`${what}: nothing matches ${sel}`);
+  // Farm places live in the HUD's bag: open its tray first when the button is tucked away.
+  if (sel.startsWith("#hud [data-open") && !(await el.isVisible())) await g.page.locator("#hud [data-tray=open]").click();
   await el.click();
 }
 

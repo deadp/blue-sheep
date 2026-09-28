@@ -1,0 +1,54 @@
+/* Felt design tokens: colours, type, radii, depth, motion, and the procedural textures (SVG noise and
+   blanket stitch as data URIs, no image files). Every felt surface and component reads these. */
+:root {
+  /* felt colours: soft pastels */
+  --felt: #f7efe2;          /* oat, the panel felt */
+  --felt-hi: #fcf7ee;       /* lighter patch */
+  --felt-sage: #e3eed6;
+  --felt-rose: #f8dcd4;
+  --felt-sky: #d9e9f3;
+  --felt-butter: #faedcb;
+  --felt-lilac: #ebe1f2;
+  --felt-cream: #f7efe2;
+  --felt-rust: #f4d9c6;
+  /* button felts (text on them is AA: 4.5:1 or better) */
+  --btn-sage: #a9cf97;  --btn-sage-ink: #28431f;
+  --btn-butter: #f6e3b4; --btn-butter-ink: #4a3a1f;
+  --btn-sky: #bcd9e8;   --btn-sky-ink: #203f55;
+  --btn-rose: #f0b7aa;  --btn-rose-ink: #5c211a;
+  /* thread and ink */
+  --thread: #b76e5f;        /* blanket stitch */
+  --thread-soft: #c9a79a;
+  --thread-sage: #7f9c6e;
+  --ink: #4a3f3d;           /* 9:1 on felt */
+  --ink-soft: #5e514d;
+  --muted: #6c5f5a;         /* 5.3:1 on felt */
+  --line: #e2d5c2;
+  --good: #3f7a3a;
+  --bad: #a3402f;
+  --focus: #2f6f9f;
+  --heart: #e0708c;
+  --wool-blue: #7f9fe4;
+  /* type: handwritten for headings and names only; a clean face for everything else */
+  --f-hand: "Patrick Hand", "Comic Neue", cursive;
+  --f-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
+  /* shape and depth */
+  --r-panel: 26px;
+  --r-card: 20px;
+  --r-pill: 999px;
+  --lift: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 3px 0 rgba(120, 95, 80, .14), 0 10px 22px rgba(80, 70, 60, .2);
+  --lift-sm: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 2px 0 rgba(120, 95, 80, .14), 0 5px 12px rgba(80, 70, 60, .16);
+  --press: 0 1px 0 rgba(255, 255, 255, .4) inset, 0 1px 0 rgba(120, 95, 80, .14), 0 2px 5px rgba(80, 70, 60, .16);
+  --dash: 2px dashed rgba(183, 110, 95, .5);
+  --dash-light: 2px dashed rgba(255, 255, 255, .85);
+  /* motion: a gentle springy press */
+  --spring: cubic-bezier(.34, 1.56, .64, 1);
+  /* procedural textures */
+  --felt-noise: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22f%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.8%22%20numOctaves%3D%223%22%20seed%3D%224%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20values%3D%220%200%200%200%20.3%20%200%200%200%200%20.24%20%200%200%200%200%20.2%20%200%200%200%201.5%20-.62%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23f)%22%2F%3E%3C%2Fsvg%3E");
+  --felt-hair: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22240%22%20height%3D%22240%22%3E%3Cfilter%20id%3D%22g%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.015%20.12%22%20numOctaves%3D%222%22%20seed%3D%229%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20values%3D%220%200%200%200%201%20%200%200%200%200%201%20%200%200%200%200%201%20%200%200%200%201.3%20-.45%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E");
+  --bl-top: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2212%22%3E%3Cpath%20d%3D%22M0%202H16M8%202V10%22%20stroke%3D%22%23b76e5f%22%20stroke-width%3D%222.2%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E");
+  --bl-bottom: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2212%22%3E%3Cpath%20d%3D%22M0%2010H16M8%2010V2%22%20stroke%3D%22%23b76e5f%22%20stroke-width%3D%222.2%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E");
+  --bl-left: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2216%22%3E%3Cpath%20d%3D%22M2%200V16M2%208H10%22%20stroke%3D%22%23b76e5f%22%20stroke-width%3D%222.2%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E");
+  --bl-right: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2216%22%3E%3Cpath%20d%3D%22M10%200V16M10%208H2%22%20stroke%3D%22%23b76e5f%22%20stroke-width%3D%222.2%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E");
+  --stitch-run: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2214%22%20height%3D%224%22%3E%3Cpath%20d%3D%22M1%202H8%22%20stroke%3D%22%23c9a79a%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+}

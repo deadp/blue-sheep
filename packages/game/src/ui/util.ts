@@ -2,6 +2,7 @@
 import {
   ageOf, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, type GameState, type Sheep, type Unlock,
 } from "../core/index.js";
+import { icon, type IconName } from "./felt/icons.js";
 
 export function esc(s: unknown): string {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -41,14 +42,14 @@ export function swatch(colour: string, extra = ""): string {
   return `<span class="swatch ${extra}" style="--wool:${hex(colour)}" aria-hidden="true"></span>`;
 }
 
-export function sexMark(s: Sheep): string {
-  return s.sex === "ewe" ? `<span class="sex ewe" title="ewe">♀</span>` : `<span class="sex ram" title="ram">♂</span>`;
+export function sexMark(s: Pick<Sheep, "sex">): string {
+  return s.sex === "ewe" ? `<span class="sex ewe" title="ewe" aria-label="ewe">♀</span>` : `<span class="sex ram" title="ram" aria-label="ram">♂</span>`;
 }
 
-/** Confidence dot: ● certain ◕ likely ◑ leaning ○ unknown. Title in words only. */
+/** Confidence dot, a felt knot filled to how sure you are: full certain, ¾ almost, ½ probably, empty unknown. */
 export function dot(confidence: number, certain: boolean): string {
-  const [g, w] = certain ? ["●", "certain"] : confidence > 0.85 ? ["◕", "almost certain"] : confidence > 0.6 ? ["◑", "probably"] : ["○", "unknown"];
-  return `<span class="dot c${certain ? 4 : confidence > 0.85 ? 3 : confidence > 0.6 ? 2 : 1}" title="${w}">${g}</span>`;
+  const w = certain ? "certain" : confidence > 0.85 ? "almost certain" : confidence > 0.6 ? "probably" : "unknown";
+  return `<span class="dot c${certain ? 4 : confidence > 0.85 ? 3 : confidence > 0.6 ? 2 : 1}" title="${w}" role="img" aria-label="${w}"></span>`;
 }
 
 /** Words under every odds meter, left to right. */
@@ -85,6 +86,11 @@ export function oddsMeter(state: GameState, p: number, o: MeterOptions = {}): st
     <span class="m-row">${segments(n, o.risk ? "risk" : "odds")}<span class="m-word">${esc(word)}${numbersOn(state) ? ` <span class="num">${Math.round(p * 100)}%</span>` : ""}</span></span>${scale}</span>`;
 }
 
+/** The odds scale words on their own: one legend above a list of compact meters. */
+export function oddsScale(): string {
+  return `<span class="m-scale odds solo" aria-hidden="true">${ODDS_SCALE.map((w, i) => `<span class="w${i}">${w}</span>`).join("")}</span>`;
+}
+
 /** Same look for "how much would this teach you" (forecast, vet): 0..1, blue segments, "a little → a lot". */
 export function learnMeter(v: number, word: string, o: MeterOptions = {}): string {
   const n = Math.max(0, Math.min(10, Math.round(v * 10)));
@@ -114,7 +120,7 @@ export function portrait(view: { portraits: (id: string) => string }, s: Sheep, 
 /** Clickable sheep chip (opens the sheep card). */
 export function chip(state: GameState, s: Sheep, extra = ""): string {
   const gone = !state.flock.includes(s.id);
-  return `<button class="chip ${gone ? "gone" : ""}" data-sheep="${esc(s.id)}">${swatch(String(s.phenotype["colour"]))}${esc(s.name)}${extra}</button>`;
+  return `<button class="chip ${gone ? "gone" : ""}" data-sheep="${esc(s.id)}">${swatch(String(s.phenotype["colour"]))}<span class="nm">${esc(s.name)}</span>${extra}</button>`;
 }
 
 export function ageWords(state: GameState, s: Sheep): string {
@@ -148,8 +154,8 @@ export const UNLOCK_WORDS: Record<Unlock, string> = {
 };
 
 /** An icon per concept, for the report's "new on the farm" banner. */
-export const UNLOCK_ICON: Record<Unlock, string> = {
-  cards: "📖", vet: "🩺", orders: "📮", numbers: "🔢", fair: "🎪", tree: "🌳", visitor: "🐏", farm: "🛖", dogs: "🐕", cat: "🐈",
+export const UNLOCK_ICON: Record<Unlock, IconName> = {
+  cards: "book", vet: "vet", orders: "mail", numbers: "ruler", fair: "rosette", tree: "tree", visitor: "ram", farm: "barn", dogs: "dog", cat: "cat",
 };
 
 export const LOCUS_FRIENDLY: Record<string, string> = {
@@ -177,7 +183,9 @@ export function traitWords(state: GameState, s: Sheep): { label: string; text: s
 
 export function stars(rep: number): string {
   const n = Math.max(0, Math.min(5, Math.round(rep / 2)));
-  return `<span class="stars" title="Reputation">${"★".repeat(n)}<span class="off">${"★".repeat(5 - n)}</span></span>`;
+  let out = "";
+  for (let i = 0; i < 5; i++) out += `<i class="${i < n ? "on" : ""}">${icon("star")}</i>`;
+  return `<span class="stars" title="Reputation: ${n} of 5" role="img" aria-label="Reputation: ${n} of 5">${out}</span>`;
 }
 
 /** Card heading: the friendly names of every hidden trait on the card. */
@@ -205,7 +213,7 @@ export function heartMeter(state: GameState, level: number, o: { to?: number; co
   let out = "";
   for (let i = 0; i < 5; i++) {
     const cls = h >= i + 1 ? "full" : h >= i + 0.5 ? "half" : t >= i + 0.5 ? "more" : "";
-    out += `<i class="${cls}" aria-hidden="true">♥</i>`;
+    out += `<i class="${cls}" aria-hidden="true">${icon("heart")}</i>`;
   }
   const word = fondnessWord(level);
   const num = numbersOn(state) ? ` <span class="num">${Math.round(level)}/100</span>` : "";

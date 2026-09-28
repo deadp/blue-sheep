@@ -177,7 +177,7 @@ export interface ActDef {
 export const ACTS: ActDef[] = [
   {
     act: 0, title: "The old farm", line: "The old farm is yours. Let's see what the flock gives us.",
-    goalText: "Plan a mating and sleep to see your first lambs.", unlocks: [], flockCap: 10,
+    goalText: "Plan a mating, then see your first lambs next season.", unlocks: [], flockCap: 10,
   },
   {
     act: 1, title: "Hidden colours", line: "Hidden colours! Breed me a blue sheep.",
@@ -185,7 +185,7 @@ export const ACTS: ActDef[] = [
   },
   {
     act: 2, title: "The wool buyer", line: "I pay for fineness.",
-    goalText: "Fill three villager orders. Up to two you've already filled count.", unlocks: ["numbers", "fair"], flockCap: 12,
+    goalText: "Fill three villager orders.", unlocks: ["numbers", "fair"], flockCap: 12,
   },
   {
     act: 3, title: "Fresh blood", line: "Blood too close. Bring in fresh rams.",

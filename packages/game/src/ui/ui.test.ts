@@ -10,6 +10,10 @@ const GENOTYPE = /[A-Za-z]\/[A-Za-z]/;
 const VOCAB = new Set([
   "close", "open", "sheep", "findmate", "mate", "goal", "plan", "buy", "sell", "hire", "test", "accept", "decline",
   "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial", "treat", "lesson",
+  // the HUD's bag: opens and closes the tray of farm places
+  "tray",
+  // not actions: HUD pieces (for the overlap probe) and "more" folds (kept open across re-renders)
+  "hud-piece", "more",
   // not actions: markers on the care box, the animal card and improvement cards (for probes and styles)
   "care", "pet", "upgrade-card",
   // not actions: the mentor card's step markers for probes and styles
@@ -121,7 +125,7 @@ describe("panel content", () => {
     const t = structuredClone(s) as GameState;
     t.plans[e!] = r!;
     const h = renderPanel(t, view({ panel: "forecast", sheepId: e!, mateId: r! }));
-    expect(h).toContain("★");
+    expect(h).toMatch(/class="tag [^"]*planned[^"]*"[^>]*><svg class="ic ic-star/); // the planned star tag
     expect(h).toContain("1 mating planned");
     expect(h).toContain("Cancel this mating");
   });
@@ -370,8 +374,8 @@ describe("panel content", () => {
     r.event = { kind: "wolf", season: s.season - 1, colour: null, sheep: null, saved: true, text: "The wolf came by night, but Samson the Maremma stood over the flock.", dog: "maremma" };
     const h = renderPanel(s, view({ panel: "report", report: r }));
     expect(h).toContain("Happy sheep: <b>+7</b>");
-    expect(h).toContain("🐭");
-    expect(h).toContain("🐺");
+    expect(h).toMatch(/<li class="[^"]*ev-mice[^"]*"><svg class="ic ic-mouse/);
+    expect(h).toMatch(/<li class="[^"]*ev-wolf[^"]*"><svg class="ic ic-wolf/);
     expect(h).toContain("Good dog, Samson!");
   });
 
@@ -431,7 +435,7 @@ describe("presentation", () => {
     expect(h.match(/class="pin ewe/g)?.length).toBe(2);
     expect(h.match(/class="pin ram/g)?.length).toBe(2);
     expect(h).toContain("where most lambs from this pair would land");
-    expect(h).toContain("🐑 lamb");
+    expect(h).toMatch(/class="b-lbl"><svg class="ic ic-sheep inl"[\s\S]*?<\/svg> lamb/); // the expected lamb, with a sheep icon
   });
 
   it("the season report flips each born lamb and rings the forecast lamb it matched", () => {

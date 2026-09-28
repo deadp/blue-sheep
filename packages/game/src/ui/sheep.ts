@@ -1,15 +1,18 @@
 /** Sheep card and family tree. */
 import {
-  FAIR_LABEL, PERSONALITY_ICON, PERSONALITY_WORD, TREAT_COST, brushedThisSeason, forecastBrush, isPetId, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
+  FAIR_LABEL, PERSONALITY_WORD, TREAT_COST, ageOf, fondnessWord, type Personality, brushedThisSeason, forecastBrush, isPetId, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
   forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
 import { ageWords, chip, dot, esc, has, heartMeter, hex, numbersOn, portrait, sexMark, swatch, traitWords } from "./util.js";
+import { btn, fact, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
+import type { View } from "./view.js";
 
 /** Pastel backdrop per wool colour for the live portrait (matches the world's portrait backgrounds). */
-const PORTRAIT_BG: Record<string, string> = { white: "#bfdcec", black: "#f5dcc4", brown: "#d4e9c6", blue: "#f7e2c2", fawn: "#cfdcf2" };
-const FLAVOUR_ICON: Record<string, string> = { fluffy: "☁️", stocky: "🪨", dainty: "🌼", curly: "➰", silky: "✨" };
-import type { View } from "./view.js";
+const PORTRAIT_BG: Record<string, string> = { white: "#cfe3ee", black: "#f5e2cf", brown: "#dcecd0", blue: "#f7e7cc", fawn: "#d9e3f3" };
+const FLAVOUR_ICON: Record<string, IconName> = { fluffy: "cloud", stocky: "stone", dainty: "flower", curly: "curl", silky: "sparkle" };
+/** An embroidered icon per personality (the core's emoji stay in core). */
+export const PERSONA_ICON: Record<Personality, IconName> = { shy: "flower", calm: "leaf", curious: "eye", bold: "sun" };
 
 export function cardSubject(state: GameState, view: View): Sheep | null {
   const s = view.sheepId ? state.sheep[view.sheepId] : undefined;
@@ -17,31 +20,45 @@ export function cardSubject(state: GameState, view: View): Sheep | null {
 }
 
 /**
- * The care box: how fond the animal is of you (hearts), whether you've said hello this season, what its
- * happiness does for its wool, and the treat: its forecast next to the button (Decide → Forecast → Commit).
+ * The care row: how fond the animal is of you (hearts, with the treat's gain drawn faintly: its forecast),
+ * whether you've said hello this season, the brushing (press and hold the picture) and the treat button.
+ * `effect` and the full treat forecast go behind "more" (`careMore`).
  */
-export function careHtml(state: GameState, id: string, effect: string): string {
+export function careHtml(state: GameState, id: string, _effect = ""): string {
   const level = fondnessOf(state, id);
   const treated = treatedThisSeason(state, id);
   const fc = treated ? null : forecastTreat(state, id);
-  const blocked = treatBlocked(state, id);
-  const said = greetedThisSeason(state, id) ? `<span class="c-said">♥ said hello this season</span>` : "";
-  const act = treated
-    ? `<span class="tag ok">Treat given ✓</span>`
-    : `<button class="secondary treat" data-treat="${esc(id)}" ${blocked ? "disabled" : ""}>Give a treat · ${TREAT_COST} coin</button>${blocked && state.money < TREAT_COST ? `<span class="meta">Not enough coins</span>` : ""}`;
   const pet = isPetId(id);
   const brushed = brushedThisSeason(state, id);
-  const fb = brushed ? null : forecastBrush(state, id);
+  const said = greetedThisSeason(state, id) ? `<span class="c-said">${icon("heart", "sm")}said hello this season</span>` : "";
   const brush = brushed
-    ? `<div class="c-brush done" data-brushed="1">${pet ? "✋ Patted" : "🪮 Brushed"} this season ✓</div>`
-    : `<div class="c-brush" data-brushed="0">${pet ? "✋ <b>Pat</b>: press and hold the picture above." : "🪮 <b>Brush</b>: press and hold the sheep in the picture above."}${fb ? ` ${esc(fb.text)}` : ""}</div>`;
+    ? `<span class="c-brush done" data-brushed="1">${icon(pet ? "hand" : "brush", "sm")}${pet ? "Patted" : "Brushed"} this season ${icon("check", "sm")}</span>`
+    : `<span class="c-brush" data-brushed="0">${icon(pet ? "hand" : "brush", "sm")}Press and hold the picture to ${pet ? "pat" : "brush"}</span>`;
+  const gain = fc && fc.after > level && fondnessWord(fc.after) !== fondnessWord(level) ? ` <span class="c-gain" title="A treat would make ${esc(fondnessWord(fc.after).toLowerCase())}">${icon("apple", "sm")}→ ${esc(fondnessWord(fc.after))}</span>` : "";
   return `<div class="care" data-care="${esc(id)}">
-    <div class="c-top"><span class="c-lbl">Fondness</span>${heartMeter(state, level, fc && fc.after > level ? { to: fc.after } : {})}${said}</div>
-    ${effect ? `<div class="c-wool">${effect}</div>` : ""}
-    ${brush}
-    <div class="c-fore">${treated ? "Had a treat this season. Say hello again next season." : esc(fc!.text)}</div>
-    <div class="c-act">${act}</div>
+    <div class="c-top">${heartMeter(state, level, fc && fc.after > level ? { to: fc.after } : {})}${gain}</div>
+    <div class="c-notes">${brush}${said}</div>
   </div>`;
+}
+
+/** The treat button (or "Treat given ✓"). */
+export function treatButton(state: GameState, id: string): string {
+  if (treatedThisSeason(state, id)) return tag(`Treat given ${icon("check", "sm")}`, { icon: "apple", tone: "rose", cls: "ok" });
+  const blocked = treatBlocked(state, id);
+  const fc = forecastTreat(state, id);
+  return btn(`Give a treat · ${TREAT_COST}`, { kind: "secondary", icon: "apple", cls: "treat", data: { treat: id }, disabled: !!blocked, title: blocked && state.money < TREAT_COST ? "Not enough coins" : fc.text });
+}
+
+/** The words behind "more" for the care row: the treat's forecast, the brushing's, and what fondness does. */
+function careMore(state: GameState, id: string, effect: string): string {
+  const treated = treatedThisSeason(state, id);
+  const fb = brushedThisSeason(state, id) ? null : forecastBrush(state, id);
+  const fc = treated ? null : forecastTreat(state, id);
+  return `<ul class="plain small care-more">
+    ${effect ? `<li>${effect}</li>` : ""}
+    <li>${icon("apple", "inl")} ${treated ? "Had a treat this season. Say hello again next season." : esc(fc!.text)}</li>
+    ${fb ? `<li>${icon("brush", "inl")} ${esc(fb.text)}</li>` : ""}
+  </ul>`;
 }
 
 /** What this sheep's fondness does for its wool, in a short sentence (coins; % only with numbers). */
@@ -52,14 +69,23 @@ function woolEffect(state: GameState, s: Sheep): string {
   const m = fondWoolMultiplier(level);
   const d = fleeceAt(state, s, level) - fleeceAt(state, s, 30);
   const pct = numbersOn(state) && Math.abs(m - 1) > 0.001 ? ` (${m > 1 ? "+" : "−"}${Math.round(Math.abs(m - 1) * 100)}%)` : "";
-  if (m > 1.001) return d > 0 ? `💗 Happy sheep grow better wool: ${her.toLowerCase()} fleece fetches about <b>+${d} coin${d === 1 ? "" : "s"}</b> a shearing${pct}.` : `💗 A happy sheep: ${her.toLowerCase()} wool is getting better${pct}.`;
-  if (m < 0.999) return `😟 Skittish sheep grow poorer wool: ${her.toLowerCase()} fleece fetches ${d < 0 ? `about <b>−${-d} coin${d === -1 ? "" : "s"}</b>` : "a little less"} a shearing${pct}. Say hello!`;
-  return `${her} wool fetches the usual price. Once ${s.sex === "ram" ? "he" : "she"} is fond of you, it fetches more.`;
+  if (m > 1.001) return d > 0 ? `${icon("heart", "inl")} Happy sheep grow better wool: ${her.toLowerCase()} fleece fetches about <b>+${d} coin${d === 1 ? "" : "s"}</b> a shearing${pct}.` : `${icon("heart", "inl")} A happy sheep: ${her.toLowerCase()} wool is getting better${pct}.`;
+  if (m < 0.999) return `${icon("heartBroken", "inl")} Skittish sheep grow poorer wool: ${her.toLowerCase()} fleece fetches ${d < 0 ? `about <b>−${-d} coin${d === -1 ? "" : "s"}</b>` : "a little less"} a shearing${pct}. Say hello!`;
+  return `${icon("yarn", "inl")} ${her} wool fetches the usual price. Once ${s.sex === "ram" ? "he" : "she"} is fond of you, it fetches more.`;
+}
+
+/** "3" + "seasons", or "2" + "years": the age fact tile. */
+function ageFact(state: GameState, s: Sheep): [string, string] {
+  const a = ageOf(s, state.season);
+  if (a <= 0) return ["new", "born"];
+  if (a < 8) return [String(a), `season${a === 1 ? "" : "s"}`];
+  const y = Math.floor(a / 4);
+  return [String(y), "years"];
 }
 
 export function sheepCardHtml(state: GameState, view: View): string {
   const s = cardSubject(state, view);
-  if (!s) return `<h2>No sheep</h2><p>Your fields are empty. The market has sheep for sale.</p>`;
+  if (!s) return `${head("sheep", "No sheep", 2)}<p>Your fields are empty. The market has sheep for sale.</p>`;
   const own = state.flock.includes(s.id);
   const forSale = state.market.includes(s.id);
   const visitor = state.visitingRam?.id === s.id;
@@ -69,54 +95,67 @@ export function sheepCardHtml(state: GameState, view: View): string {
     : `<span class="meta">${s.origin === "founder" ? "one of the old farm's flock — no records" : s.origin === "visitor" ? "from over the hills — no records" : "bought in — no pedigree"}</span>`;
   const kids = Object.values(state.sheep).filter((k) => k.dam === s.id || k.sire === s.id);
   const facts = factsFor(state, s.id).filter((f) => !(f.locus === "A" && s.phenotype["colour"] !== "white"));
-  const factList = facts.map((f) => `<li class="${f.certain ? "certain" : ""}">${dot(f.confidence, f.certain)} ${esc(f.text)}${s.tested[f.locus] ? ` <span class="meta">(vet tested)</span>` : ""}</li>`).join("");
+  const factList = facts.map((f) => `<li class="${f.certain ? "certain" : ""}">${dot(f.confidence, f.certain)} <span>${esc(f.text)}${s.tested[f.locus] ? ` ${icon("vet", "inl")}` : ""}</span></li>`).join("");
   const plannedWith = s.sex === "ewe"
     ? (state.plans[s.id] ? [state.plans[s.id]!] : [])
     : Object.entries(state.plans).filter(([, r]) => r === s.id).map(([e]) => e);
-  const planText = plannedWith.length ? `★ Planned with ${plannedWith.map((id) => esc(state.sheep[id]?.name ?? "?")).join(", ")}` : "";
-  const rosettes = s.rosettes.length
-    ? `<div class="rosettes">${s.rosettes.map((c) => `<span class="rosette" title="${esc(FAIR_LABEL[c])}">🏵 ${esc(FAIR_LABEL[c])}</span>`).join("")}</div>` : "";
+  const planTag = plannedWith.length ? tag(`with ${plannedWith.map((id) => esc(state.sheep[id]?.name ?? "?")).join(", ")}`, { icon: "rings", tone: "sage", title: "Mating planned" }) : "";
+  const rosettes = s.rosettes.map((c) => tag(esc(FAIR_LABEL[c]), { icon: "rosette", tone: "butter", cls: "rosette" })).join("");
   const traits = traitWords(state, s).map((t) => `<div><dt>${esc(t.label)}</dt><dd>${esc(t.text)}</dd></div>`).join("");
-  const buttons: string[] = [];
-  if ((own || visitor) && canBreed(s, state.season)) buttons.push(`<button class="primary" data-findmate="${esc(s.id)}">Find a mate</button>`);
-  if ((own || visitor) && has(state, "vet")) buttons.push(`<button data-open="vet" data-tab="${esc(s.id)}">Vet test</button>`);
-  if (has(state, "tree")) buttons.push(`<button class="secondary" data-open="tree" data-sheep-id="${esc(s.id)}">Family tree</button>`);
-  if (own) buttons.push(`<button class="secondary" data-sell="${esc(s.id)}">Sell for ${sheepValue(s, state.season)} coins</button>`);
-  if (forSale) buttons.push(`<button data-open="market">See at the market</button>`);
+  // Two felt buttons at most; the rest are small stitched icon buttons.
+  const primary: string[] = [];
+  if ((own || visitor) && canBreed(s, state.season)) primary.push(btn("Find a mate", { kind: "primary", icon: "rings", data: { findmate: s.id } }));
+  if (own) primary.push(treatButton(state, s.id));
+  if (forSale) primary.push(btn("See at the market", { icon: "store", data: { open: "market" } }));
+  const small: string[] = [];
+  if ((own || visitor) && has(state, "vet")) small.push(btn("Vet", { kind: "ghost", cls: "small", icon: "vet", data: { open: "vet", tab: s.id }, title: "Vet test" }));
+  if (has(state, "tree")) small.push(btn("Family", { kind: "ghost", cls: "small", icon: "family", data: { open: "tree", "sheep-id": s.id }, title: "Family tree" }));
+  if (own) small.push(btn(`Sell · ${sheepValue(s, state.season)}`, { kind: "ghost", cls: "small", icon: "tag", data: { sell: s.id }, title: `Sell for ${sheepValue(s, state.season)} coins` }));
   const status = [
-    isIll(s, state.season) ? `<span class="tag warn">poorly — resting this season</span>` : "",
-    visitor ? `<span class="tag">visiting ram</span>` : "",
-    forSale ? `<span class="tag">for sale</span>` : "",
-    !own && !forSale && !visitor ? `<span class="tag">no longer on the farm</span>` : "",
+    isIll(s, state.season) ? tag("poorly — resting", { icon: "warn", tone: "rose", cls: "warn" }) : "",
+    visitor ? tag("visiting ram", { icon: "ram", tone: "sky" }) : "",
+    forSale ? tag("for sale", { icon: "tag", tone: "butter" }) : "",
+    !own && !forSale && !visitor ? tag("no longer on the farm", { tone: "cream" }) : "",
   ].join("");
   const pers = personalityOf(s);
   const flav = flavoursOf(s);
   const colour = String(s.phenotype["colour"]);
-  return `<div class="sheep-card">
-    <div class="sc-stage" style="--bg:${PORTRAIT_BG[colour] ?? "#dde8f0"}">
-      <div class="sc-portrait" data-live-portrait-slot="${esc(s.id)}">${portrait(view, s, "lg")}</div>
-      <div class="sc-hello meta" aria-hidden="true">${own ? "click to say hello · press and hold to brush" : "click to say hello"}</div>
-    </div>
-    <div class="sc-main">
-      <div class="sc-name"><h2>${esc(s.name)} ${sexMark(s)}</h2>${own ? `<button class="icon" data-rename="${esc(s.id)}" title="Rename" aria-label="Rename ${esc(s.name)}">✎</button>` : ""}</div>
-      <div class="sc-persona"><span class="persona ${pers}">${PERSONALITY_ICON[pers]} ${esc(PERSONALITY_WORD[pers])}</span>${flav.map((f) => `<span class="sc-flav">${FLAVOUR_ICON[f] ?? ""} ${esc(f)}</span>`).join("")}</div>
-      <p class="sc-line">${esc(personalityLine(s))}</p>
-      <div class="meta">${esc(s.sex)} · ${esc(ageWords(state, s))}${numbersOn(state) && s.inbreeding > 0 ? ` · inbreeding ${s.inbreeding.toFixed(3)}` : s.inbreeding >= 0.125 ? " · parents were close kin" : ""}</div>
-      <div class="tags"><span class="tag">${swatch(colour)}${esc(colour)}</span><span class="tag">${esc(s.phenotype["pattern"])}</span><span class="tag">${esc(s.phenotype["horns"])}</span>${status}</div>
-      ${rosettes}
-      <dl class="traits">${traits}</dl>
-    </div>
-    ${own ? careHtml(state, s.id, woolEffect(state, s)) : ""}
-    ${buttons.length || planText ? `<div class="row actions">${buttons.join("")}${planText ? `<span class="meta">${planText}</span>` : ""}</div>` : ""}
+  const pattern = String(s.phenotype["pattern"]), horns = String(s.phenotype["horns"]);
+  const young = !isAdult(s, state.season);
+  const wool = traitWords(state, s)[0]!.text.replace(/ \(.*\)$/, "");
+  const [ageN, ageW] = ageFact(state, s);
+  const looks = [pattern === "spotted" ? "spotted" : "", horns === "horned" ? "horned" : ""].filter(Boolean).join(", ");
+  const details = `
+    <dl class="traits">${traits}</dl>
+    ${own ? careMore(state, s.id, woolEffect(state, s)) : ""}
     <div class="sc-family">
       <div><span class="lbl">Parents</span> ${parents}</div>
       <div><span class="lbl">Lambs</span> ${kids.length ? kids.map((k) => chip(state, k)).join(" ") : `<span class="meta">none yet</span>`}</div>
     </div>
     <div class="notebook">
-      <h3>What you know about ${esc(s.name)}</h3>
-      <div class="meta legend-dots">${dot(1, true)} certain ${dot(0.9, false)} almost certain ${dot(0.7, false)} probably ${dot(0.3, false)} unknown</div>
+      <h4>What you know</h4>
+      <div class="meta legend-dots">${dot(1, true)} certain ${dot(0.9, false)} almost ${dot(0.7, false)} probably ${dot(0.3, false)} unknown</div>
       <ul class="facts">${factList || `<li class="meta">Nothing hidden to know yet.</li>`}</ul>
     </div>
+    <div class="meta">${esc(s.sex)} · ${esc(ageWords(state, s))}${numbersOn(state) && s.inbreeding > 0 ? ` · inbreeding ${s.inbreeding.toFixed(3)}` : s.inbreeding >= 0.125 ? " · parents were close kin" : ""}</div>`;
+  return `<div class="sheep-card">
+    <div class="sc-stage" style="--bg:${PORTRAIT_BG[colour] ?? "#dde8f0"}">
+      <div class="sc-portrait" data-live-portrait-slot="${esc(s.id)}">${portrait(view, s, "lg")}</div>
+      <div class="sc-hello" aria-hidden="true">click to say hello</div>
+    </div>
+    <div class="sc-name"><h2 class="nm">${esc(s.name)}</h2>${sexMark(s)}${own ? `<button class="icon ghost tiny" data-rename="${esc(s.id)}" title="Rename" aria-label="Rename ${esc(s.name)}">${icon("pencil")}</button>` : ""}</div>
+    <div class="sc-persona"><span class="persona ${pers}">${icon(PERSONA_ICON[pers])}${esc(PERSONALITY_WORD[pers].toLowerCase())} ${esc(s.sex)}</span>${flav.slice(0, 1).map((f) => `<span class="sc-flav">${icon(FLAVOUR_ICON[f] ?? "sparkle")}${esc(f)}</span>`).join("")}</div>
+    ${status || planTag || rosettes ? `<div class="tags">${status}${planTag}${rosettes}</div>` : ""}
+    ${own ? careHtml(state, s.id) : ""}
+    <p class="sc-line">“${esc(personalityLine(s))}”</p>
+    <div class="facts-row">
+      ${fact(swatch(colour, "big"), esc(colour), esc(looks), { tone: "cream", title: `${colour}, ${pattern}, ${horns}` })}
+      ${fact(icon(young ? "sprout" : "yarn"), esc(young ? "lamb" : wool.split(" ").slice(-1)[0] ?? wool), young ? "not shorn yet" : "wool", { tone: "sage", title: `Wool: ${wool}` })}
+      ${fact(icon("cake"), esc(ageN), esc(ageW), { tone: "rose", title: ageWords(state, s) })}
+    </div>
+    ${primary.length ? `<div class="card-acts">${primary.slice(0, 2).join("")}</div>` : ""}
+    ${small.length ? `<div class="card-tools">${small.join("")}</div>` : ""}
+    ${more("sheep-more", "What you know, family, wool", details)}
   </div>`;
 }
 
@@ -136,7 +175,7 @@ function nodeHtml(state: GameState, view: View, p: Placed): string {
   const ring = hex(n.colour);
   return `<button class="tnode ${p.kind} ${n.inFlock ? "" : "gone"}" data-sheep="${esc(n.id)}" style="left:${left}px;top:${top}px;--ring:${ring}" title="${esc(`${n.name} — ${n.colour}${n.inFlock ? "" : ", no longer on the farm"}${n.inbreeding >= 0.125 ? ", lamb of close kin" : ""}`)}">
     <span class="t-face">${img ? `<img src="${esc(img)}" alt="">` : `<span class="t-blob"></span>`}</span>
-    <span class="t-name">${esc(n.name)} ${n.sex === "ewe" ? "♀" : "♂"}</span>${n.rosettes ? `<span class="ros" title="rosettes">🏵${n.rosettes > 1 ? n.rosettes : ""}</span>` : ""}${n.inbreeding >= 0.125 ? `<span class="inb" title="lamb of close kin">⚠</span>` : ""}</button>`;
+    <span class="t-name"><span class="nm">${esc(n.name)}</span> ${n.sex === "ewe" ? "♀" : "♂"}</span>${n.rosettes ? `<span class="ros" title="rosettes">${icon("rosette", "inl")}${n.rosettes > 1 ? n.rosettes : ""}</span>` : ""}${n.inbreeding >= 0.125 ? `<span class="inb" title="lamb of close kin">${icon("warn", "inl")}</span>` : ""}</button>`;
 }
 
 /**
@@ -238,12 +277,11 @@ export function familyTreeHtml(state: GameState, view: View, s: Sheep): string {
 
 export function treeHtml(state: GameState, view: View): string {
   const s = cardSubject(state, view);
-  if (!s) return `<h2>Family tree</h2><p>No sheep yet.</p>`;
-  if (!has(state, "tree")) return `<h2>Family tree</h2><p>The family book is still in the attic. It turns up later in the story.</p>`;
-  return `<h2>${esc(s.name)}'s family</h2>
-    <div class="meta tree-key"><span class="k-dam"></span> mother's side &nbsp;<span class="k-sire"></span> father's side · the ring shows wool colour · faded cards have left the farm · ⚠ lamb of close kin · click anyone to open their card</div>
-    ${familyTreeHtml(state, view, s)}
-    <div class="row"><button class="secondary" data-sheep="${esc(s.id)}">Back to ${esc(s.name)}</button></div>`;
+  if (!s) return `${head("family", "Family tree", 2)}<p>No sheep yet.</p>`;
+  if (!has(state, "tree")) return `${head("family", "Family tree", 2)}<p>The family book is still in the attic. It turns up later in the story.</p>`;
+  return `<div class="panel-head">${head("family", `${nm(esc(s.name))}'s family`, 2)}${btn(`Back to ${esc(s.name)}`, { kind: "ghost", icon: "back", data: { sheep: s.id } })}</div>
+    <div class="meta tree-key"><span><span class="k-dam"></span> mother's side</span><span><span class="k-sire"></span> father's side</span><span>${icon("warn", "inl")} close kin</span><span class="faded">faded: left the farm</span></div>
+    ${familyTreeHtml(state, view, s)}`;
 }
 
 export function isAdultFlock(state: GameState): Sheep[] {

@@ -66,7 +66,8 @@ const overlay = new Overlay((d) => {
 });
 overlay.onClose = () => { view.panel = null; renderHud(); };
 delegateActions(hud, (d) => {
-  if (d["open"]) view.panel = d["open"] as PanelName;
+  if (d["tray"]) view.tray = d["tray"] === "open";
+  if (d["open"]) { view.panel = d["open"] as PanelName; view.tray = false; }
   if (d["sleep"]) { view.report = advanceSeason(state); view.panel = "report"; }
   refresh();
 });

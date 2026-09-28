@@ -7,6 +7,7 @@ import type { QuantForecast } from "@blue-sheep/inference";
 import {
   esc, hex, learnMeter, learnWord, numbersOn, portrait, prop, sexMark, swatch,
 } from "./util.js";
+import { btn, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 import { rankCached } from "./cache.js";
 import { growingText } from "./misc.js";
@@ -43,18 +44,30 @@ function lookWords(l: LambLook): string {
 export function lambTile(view: Pick<View, "lambArt"> | null, l: LambLook, i = 0, extra = "", d?: number): string {
   let src = "";
   try { src = view?.lambArt?.(l) ?? ""; } catch { src = ""; }
-  const badges = `${l.horns === "horned" ? `<b class="lb horn" aria-hidden="true">♈</b>` : ""}${l.pattern === "spotted" ? `<b class="lb spot" aria-hidden="true"></b>` : ""}`;
+  const badges = `${l.horns === "horned" ? `<b class="lb horn" aria-hidden="true">${icon("horn")}</b>` : ""}${l.pattern === "spotted" ? `<b class="lb spot" aria-hidden="true"></b>` : ""}`;
   return `<span class="lamb-tile ${src ? "art" : "blob"} ${extra}" style="--i:${i};${d !== undefined ? `--d:${d};` : ""}--wool:${hex(l.colour)}" title="${esc(lookWords(l))}">${src ? `<img src="${esc(src)}" alt="">` : `<span class="lamb ${l.pattern === "spotted" ? "spot" : ""}">${l.horns === "horned" ? "<i></i>" : ""}</span>`}${badges}</span>`;
 }
 
 /**
- * The litter: ten lamb portraits (one per "one in ten"), filling in one by one, with a legend in words.
- * `small` for inline use (report, market): tiles only.
+ * The litter: ten lamb portraits (one per "one in ten"), filling in one by one, a caption ("each lamb = one
+ * chance in ten" and the horned/spotted share). `small` for inline use (report, market): tiles only.
+ * The colour key (the words per colour, % with numbers) is `litterKey`, shown behind "more".
  */
 export function litterRow(state: GameState, f: Pick<CrossForecast, "colour" | "horns" | "pattern">, small = false, view: Pick<View, "lambArt"> | null = null): string {
-  const counts = tenths(f.colour);
   const looks = litterLooks(f);
   const tiles = looks.map((l, i) => lambTile(view, l, i)).join("");
+  const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
+  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
+  const extras: string[] = [];
+  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`)}</span>`);
+  if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);
+  return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f.colour))}">${tiles}</div>
+    ${small ? "" : `<div class="litter-cap"><span class="each">Each lamb = one chance in ten</span>${extras.length ? `<span class="legend extras">${extras.join("")}</span>` : ""}</div>`}`;
+}
+
+/** The colour key for a litter: each colour's share in words ("3 in 10"), or % with numbers, and the rare ones. */
+export function litterKey(state: GameState, f: Pick<CrossForecast, "colour">, view: Pick<View, "lambArt"> | null = null): string {
+  const counts = tenths(f.colour);
   const nums = numbersOn(state);
   const rare = counts.filter((e) => e.n === 0).map((e) => e.key);
   const keyArt = (c: string) => {
@@ -65,13 +78,7 @@ export function litterRow(state: GameState, f: Pick<CrossForecast, "colour" | "h
   const legend = counts.filter((e) => e.n > 0 || nums).map((e) =>
     `<span class="key">${keyArt(e.key)}<span><span class="k-name">${esc(e.key)}</span> <span class="k-n">${nums ? `${e.p < 0.01 ? "<1" : Math.round(e.p * 100)}%` : e.n === 10 ? "every lamb" : `${e.n} in 10`}</span></span></span>`).join("");
   const rareNote = rare.length && !nums ? `<div class="meta rare">A ${esc(orList(rare))} lamb could happen, but rarely.</div>` : "";
-  const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
-  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
-  const extras: string[] = [];
-  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">♈</b> ${esc(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`)}</span>`);
-  if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);
-  return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f.colour))}">${tiles}</div>
-    ${small ? "" : `<div class="legend"><span class="meta each">Each lamb = one chance in ten:</span>${legend}</div>${extras.length ? `<div class="legend extras">${extras.join("")}</div>` : ""}${rareNote}`}`;
+  return `<div class="legend">${legend}</div>${rareNote}`;
 }
 
 function orList(xs: string[]): string {
@@ -133,7 +140,7 @@ export function rangeBar(
         <div class="tick ram" style="${prop("x", rx)}"></div>
         <div class="tick mean" style="${prop("x", mx)}"></div>
       </div>
-      <div class="bpins">${below("flock", fx, `flock${nums ? ` ${marks.flock.toFixed(1)}` : ""}`, false)}${below("mean", mx, `🐑 lamb${nums ? ` ${f.mean.toFixed(1)}` : ""}`, Math.abs(fx - mx) < 0.16)}</div>
+      <div class="bpins">${below("flock", fx, `flock${nums ? ` ${marks.flock.toFixed(1)}` : ""}`, false)}${below("mean", mx, `${icon("sheep", "inl")} lamb${nums ? ` ${f.mean.toFixed(1)}` : ""}`, Math.abs(fx - mx) < 0.16)}</div>
       <div class="axis"><span>← ${esc(words[0])}${nums ? ` · ${lo.toFixed(0)} ${esc(unit)}` : ""}</span><span>${nums ? `${hi.toFixed(0)} ${esc(unit)} · ` : ""}${esc(words[1])} →</span></div>
     </div>
     <div class="meta">${esc(note)}</div></div>`;
@@ -160,7 +167,7 @@ function hintFor(state: GameState, f: CrossForecast, goal: Goal): string {
       const p = f.colour["blue"] ?? 0;
       return nums ? `${Math.round(p * 100)}%` : p <= 0 ? "no" : oddsLabel(p).toLowerCase().replace("possible, but don't count on it", "possible");
     }
-    case "learn": return "🔍".repeat(Math.min(3, Math.ceil(f.learnBits * 2))) || "—";
+    case "learn": return f.learnBits * 2 > 2 ? "loads" : f.learnBits * 2 > 1 ? "a lot" : f.learnBits > 0.02 ? "a little" : "—";
     case "fine": return nums ? `${f.fineness.mean.toFixed(1)} µm` : "";
     case "heavy": return nums ? `${f.fleeceWeight.mean.toFixed(1)} kg` : "";
   }
@@ -174,28 +181,37 @@ export function forecastSubject(state: GameState, view: View): Sheep | null {
   return flock.find((x) => x.sex === "ewe" && canBreed(x, state.season)) ?? flock.find((x) => isAdult(x, state.season)) ?? flock[0] ?? null;
 }
 
+/** Short goal names with icons for the forecast's goal tabs. */
+const GOAL_TAB: Record<Goal, { label: string; icon: IconName }> = {
+  blue: { label: "Blue", icon: "heart" }, learn: { label: "Learn", icon: "lens" }, fine: { label: "Fine wool", icon: "yarn" }, heavy: { label: "Heavy fleece", icon: "scissors" },
+};
+
+function parentCard(view: View, s: Sheep, cls = "", mate = false): string {
+  const inner = `${portrait(view, s, "md")}<span class="par-name"><span class="nm">${esc(s.name)}</span>${sexMark(s)}</span>`;
+  return mate ? `<button class="par ${cls}" data-mate="${esc(s.id)}" title="The only mate ready this season">${inner}</button>` : `<div class="par ${cls}">${inner}</div>`;
+}
+
 export function forecastPanelHtml(state: GameState, view: View): string {
   const me = forecastSubject(state, view);
-  if (!me) return `<h2>Find a mate</h2><p>There are no sheep on the farm. Visit the market.</p>`;
-  const head = `<div class="panel-head">${portrait(view, me, "sm")}<div><h2>Find a mate for ${esc(me.name)} ${sexMark(me)}</h2>
-    <div class="meta">Pick a goal, compare mates, then plan. Lambs arrive when you sleep.</div></div></div>`;
+  if (!me) return `${head("rings", "Find a mate", 2)}<p>There are no sheep on the farm. Visit the market.</p>`;
+  const head0 = `<div class="panel-head">${portrait(view, me, "sm")}${head("rings", `A mate for ${nm(esc(me.name))}`, 2)}</div>`;
   if (!isAdult(me, state.season)) {
-    return `${head}<p class="note-line">${esc(me.name)} is still growing — lambs take ${ADULT_AGE} seasons to grow up, so ${me.sex === "ewe" ? "she" : "he"} can breed from ${esc(seasonLabel(me.born + ADULT_AGE))}.</p>
-      <div class="row"><button class="secondary" data-open="market">Buy a grown ${me.sex} at the market</button></div>`;
+    return `${head0}<p class="note-line">${icon("sprout", "inl")} ${esc(me.name)} is still growing: ${me.sex === "ewe" ? "she" : "he"} can breed from ${esc(seasonLabel(me.born + ADULT_AGE))}.</p>
+      <div class="row">${btn(`Buy a grown ${me.sex} at the market`, { icon: "store", data: { open: "market" } })}</div>`;
   }
-  if (isIll(me, state.season)) return `${head}<p>${esc(me.name)} is poorly this season and needs rest. Try again next season.</p>`;
-  if (!canBreed(me, state.season)) return `${head}<p>${esc(me.name)} has retired from lambing and enjoys the grass.</p>`;
-  if (!state.flock.includes(me.id)) return `${head}<p>${esc(me.name)} isn't part of your flock.</p>`;
+  if (isIll(me, state.season)) return `${head0}<p>${icon("warn", "inl")} ${esc(me.name)} is poorly this season and needs rest. Try again next season.</p>`;
+  if (!canBreed(me, state.season)) return `${head0}<p>${esc(me.name)} has retired from lambing and enjoys the grass.</p>`;
+  if (!state.flock.includes(me.id)) return `${head0}<p>${esc(me.name)} isn't part of your flock.</p>`;
 
   const goal = view.goal;
   const ranked = rankCached(state, me.id, goal);
-  const tabs = `<div class="tabs" role="tablist">${GOALS.map((g) =>
-    `<button class="tab ${g.id === goal ? "on" : ""}" role="tab" aria-selected="${g.id === goal}" data-goal="${g.id}">${esc(g.label)}</button>`).join("")}</div>`;
+  const tabs = `<div class="tabs" role="tablist" aria-label="What are you breeding for?">${GOALS.map((g) =>
+    `<button class="tab ${g.id === goal ? "on" : ""}" role="tab" aria-selected="${g.id === goal}" data-goal="${g.id}" title="${esc(g.label)}">${icon(GOAL_TAB[g.id].icon)}<span>${esc(GOAL_TAB[g.id].label)}</span></button>`).join("")}</div>`;
   if (!ranked.length) {
     const other = me.sex === "ewe" ? "ram" : "ewe";
     const g = growingText(state, other);
-    return `${head}${tabs}<p class="note-line">No ${other}s are ready to breed this season.${g ? ` ${esc(g)}` : ""}</p>
-      <div class="row"><button data-open="market">Buy a grown ${other} at the market</button></div>`;
+    return `${head0}${tabs}<p class="note-line">No ${other}s are ready to breed this season.${g ? ` ${esc(g)}` : ""}</p>
+      <div class="row">${btn(`Buy a grown ${other} at the market`, { icon: "store", data: { open: "market" } })}</div>`;
   }
   const chosen = ranked.find((x) => x.sheep.id === view.mateId) ?? ranked[0]!;
   const pairOf = (c: Sheep): [string, string] => (me.sex === "ewe" ? [me.id, c.id] : [c.id, me.id]);
@@ -207,10 +223,10 @@ export function forecastPanelHtml(state: GameState, view: View): string {
     const busy = c.sex === "ram" && !planned && ramLoad(state, c.id) >= RAM_CAPACITY;
     const isVisitor = c.id === visitorId;
     const elsewhere = me.sex === "ram" && state.plans[e] && state.plans[e] !== r ? state.sheep[state.plans[e]!]?.name : null;
-    const sub = isVisitor ? "visiting — nothing known" : busy ? "busy this season" : elsewhere ? `planned with ${elsewhere}` : c.rosettes.length ? `🏵 ×${c.rosettes.length}` : "";
-    return `<button class="cand ${c.id === chosen.sheep.id ? "on" : ""} ${busy ? "busy" : ""} ${isVisitor ? "visitor" : ""}" data-mate="${esc(c.id)}" ${busy ? "disabled" : ""}>
+    const sub = isVisitor ? "visiting — nothing known" : busy ? "busy this season" : elsewhere ? `planned with ${elsewhere}` : "";
+    return `<button class="cand ${c.id === chosen.sheep.id ? "on" : ""} ${busy ? "busy" : ""} ${isVisitor ? "visitor" : ""}" data-mate="${esc(c.id)}" ${busy ? "disabled" : ""} ${sub ? `title="${esc(sub)}"` : ""}>
       ${swatch(String(c.phenotype["colour"]))}
-      <span class="cname"><span class="cn" title="${esc(c.name)}">${esc(c.name)}${planned ? ` <span class="star" title="planned">★</span>` : ""}</span>${sub ? `<span class="csub">${esc(sub)}</span>` : ""}</span>
+      <span class="cname"><span class="cn nm" title="${esc(c.name)}">${esc(c.name)}${planned ? ` <span class="star" title="planned">${icon("star", "inl")}</span>` : ""}${c.rosettes.length ? icon("rosette", "inl") : ""}</span>${sub ? `<span class="csub">${esc(sub)}</span>` : ""}</span>
       <span class="hint">${esc(hintFor(state, f, goal))}</span></button>`;
   }).join("");
 
@@ -232,34 +248,44 @@ export function forecastPanelHtml(state: GameState, view: View): string {
     ? `<div class="ranges">${rangeBar(state, "Fibre fineness", "µm", f.fineness, fin.mean - 3 * fin.sd, fin.mean + 3 * fin.sd, marks("fineness", fin.mean), ["finer", "coarser"])}
       ${rangeBar(state, "Fleece weight", "kg", f.fleeceWeight, fw.mean - 3 * fw.sd, fw.mean + 3 * fw.sd, marks("fleeceWeight", fw.mean), ["lighter", "heavier"])}
       <div class="ticks-key meta"><span class="k band"></span>where most lambs from this pair would land <span class="k flock"></span>flock average <span class="k mean"></span>the lamb you'd most expect</div></div>`
-    : `<p class="wool-hint">${esc(woolHint(state, f))}</p>`;
+    : `<p class="wool-hint">${icon("yarn", "inl")} ${esc(woolHint(state, f))}</p>`;
   const nPlanned = Object.keys(state.plans).length;
   const room = lambRoom(state);
+  const learnV = Math.min(1, f.learnBits * 0.8);
+  // One hint line for the goal you picked.
+  const line = goal === "learn" ? { i: "lens" as IconName, t: f.learnText } : goal === "fine" || goal === "heavy" ? { i: "yarn" as IconName, t: woolHint(state, f) } : { i: "heart" as IconName, t: f.blueText };
   let commit: string;
   if (isVisitor && !hired) {
-    commit = `<button data-hire="1" ${state.money < (state.visitingRam?.fee ?? 0) ? "disabled" : ""}>Hire ${esc(ram.name)} for ${state.visitingRam?.fee ?? 0} coins</button>
-      <span class="meta">${esc(forecastVisitor(state).text)} He's only here this season.</span>`;
+    commit = `${btn(`Hire ${esc(ram.name)} · ${state.visitingRam?.fee ?? 0}`, { kind: "primary", icon: "coin", data: { hire: "1" }, disabled: state.money < (state.visitingRam?.fee ?? 0), title: `${forecastVisitor(state).text} Here this season only.` })}`;
   } else {
     const blocked = !planned && room < 1 && state.plans[eweId] === undefined;
-    commit = `<button data-plan="${esc(eweId)}:${esc(ramId)}" class="${planned ? "secondary" : "primary"}" ${blocked ? "disabled" : ""}>${planned ? "Cancel this mating" : state.plans[eweId] ? "Switch to this mating" : "Plan this mating"}</button>
-      ${blocked ? `<button class="secondary small" data-open="market">Make room at the market</button>` : ""}
-      ${blocked ? `<div class="note-line">No room for more lambs — your fields are full.${growingText(state) ? ` ${esc(growingText(state)!)}` : ""}</div>` : ""}
-      <span class="meta">${nPlanned === 0 ? "Nothing planned yet" : `${nPlanned} mating${nPlanned === 1 ? "" : "s"} planned`} · sleep to see the lambs</span>`;
+    commit = `${btn(planned ? "Cancel this mating" : state.plans[eweId] ? "Switch to this mating" : "Plan this mating", { kind: planned ? "secondary" : "primary", icon: planned ? "close" : "rings", data: { plan: `${eweId}:${ramId}` }, disabled: blocked })}
+      ${blocked ? btn("Make room", { kind: "ghost", icon: "store", data: { open: "market" }, title: `No room for more lambs: your fields are full.${growingText(state) ? ` ${growingText(state)!}` : ""}` }) : ""}
+      <span class="meta planned-n">${nPlanned === 0 ? "" : `${icon("moon", "inl")} ${nPlanned} mating${nPlanned === 1 ? "" : "s"} planned`}</span>`;
   }
-  return `${head}${tabs}
-  <div class="picker">
-    <div class="cands" aria-label="Candidates, best first">${list}</div>
-    <div class="forecast">
-      <h3>${esc(ewe.name)} × ${esc(ram.name)}${planned ? ` <span class="star">★ planned</span>` : ""}</h3>
-      ${isVisitor ? `<div class="note-line visitor">Visiting — nothing known about his family, so this forecast is only a wide guess.</div>` : ""}
-      <div class="meta">If they had ten lambs…</div>
-      ${litterRow(state, f, false, view)}
-      <p class="blue-line">${swatch("blue")} ${esc(f.blueText)}</p>
+  const others = ranked.length > 1 ? `<div class="cands" aria-label="Mates, best first">${list}</div>` : "";
+  const details = `
+      ${litterKey(state, f, view)}
       ${bars}
-      <div class="row rel"><span class="tag">${esc(rel.text)}</span>${rel.warn ? `<span class="tag warn">⚠ ${esc(rel.warn)}</span>` : ""}${numbersOn(state) && f.inbreeding > 0 ? `<span class="meta">inbreeding ${f.inbreeding.toFixed(3)}</span>` : ""}</div>
-      <div class="learn"><span class="learn-label">🔍 What you'd learn</span>${learnMeter(Math.min(1, f.learnBits * 0.8), learnWord(Math.min(1, f.learnBits * 0.8)))}<span class="meta">${esc(f.learnText)}</span></div>
-      <div class="row commit">${commit}</div>
+      <div class="row rel">${tag(esc(rel.text), { icon: "family" })}${numbersOn(state) && f.inbreeding > 0 ? `<span class="meta">inbreeding ${f.inbreeding.toFixed(3)}</span>` : ""}</div>
+      <div class="learn"><span class="learn-label">${icon("lens", "inl")} What you'd learn</span>${learnMeter(learnV, learnWord(learnV))}<span class="meta">${esc(f.learnText)}</span></div>
+      ${isVisitor ? `<p class="meta">${esc(forecastVisitor(state).text)} He's only here this season.</p>` : ""}`;
+  return `<div class="fc">
+    <div class="fc-left">
+      ${parentCard(view, me, "me")}
+      <span class="plus" aria-hidden="true">${icon("heart", "sm")}</span>
+      ${parentCard(view, chosen.sheep, "mate", ranked.length === 1)}
+      ${ranked.length > 1 ? `<div class="cands-h">${icon("rings", "inl")} Mates, best first</div>` : ""}
+      ${others}
+    </div>
+    <div class="forecast">
+      ${tabs}
+      <div class="litter-box">${litterRow(state, f, false, view)}</div>
+      ${isVisitor ? `<p class="note-line visitor">${icon("ram", "inl")} Visiting: nothing known about his family, so this is a wide guess.</p>` : ""}
+      ${rel.warn ? `<p class="note-line warn">${icon("warn", "inl")} ${esc(rel.warn)}</p>` : ""}
+      <p class="blue-line">${icon(line.i)}<span>${esc(line.t)}</span></p>
+      <div class="row commit">${planned ? tag("planned", { icon: "star", tone: "butter", cls: "planned" }) : ""}${commit}</div>
+      ${more("forecast-more", "Colours, wool, kinship, what you'd learn", details)}
     </div>
   </div>`;
 }
-

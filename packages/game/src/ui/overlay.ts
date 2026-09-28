@@ -1,4 +1,14 @@
-/** The only DOM code in ui/: the panel overlay, a click delegate and a toast. */
+/** The only DOM code in ui/: the panel overlay, a click delegate, a toast and the felt defs. */
+import { FELT_DEFS, icon } from "./felt/index.js";
+
+/** Put the felt system's hidden SVG defs (satin-stitch fills, pom-pom fuzz) into the page once. */
+export function installFelt(doc: Document = document): void {
+  if (doc.getElementById("felt-defs")) return;
+  const holder = doc.createElement("div");
+  holder.innerHTML = FELT_DEFS;
+  const svg = holder.firstElementChild;
+  if (svg) doc.body.prepend(svg);
+}
 
 export type ActionData = Record<string, string | undefined>;
 
@@ -31,6 +41,7 @@ export class Overlay {
   private closable = true;
 
   constructor(private onAction: (data: ActionData) => void, el?: HTMLElement | string) {
+    installFelt();
     const found = typeof el === "string" ? document.querySelector<HTMLElement>(el) : el ?? document.querySelector<HTMLElement>("#overlay");
     this.el = found ?? Object.assign(document.body.appendChild(document.createElement("div")), { id: "overlay", hidden: true });
     this.el.addEventListener("click", (e) => {
@@ -49,17 +60,21 @@ export class Overlay {
   show(html: string, opts: ShowOptions = {}): void {
     const wasOpen = this.open;
     const prev = wasOpen ? this.el.querySelector<HTMLElement>(".panel") : null;
-    // Keep the scroll position when the same panel re-renders, not when another panel replaces it.
+    // Keep the scroll position and the open "more" folds when the same panel re-renders, not when another replaces it.
     const same = !!prev && (prev.dataset.panel ?? "") === (opts.name ?? "");
-    const scroll = same ? prev!.scrollTop : 0;
+    const body = prev?.querySelector<HTMLElement>(".panel-body");
+    const scroll = same && body ? body.scrollTop : 0;
+    const folds = same ? Array.from(prev!.querySelectorAll<HTMLDetailsElement>("details[data-more]")).filter((d) => d.open).map((d) => d.dataset.more ?? "") : [];
     this.closable = opts.closable !== false;
     if (!wasOpen) this.lastFocus = document.activeElement;
     this.el.innerHTML = `<div class="panel ${opts.wide ? "wide" : ""}" role="dialog" aria-modal="true" tabindex="-1" ${opts.name ? `data-panel="${opts.name}"` : ""}>
-      ${this.closable ? `<button class="panel-x" data-close aria-label="Close">×</button>` : ""}${html}</div>`;
+      ${this.closable ? `<button class="panel-x icon ghost" data-close aria-label="Close" title="Close">${icon("close")}</button>` : ""}<div class="panel-body">${html}</div></div>`;
     this.el.classList.toggle("side", !!opts.side);
     this.el.hidden = false;
     const panel = this.el.querySelector<HTMLElement>(".panel");
-    if (panel && same) panel.scrollTop = scroll;
+    for (const k of folds) panel?.querySelectorAll<HTMLDetailsElement>(`details[data-more="${CSS.escape(k)}"]`).forEach((d) => { d.open = true; });
+    const nb = panel?.querySelector<HTMLElement>(".panel-body");
+    if (nb && same) nb.scrollTop = scroll;
     // Focus the dialog itself so Tab starts inside it, without a focus ring on an arbitrary button.
     if (!wasOpen) panel?.focus({ preventScroll: true });
   }
@@ -85,7 +100,8 @@ export function toast(msg: string, ms = 2800): void {
     el.setAttribute("aria-live", "polite");
     document.body.appendChild(el);
   }
-  el.textContent = msg;
+  el.innerHTML = `<span class="t-knot" aria-hidden="true">${icon("sheep", "sm")}</span><span></span>`;
+  el.lastElementChild!.textContent = msg;
   el.classList.add("show");
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el!.classList.remove("show"), ms);

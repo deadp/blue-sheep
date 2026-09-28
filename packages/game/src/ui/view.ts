@@ -30,6 +30,8 @@ export interface View {
   reducedMotion?: boolean;
   /** Settings: sound on/off and volume 0–1 (optional; saved in localStorage by the controller). */
   sound?: { on: boolean; volume: number };
+  /** HUD: the bag's tray of farm places is open (optional; closed by default and whenever a panel opens). */
+  tray?: boolean;
   /** Title: whether a saved game exists to continue (optional; defaults to "state has been played"). */
   hasSave?: boolean;
 }

@@ -5,6 +5,17 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
+Next: **v3 phase (2), the world pass** (DESIGN-v3 §15 items 22–25): close-iso play-scale valley map with
+expansion areas, the walking farmer with the pan option, natural friendly sheep, soft light, no default mist.
+Build any new screen (minimap, signposts, felt price tags) from `ui/felt/`.
+
+Follow-ups from the UI foundation (not started):
+- The HUD tray and panels are mouse-first; keyboard users can reach everything with Tab, but there is no
+  shortcut for Next season or the bag yet.
+- Some core strings are still long in panels (fair results, upgrade blurbs, the act-5 goal); trim them in
+  core when those systems are reworked in v3.
+- Market dogs/cat cards now use embroidered icons; portraits of the real pets would be nicer (see Later).
+
 
 Nothing in progress. The v3 design pass is written: **`docs/DESIGN-v3.md`** (pigment genetics,
 breeds and wool types, fantasy wools, woolshed pipeline, items, demand meters, birds, river
@@ -89,6 +100,14 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- v3 UI foundation, felted wool (COMMIT): `ui/felt/` design system (tokens, procedural felt and blanket
+  stitch, embroidered SVG icon set replacing every emoji, pom-pom badges, felt buttons with a springy press,
+  tags, tabs, one meter style for odds/learning/hearts/dots, "more" folds, fact tiles, toast, mentor card;
+  Patrick Hand for headings and names, Nunito for the rest). Minimal HUD (season/coins/flock poms, goal tag,
+  a bag with a tray of places, Next season); every panel restyled with about 55% fewer visible words and
+  details behind "more"; the sheep card docked as in the style lab; the forecast with parents on the left.
+  New `probe/ui.mjs` (both sizes, hit targets ≥ 36 px, no HUD overlap). The 1024×768 HUD overlap is fixed.
 
 - v3 Phase 1, genetics v3 library (7f2ee12): `sheep3` species (W mask, 2 pigment loci per colour, dilution, spotting, horns, double coat, hairy fibre, six fantasy loci with sports at μ 0.001, fleece QTLs incl. staple, lustre, colour strength); `woolColour` paint-mix model with families, intensity, true blue; seven breeds with calibrated founder frequencies and `woolType`; inference honours masking, has breed priors and a locus-swap move, and runs ~3× faster (15 traits × 200 sheep ≈ 0.2–0.3 s). Palette sheet: `packages/genetics/scripts/palette.ts`. The game is unchanged; next is Phase 2.
 

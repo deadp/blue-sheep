@@ -448,7 +448,8 @@ data-open="animal" data-sheep-id="terrier|collie|maremma|cat"   the animal card
 data-test="sheepId:locus"
 data-accept="orderId" / data-decline="orderId"
 data-enter="sheepId"      fair entry (or "none")
-data-sleep="1"
+data-sleep="1"            the HUD's "Next season" (and the board's)
+data-tray="open|close"    the HUD bag: open or close the tray of farm places (view.tray)
 data-rename="id"          prompts for a name
 data-newgame="seed?"      start over
 data-tab="…"              panel-local tab switch (view state kept by controller)
@@ -458,49 +459,106 @@ data-toggle="motion|sound"      settings switches (reduced motion, sheep voices)
 data-volume               settings' volume slider (<input type=range>, 0–100; input/change, no re-render)
 ```
 
-Tutorial UI (`ui/tutorial.ts`): `mentorHtml(state, view)` is a card docked bottom-left (`#mentor`, above
-the overlay). While it is shown, centred panels are pushed right to make room for it. It shows Old Tom
-(👴, from `VILLAGERS`) with one short idea per step (no neighbour, no handover). Steps with a Punnet square
-widen the card (`.m-wide`, 380 px; 340 px under 1200 px wide) and must fit without scrolling at 1280×800 and
-1024×768.
+### 5.1 The felt design system (`ui/felt/`, DESIGN-v3 §15 items 16, 20–25)
+
+Every screen is built from one small system; new v3 screens must use it too.
+
+- **Tokens** (`felt/tokens.css`): pastel felts (`--felt` oat, `--felt-sage|rose|sky|butter|lilac|rust`),
+  button felts with AA text (`--btn-sage` + `--btn-sage-ink`, butter, sky, rose), thread `--thread`, ink
+  `--ink` (9:1 on felt) and `--muted` (5.3:1), radii, lifts, `--spring` easing, and the procedural
+  textures as data-URI SVG (`--felt-noise`, `--felt-hair`, blanket stitch `--bl-*`, `--stitch-run`). No
+  image files.
+- **Fonts** (`felt/fonts.css`, vendored OFL woff2 from the style lab): **Patrick Hand** for headings
+  (`h1–h4`) and names (`.nm`) only; **Nunito** for numbers, buttons and sentences. The controller sets
+  `body[data-ready]` only after both faces load (max 1.5 s).
+- **Icons** (`felt/icons.ts`): `icon(name, cls)` returns an inline embroidered SVG (satin-stitch fills
+  `url(#sat-*)`, running-stitch outlines). They replace every emoji in the UI; `iconize(html)` swaps the
+  emoji that still arrive in core strings (lessons, log lines). Sizes: `sm` 16, default 1.3em, `inl`
+  inline, `lg` 30, `xl` 52. `FELT_DEFS` (the satin patterns and the pom-pom `#fuzz` filter) is put in the
+  page once by `installFelt()` (the Overlay does it).
+- **Components** (`felt/components.ts` + `felt/felt.css`): felt surfaces with blanket stitching (`.panel`,
+  `#mentor`), `btn(label, {kind: primary|secondary|sky|ghost|danger, icon, data, badge})` (stitched inside,
+  springy press), `iconBtn`, `pom(piece, icon, value, sub)` (HUD pom-pom badge), `tag`, tabs (`.tabs .tab`),
+  `more(key, summary, body)` (a stitched `<details data-more>` fold; the Overlay keeps open folds open
+  across re-renders of the same panel), `fact` tiles, `head(icon, text)`, `nm(name)`, `stitch` divider,
+  the badge knot (`.badge`), the toast. Meters share one look: `oddsMeter`/`pips` (ten felt pips, warm →
+  green, the odds in words, % only with numbers; a list shows one `oddsScale()` legend and compact
+  meters), `learnMeter` (blue pips, "little → loads"), `heartMeter` (embroidered hearts, faint ones for
+  what a treat would add), confidence `dot` (a knot filled to certainty).
+- **Rules**: at most two primary (sage) buttons in a panel; list rows use secondary felt, with the
+  single best choice primary (the vet's most useful test, the fair's best entrant). Secondary
+  information goes behind `more`. Hit targets are ≥ 36 px; focus rings are a 3 px dashed stitch
+  (`--focus`); `prefers-reduced-motion` and `body.reduced-motion` stop every animation.
+  `probe/ui.mjs` checks the hit targets, HUD overlap, panels on screen, and no genotype/% text.
+
+### 5.2 HUD, overlay and panels
+
+HUD (`hudHtml`): top-left pom-pom badges for the season (icon, name, year), coins and flock `n/cap`; the
+act goal as a felt tag (`button.pill.goal`, `data-open="board"`, with a five-knot `actTrack(state, true)`;
+it tracks the tutorial until the goal step); bottom-right a **bag** (`data-tray`) and a big **Next season**
+(`data-sleep`, badge = planned matings). The bag opens a felt **tray** of the farm places that have
+arrived (board, letters, market, vet, fair, codex, help, settings; `#hud [data-open=<panel>]`, the letters
+button carries the open-order count). The tray is closed by default and whenever a panel opens; it stays
+open while the tutorial or a lesson points into it. A short hint (`.hud-hint`) shows only when something
+blocks play (no ewe/ram ready, fields full: with a market link) or at the very start. Every HUD piece has
+`data-hud-piece` (season, coins, flock, goal, bag, sleep, tray, hint) for the overlap probe.
+
+Overlay: `#overlay > .panel[data-panel] > .panel-x + .panel-body`. The frame is felt with blanket
+stitching and does not scroll; `.panel-body` scrolls. Side panels (sheep, animal) dock right, 400 px.
+
+Panels (all fewer words, facts as icons, details behind `more`):
+- **sheep**: a docked felt card as in the style lab. Oval live portrait (`[data-live-portrait-slot]`), the
+  name (handwritten) with sex and rename, persona + one flavour, hearts (with the treat's gain as a faint
+  forecast and "→ Friendly"), "Press and hold the picture to brush" (`[data-brushed]`), "said hello this
+  season" (`.c-said`), the personality line, three fact tiles (colour, wool, age), two buttons (**Find a
+  mate**, **Give a treat · 1**) and small ghost tools (Vet, Family, Sell · n). `more`: traits, the treat and
+  brush forecasts, what fondness does for the wool, parents and lambs, what you know (dots).
+- **animal**: the same card for a dog or the cat, with its job (predator odds or mice).
+- **forecast**: parents on the left (both portraits, then the mates list best first), goal tabs, ten lamb
+  tiles on a felt patch with "Each lamb = one chance in ten" and the horned/spotted share, one hint line
+  for the chosen goal (blue odds, what you'd learn, or wool), inbreeding warnings, one commit button
+  (Plan / Switch / Cancel, or Hire for a visitor). `more`: the colour key (% with numbers), range bars or
+  the wool hint, kinship, the learn meter.
+- **report**: season heading; act / new-concept (`[data-unlocked]`) / first blue / ending banners; each
+  mating's "You expected" row next to the born lambs (flip cards); up to four discovery cards; money
+  tiles (wool, feed, coins now) and one line per event with an icon (`li.fond`, `li.ev-mice`,
+  `li.ev-wolf`, `li.ev-fox`, …); **Back to the farm** (`.row [data-close].primary`).
+- **market**: coins and room tags; sheep cards (portrait, name, colour, best pairing as ten small lambs,
+  price, Buy); visiting ram; dogs/cat (predator or mice odds before buying) and improvements
+  (`.u-fore`); selling behind "Sell a sheep" (open when the fields are full).
+- **vet**: sheep chips (`.chips`), one learn legend, a row per hidden trait (what you know, compact learn
+  meter, Test). **fair**: banner (`.fair-banner`: prize, date, prizes, entry), the three best entrants
+  with Win and Top-3 meters, the rest and past fairs behind `more`. **letters** (`orders`): each letter
+  as a quote with reward, reputation and due tags and a compact odds meter, Accept/Decline; promised
+  ones below. **board**: act track and goal, planned pairs (cancel), promised orders with the reputation
+  stars, coming up, your animals; the diary behind `more`. **codex**: idea cards (first sentence, "Read
+  more"; the Punnet card draws the square), discovery slots, the cards behind `more`. **tree**: the
+  stitched family tree. **title**, **help**, **settings**, **ending**: short, iconised.
+
+Tutorial UI (`ui/tutorial.ts`): `mentorHtml(state, view)` is a felt card docked bottom-left (`#mentor`, above
+the overlay): Old Tom's embroidered face, his name, "<step title> · n of 17" and a thin progress line, one
+short idea per step, a **Got it** button on informational steps, **Skip tutorial**. While it is shown,
+centred panels are pushed right to make room for it. Steps with a Punnet square widen the card (`.m-wide`,
+384 px; 350 px under 1200 px wide) and must fit without scrolling at 1280×800 and 1024×768.
 `tutorialTarget` names what to point at: a world sheep (it gets the "selected" ground ring and a bobbing
 arrow at `screenPoint`) or HTML selectors (a pulsing `.tut-ring`, and the arrow on the first one, from the
-left for panel buttons). The HUD's goal pill tracks the tutorial until the goal step. The title offers
-**Start with the tutorial** (primary) and **Skip tutorial**, and settings has **Replay the tutorial…**
-(behind a confirm). Lessons reuse the card (`lessonMentorHtml`, `.mentor.lesson[data-lesson]`, head "New ·
-<title> · n of m", Skip) and the rings/arrow (`lessonTarget`; a `spot` target points at a world hotspot such
-as the vet's hut when it is on screen, else at its ringed HUD button). The lesson card waits while the
-report, the title or the ending is open (`lessonShown`), and the HUD hint hides while it shows.
+left for panel buttons). Targets must be visible without opening a `more` fold. The title offers
+**Start with the tutorial** (primary) and **Skip tutorial**, and settings has **Replay…** (behind a
+confirm). Lessons reuse the card (`lessonMentorHtml`, `.mentor.lesson[data-lesson]`, head "New: <title> · n
+of m", the step title, Skip) and the rings/arrow (`lessonTarget`; a `spot` target points at a world hotspot
+such as the vet's hut when it is on screen, else at its ringed HUD button, which opens the tray). The lesson
+card waits while the report, the title or the ending is open (`lessonShown`), and the HUD hint hides while
+it shows.
 
-Presentation rules: one odds meter everywhere (`oddsMeter`/`pips`: ten segments, the odds in words,
-a "long shot · likely · sure" scale, % only with numbers) and the same look for learning
-(`learnMeter`, "little → loads"). Forecast litters draw ten lamb portraits from `view.lambArt`
-(controller → `WorldView.portrait` of a synthetic lamb), CSS blobs without it. Range bars have an axis
-in words, parents' portrait pins, flock and expected-lamb markers and an explained band. The sheep card
-is a right-docked side panel (`SIDE_PANELS`) with a `[data-live-portrait-slot]` the controller mounts
-the live portrait into, plus a personality line (`personalityLine`, core/personality.ts, from boldness
-and looks only). The report flips each born lamb card next to the forecast it matched. The family tree
-is an SVG-connected tree with portrait nodes. `actTrack` draws the five acts in the board and HUD.
+Presentation rules: forecast litters draw ten lamb portraits from `view.lambArt` (controller →
+`WorldView.portrait` of a synthetic lamb), felt blobs without it. Range bars have an axis in words,
+parents' portrait pins, flock and expected-lamb markers and an explained band. The report flips each born
+lamb card next to the forecast it matched. The family tree is an SVG-connected tree with portrait nodes.
+`actTrack` draws the five acts (embroidered milestones) on the board and five knots in the HUD.
 
-Care UI: `heartMeter` (five hearts, the word, faint hearts for what a treat would add, /100 only with
-numbers). The sheep card (own flock sheep only) and the animal card have a care box: Fondness hearts,
-"♥ said hello this season", what fondness does to its wool (coins; % with numbers), the treat forecast and
-"Give a treat · 1 coin" (or "Treat given ✓"), and the brushing line (above). `animalCardHtml` (panel `animal`, a right-docked side panel
-like the sheep card): portrait from `view.petArt(id)`, what the dog does (fox/wolf risk meters with all your
-dogs) or the cat does (mice caught, mice coming), the care box, and the other animals. Risk meters use
-`oddsMeter(..., {risk: true})` (warm colours). The report adds "💗 Happy sheep: +N coins this shearing" (or
-"😟 Skittish sheep: −N"), 🐭 mice, 🐺 wolf and "Good dog, <name>!" when a dog saved the lambs. The board's
-"Coming up" lists mice and "Your animals" (chips with hearts).
-
-Panels: `titleHtml`, `helpHtml`, `sheepCardHtml`, `animalCardHtml`, `forecastPanelHtml`
-(existing, extended with visiting ram + rosette + numbers), `boardHtml`
-(goal card, planned matings, diary), `ordersHtml`, `marketHtml` (buy/sell +
-visitor hire with forecast), `vetHtml`, `fairHtml`, `codexHtml` (discovery
-cards collection + concept cards per act), `treeHtml` (family tree),
-`reportHtml` (season reveal: lambs vs the forecast the player saw, orders,
-fair, event, discoveries, act advance), `endingHtml`, `settingsHtml`.
-HUD: `hudHtml(state)` — season, coins, flock n/cap, reputation, current goal
-one-liner with progress, a Sleep button, quick buttons for shed/market.
+Panels: `titleHtml`, `helpHtml`, `sheepCardHtml`, `animalCardHtml`, `forecastPanelHtml`, `boardHtml`,
+`ordersHtml`, `marketHtml`, `vetHtml`, `fairHtml`, `codexHtml`, `treeHtml`, `reportHtml`, `endingHtml`,
+`settingsHtml`.
 
 Tone: warm, short sentences, no jargon before its act. Genetics words only via
 discovery/concept cards.
@@ -565,6 +623,11 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    after each: no console errors, money ≥ 0, flock ≤ cap, every accepted
    order resolves by its deadline, act only increases.
 5. Deep-links every panel and screenshots each for visual review.
+5a. UI (`ui.mjs`): the HUD (fresh and act 3, bag tray closed and open) and every panel at 1280×800 and
+   1024×768 (`out/ui/<panel>-<width>.png`). Asserts that HUD pieces (`[data-hud-piece]`) never overlap,
+   every visible button/summary is at least 36 px both ways, each panel frame is on screen, and no
+   genotype-like or (before numbers) "%" text is visible. Writes visible word counts (`out/ui/words.json`;
+   text inside closed `more` folds does not count).
 6. Life (`life.mjs`): the sheep card mounts exactly one live portrait canvas and the world visits that
    sheep; switching cards moves it; close/Escape unmount it; the forecast never has one. With motion
    on (all four animals bought) it saves frame sequences
