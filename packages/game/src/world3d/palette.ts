@@ -1,11 +1,12 @@
-// Pastel palette and per-season lighting.
+// Seasonal light and palette for the valley, wool colours and portrait backgrounds.
 
 export interface SeasonLook {
   name: string;
-  grass: string;
-  meadow: string;
-  foliage: string;
-  foliage2: string;
+  /** Multiplies the baked ground and grass colours (a golden summer, a russet autumn). */
+  groundTint: string;
+  foliageTint: string;
+  /** Snow settling on everything that faces up (0–1). */
+  snow: number;
   skyTop: string;
   skyBottom: string;
   sun: string;
@@ -13,44 +14,40 @@ export interface SeasonLook {
   hemiSky: string;
   hemiGround: string;
   hemiI: number;
-  pond: string;
   particles: string[];
 }
 
+/** Soft pastoral light (round 3 "Misty Pastoral", without the mist), one look per season. */
 export const SEASONS: readonly SeasonLook[] = [
   {
-    name: "spring",
-    grass: "#a9dc8c", meadow: "#9fd07e", foliage: "#8fd27a", foliage2: "#b7e39a",
-    skyTop: "#9fd3ef", skyBottom: "#f4f1dc",
-    sun: "#fff3df", sunI: 2.3, hemiSky: "#e6f4ff", hemiGround: "#a9c98f", hemiI: 1.25,
-    pond: "#8ccbe6", particles: ["#f8c3d8", "#fbe0ea", "#ffffff"],
+    name: "spring", groundTint: "#ffffff", foliageTint: "#ffffff", snow: 0,
+    skyTop: "#a9d3ec", skyBottom: "#f7efe2",
+    sun: "#fff4e6", sunI: 2.1, hemiSky: "#eaf3ff", hemiGround: "#c9d6b8", hemiI: 1.5,
+    particles: ["#f8c3d8", "#fbe0ea", "#ffffff"],
   },
   {
-    name: "summer",
-    grass: "#b9d97a", meadow: "#c8d680", foliage: "#6fbb5c", foliage2: "#8fcb66",
-    skyTop: "#8ccbf0", skyBottom: "#fff0cf",
-    sun: "#ffe5b5", sunI: 2.7, hemiSky: "#fff1d6", hemiGround: "#b9c47a", hemiI: 1.2,
-    pond: "#7fc3e8", particles: [],
+    name: "summer", groundTint: "#fbf0cf", foliageTint: "#f3f1d8", snow: 0,
+    skyTop: "#96c9ec", skyBottom: "#fff0d6",
+    sun: "#ffebc8", sunI: 2.35, hemiSky: "#fff4de", hemiGround: "#d2d2a6", hemiI: 1.45,
+    particles: [],
   },
   {
-    name: "autumn",
-    grass: "#bccd86", meadow: "#d3c27c", foliage: "#ee9a4c", foliage2: "#e0673f",
-    skyTop: "#a9c7e4", skyBottom: "#fbe3c7",
-    sun: "#ffe0bd", sunI: 2.3, hemiSky: "#f2e8e0", hemiGround: "#b7a88a", hemiI: 1.2,
-    pond: "#86b9d4", particles: ["#ee9a4c", "#e0673f", "#f2c257"],
+    name: "autumn", groundTint: "#f4e2c0", foliageTint: "#f6d7a6", snow: 0,
+    skyTop: "#b1c9e2", skyBottom: "#f8e2c8",
+    sun: "#ffe2c2", sunI: 2.0, hemiSky: "#f4e9e0", hemiGround: "#cdbd9a", hemiI: 1.45,
+    particles: ["#ee9a4c", "#e0673f", "#f2c257"],
   },
   {
-    name: "winter",
-    grass: "#eef3f6", meadow: "#e3eaef", foliage: "#7f9c8e", foliage2: "#95ad9f",
-    skyTop: "#b9cde3", skyBottom: "#eef1f6",
-    sun: "#dfe9ff", sunI: 1.9, hemiSky: "#e2ecff", hemiGround: "#c4d0dc", hemiI: 1.35,
-    pond: "#cfe6f2", particles: ["#ffffff"],
+    name: "winter", groundTint: "#e9eef2", foliageTint: "#dfe7e6", snow: 0.82,
+    skyTop: "#bccde2", skyBottom: "#eef1f6",
+    sun: "#e6eeff", sunI: 1.8, hemiSky: "#e6eeff", hemiGround: "#cdd6e0", hemiI: 1.6,
+    particles: ["#ffffff"],
   },
 ];
 
 export const NIGHT = {
   skyTop: "#0e1433", skyBottom: "#2c3566",
-  sun: "#7d8cc9", sunI: 0.35, hemiSky: "#5d6fae", hemiGround: "#2a3050", hemiI: 0.55,
+  sun: "#7d8cc9", sunI: 0.22, hemiSky: "#5d6fae", hemiGround: "#2a3050", hemiI: 0.45,
 };
 
 export const WOOL_HEX = {

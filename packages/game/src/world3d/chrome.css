@@ -1,0 +1,70 @@
+/* The world's felt chrome (world3d/chrome.ts): the walk / pan switch, felt price tags, placards, walk-up prompts,
+   the controls hint, and in pan mode the signposts and the minimap. Uses the felt tokens (ui/felt/tokens.css). */
+.w3d-chrome { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; font: 700 14px/1.2 var(--f-ui); color: var(--ink); }
+.w3d-chrome button { pointer-events: auto; }
+.w3d-tags > *, .w3d-prompt { position: absolute; left: 0; top: 0; }
+
+/* the walk / pan switch: a felt toggle, top right under the HUD */
+.w3d-switch { position: absolute; right: 16px; top: 84px; display: flex; padding: 4px; border-radius: 26px; box-shadow: var(--lift-sm); pointer-events: auto; outline: 1.5px dashed rgba(183, 110, 95, .45); outline-offset: -4px; }
+.w3d-switch button { position: relative; z-index: 2; width: 88px; min-height: 36px; padding: 6px 10px; gap: 6px; background: transparent; box-shadow: none; font: 800 14px/1 var(--f-ui); color: var(--muted); }
+.w3d-switch button::after { display: none; }
+.w3d-switch button .ic { width: 20px; height: 20px; }
+.w3d-switch button.on { color: var(--btn-sage-ink); }
+.w3d-switch .knob { position: absolute; z-index: 1; top: 4px; left: 4px; width: 88px; height: 36px; border-radius: 20px; background-color: var(--btn-sage); background-image: var(--felt-noise); box-shadow: 0 2px 0 rgba(80, 110, 70, .25); outline: 1.5px dashed rgba(255, 255, 255, .8); outline-offset: -4px; transition: transform .28s var(--spring); }
+.w3d-switch[data-mode="pan"] .knob { transform: translateX(88px); }
+
+/* controls hint, bottom centre in walk mode */
+.w3d-hint { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 20px; font: 700 13px/1 var(--f-ui); white-space: nowrap; opacity: .9; box-shadow: var(--lift-sm); outline: 1.5px dashed rgba(183, 110, 95, .4); outline-offset: -4px; }
+.w3d-hint .keys { display: inline-flex; gap: 3px; }
+.w3d-hint .sep { width: 1px; height: 16px; background: rgba(86, 73, 74, .25); margin: 0 3px; }
+.w3d-hint .ic { width: 20px; height: 20px; }
+.w3d-chrome kbd { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 7px; font: 900 12px/1 var(--f-ui); color: var(--btn-sage-ink); background: var(--felt-sage); box-shadow: 0 1px 0 rgba(80, 110, 70, .3); }
+.w3d-chrome[data-mode="pan"] .w3d-hint { display: none; }
+body:not([data-panel=""]) .w3d-hint, body.tut-on .w3d-hint { display: none; }
+@media (max-width: 900px) { .w3d-hint { display: none; } }
+
+/* placards on the places: a pom-pom disc with an icon and a short label */
+.w3d-plac { transform: translate(-50%, -100%); display: inline-flex; align-items: center; gap: 0; min-height: 0; padding: 0; background: none !important; box-shadow: none; }
+.w3d-plac::after { display: none; }
+.w3d-plac .disc { position: relative; z-index: 1; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background-color: var(--felt-hi); background-image: var(--felt-noise), var(--felt-hair); box-shadow: var(--lift-sm); outline: 1.5px dashed rgba(183, 110, 95, .5); outline-offset: -4px; }
+.w3d-plac .disc .ic { width: 22px; height: 22px; }
+.w3d-plac .lab { margin-left: -8px; padding: 5px 11px 5px 13px; border-radius: 0 14px 14px 0; font: 800 12.5px/1 var(--f-ui); background-color: var(--felt-hi); background-image: var(--felt-noise); box-shadow: var(--lift-sm); }
+.w3d-plac:hover .lab { background-color: var(--felt-butter); }
+
+/* felt price tags on locked land, hung on a string */
+.w3d-ptag { transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.w3d-ptag .string { width: 2px; height: 16px; background: #b39b86; order: 3; }
+.w3d-ptag .tagcard { position: relative; order: 1; display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 6px; padding: 8px 14px 8px 12px; border-radius: 12px 12px 12px 4px; transform: rotate(-3deg); box-shadow: var(--lift-sm); outline: 1.5px dashed rgba(183, 110, 95, .5); outline-offset: -5px; pointer-events: auto; cursor: pointer; --tone: var(--felt-butter); }
+.w3d-ptag .tagcard.later { --tone: var(--felt-cream); opacity: .92; }
+.w3d-ptag .hole { position: absolute; left: 50%; top: -6px; width: 9px; height: 9px; border-radius: 50%; background: #fbf4e6; box-shadow: inset 0 0 0 2px #b39b86; }
+.w3d-ptag .how { grid-row: span 2; } .w3d-ptag .how .ic { width: 26px; height: 26px; }
+.w3d-ptag .nm { font-size: 19px; color: var(--ink); }
+.w3d-ptag .pr { display: inline-flex; align-items: center; gap: 2px; font: 900 15px/1 var(--f-ui); color: var(--bad); }
+.w3d-ptag .pr .ic { width: 18px; height: 18px; }
+.w3d-ptag small { grid-column: 2 / span 2; font: 700 11.5px/1.1 var(--f-ui); color: var(--muted); }
+.w3d-ptag .open { order: 2; min-height: 34px; padding: 6px 14px 6px 10px; font-size: 13.5px; }
+
+/* walk-up prompts next to the farmer */
+.w3d-prompt { display: flex; flex-direction: column; gap: 7px; transform: translate(26px, -50%); }
+.w3d-prompt .pp { display: inline-flex; align-items: center; gap: 0; min-height: 0; padding: 0; background: none !important; box-shadow: none; animation: w3d-pp .22s var(--spring); }
+.w3d-prompt .pp::after { display: none; }
+.w3d-prompt .pp kbd { position: relative; z-index: 1; width: 34px; height: 34px; border-radius: 50%; font-size: 15px; background: var(--btn-sage); outline: 1.5px dashed rgba(255, 255, 255, .85); outline-offset: -4px; box-shadow: var(--lift-sm); }
+.w3d-prompt .pp kbd svg { position: absolute; inset: -4px; width: 42px; height: 42px; transform: rotate(-90deg); pointer-events: none; }
+.w3d-prompt .pp kbd .ring { fill: none; stroke: #e79a93; stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 94.2; stroke-dashoffset: calc(94.2 * (1 - var(--p, 0))); }
+.w3d-prompt .pp > span { margin-left: -9px; padding: 7px 13px 7px 16px; border-radius: 0 16px 16px 0; font: 800 13.5px/1 var(--f-ui); white-space: nowrap; background-color: var(--felt-hi); background-image: var(--felt-noise); box-shadow: var(--lift-sm); }
+.w3d-prompt .pp.hold > span::after { content: " · hold"; opacity: .6; }
+@keyframes w3d-pp { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* pan mode: signposts (top centre) and the felt minimap (bottom left, above the hint) */
+.w3d-signs { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); display: flex; gap: 8px; }
+.w3d-sign, .w3d-signs .sign { min-height: 38px; padding: 6px 13px 6px 9px; gap: 6px; font: 800 13px/1 var(--f-ui); }
+.w3d-signs .sign .ic { width: 20px; height: 20px; }
+.w3d-signs .sign small { display: inline-flex; align-items: center; font: 800 11.5px/1 var(--f-ui); color: var(--bad); }
+.w3d-signs .sign small .ic { width: 14px; height: 14px; }
+.w3d-signs .sign.locked { opacity: .82; }
+.w3d-mm { position: absolute; left: 16px; bottom: 74px; padding: 7px; border-radius: 16px; box-shadow: var(--lift-sm); outline: 1.5px dashed rgba(183, 110, 95, .45); outline-offset: -4px; pointer-events: auto; }
+.w3d-mm .mm-stack { position: relative; width: 220px; height: 98px; border-radius: 10px; overflow: hidden; cursor: crosshair; }
+.w3d-mm canvas { position: absolute; left: 0; top: 0; display: block; }
+.w3d-chrome[data-mode="walk"] .w3d-mm { display: none; }
+@media (max-width: 900px) { .w3d-signs .sign b { display: none; } .w3d-mm { display: none; } }
+body.tut-on .w3d-signs, body.tut-on .w3d-switch { opacity: .7; }

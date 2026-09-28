@@ -10,8 +10,9 @@ import { tutorial } from "./tutorial.mjs";
 import { lessons } from "./lessons.mjs";
 import { voices } from "./voices.mjs";
 import { ui } from "./ui.mjs";
+import { world } from "./world.mjs";
 
-const ALL = { smoke, play, panels, ui, life, voices, tutorial, lessons, video };
+const ALL = { smoke, play, panels, ui, life, world, voices, tutorial, lessons, video };
 const names = process.argv.slice(2);
 const unknown = names.filter((n) => !(n in ALL));
 if (unknown.length) {

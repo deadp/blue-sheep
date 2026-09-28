@@ -25,7 +25,7 @@ interface Live {
   ws: WorldSheep;
   geos: SheepGeos;
   full: FullRig;
-  faceMat: THREE.MeshLambertMaterial;
+  faceMat: THREE.MeshStandardMaterial;
   el: HTMLElement;
   bubble: Bubble;
   token: number;
@@ -157,7 +157,7 @@ export class LivePortrait {
     }
     this.teardown();
     const geos = buildSheepGeos(ws);
-    const faceMat = new THREE.MeshLambertMaterial({ color: geos.parts.face, flatShading: true, vertexColors: true });
+    const faceMat = new THREE.MeshStandardMaterial({ color: geos.parts.face, vertexColors: true, roughness: 0.9, metalness: 0 });
     const full = buildFullRig(geos, ws, this.mats, faceMat);
     full.rig.body.castShadow = false;
     this.scene.add(full.rig.root);

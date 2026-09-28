@@ -8,10 +8,10 @@ import {
   seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
-  greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade,
+  greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
   type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
 } from "./core/index.js";
-import { Hold, WorldView, type Hotspot, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
+import { Hold, WorldView, type AreaId, type Hotspot, type LandInfo, type MoveMode, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
 import {
   Overlay, PANEL_NAMES, defaultView, delegateActions, hudHtml, panelOptions, renderPanel, toast,
   mentorHtml, tutorialStepMet, tutorialTarget, lessonShown, lessonTarget, lessonMentorHtml,
@@ -22,9 +22,15 @@ import { Voices, bleatSeries, happySeries, petVoiceFor, renderOffline, voiceFor,
 
 export const SAVE_KEY = "blue-sheep-save-v2";
 const MOTION_KEY = "blue-sheep-reduced-motion";
+/** Walk (default) or pan: how the player gets about the farm (a setting, not game state). */
+const MOVE_KEY = "blue-sheep-move-mode";
 export const VERSION = "1.0.0";
-/** Sheep that fit in the first paddock before the rest move to the second one. */
+/** Sheep that fit in the home paddock before the rest move to the creek flats (and the flats before the far bank). */
 const PADDOCK_ROOM = 10;
+const FLATS_ROOM = 8;
+/** Which farm improvement opens which land (DESIGN-v3 §9): mending the far paddock's fence opens the creek flats,
+ *  renting the long meadow builds the bridge to the far bank. */
+const LAND_UPGRADE: Partial<Record<AreaId, UpgradeId>> = { flats: "paddock", farbank: "meadow" };
 /** Milliseconds of press-and-hold on a dog's or the cat's picture that make one pat (the same as a sheep's brushing). */
 const PAT_HOLD_MS = 1200;
 
@@ -68,6 +74,8 @@ export class App {
   private readonly hudEl: HTMLElement;
   private readonly overlay: Overlay;
   private reduced: boolean;
+  private move: MoveMode;
+  private readonly lite: boolean;
   /** False while a `?seed=` / `?act=` preview runs: the old save is kept until the player acts. */
   private persist: boolean;
   private sleeping = false;
@@ -95,10 +103,13 @@ export class App {
     const q = new URLSearchParams(location.search);
     if (q.get("fresh") === "1") { try { localStorage.removeItem(SAVE_KEY); } catch { /* private mode */ } }
     this.reduced = q.get("nomotion") === "1" || this.loadMotionPref();
+    this.lite = q.get("lite") === "1";
+    this.move = q.get("move") === "pan" || q.get("move") === "walk" ? (q.get("move") as MoveMode) : this.loadMovePref();
     document.body.classList.toggle("reduced-motion", this.reduced);
 
     this.view = defaultView((id) => this.portraitOf(id));
     this.view.reducedMotion = this.reduced;
+    this.view.move = this.move;
     this.view.lambArt = (l) => this.lambArt(l);
     this.view.petArt = (id) => { try { return isPetId(id) ? this.world.petPortrait(id as PetKind, 180) : ""; } catch { return ""; } };
     this.view.sound = { on: this.voices.on, volume: this.voices.volume };
@@ -172,7 +183,10 @@ export class App {
       onPet: (id) => this.guard(() => this.onPetClick(id)),
       // brushing the live portrait: a swish per stroke; a full brushing counts for fondness once a season
       onBrush: (id, phase) => { if (phase === "stroke") this.voices.swish(); else this.guard(() => this.brush(id)); },
-    }, { seed: this.state.seed, reducedMotion: this.reduced });
+      // a felt price tag's "Open this land": the market's improvements, with that one's forecast
+      onArea: (id) => this.guard(() => this.onArea(id)),
+      onMoveMode: (m) => this.setMove(m),
+    }, { seed: this.state.seed, reducedMotion: this.reduced, move: this.move, lite: this.lite });
     this.world.setSnapshot(this.snapshot());
   }
 
@@ -236,6 +250,50 @@ export class App {
     this.render();
   }
 
+  /** "Open this land" on a price tag: the improvement that opens it, in the market, with its forecast. */
+  private onArea(id: AreaId): void {
+    if (this.sleeping) return;
+    const up = LAND_UPGRADE[id];
+    if (!up) { toast("That land comes later."); return; }
+    this.openPanel("market", undefined);
+    this.render();
+    const card = this.overlay.el.querySelector<HTMLElement>(`[data-upgrade-card="${up}"]`);
+    if (card) { card.scrollIntoView({ block: "center" }); card.classList.add("flash"); window.setTimeout(() => card.classList.remove("flash"), 1600); }
+  }
+
+  /** Walk or pan, remembered in this browser. */
+  private setMove(m: MoveMode): void {
+    this.move = m;
+    try { localStorage.setItem(MOVE_KEY, m); } catch { /* ignore */ }
+    this.world.setMoveMode(m);
+    this.view.move = m;
+    if (this.view.panel === "settings") this.render();
+  }
+
+  private loadMovePref(): MoveMode {
+    try { return localStorage.getItem(MOVE_KEY) === "pan" ? "pan" : "walk"; } catch { return "walk"; }
+  }
+
+  /** The land for the world: home, the creek flats and far bank (opened by improvements), the rest later. */
+  private landInfo(): LandInfo[] {
+    const s = this.state;
+    const lock = (id: AreaId, open: boolean): LandInfo => {
+      const up = LAND_UPGRADE[id]!;
+      if (open) return { id, state: "open" };
+      const d = upgradeDef(up).price;
+      const blocked = upgradeBlocked(s, up);
+      const note = !upgradeOffered(s, up) ? "Opens later on" : blocked && !/coins/.test(blocked) ? blocked.replace(/\.$/, "") : undefined;
+      return { id, state: "locked", price: d, can: blocked === null || /coins/.test(blocked), ...(note ? { note } : {}) };
+    };
+    return [
+      { id: "home", state: "open" },
+      lock("flats", this.paddock2Open()),
+      lock("farbank", hasUpgrade(s, "meadow")),
+      { id: "rushy", state: "later" },
+      { id: "terraces", state: "later" },
+    ];
+  }
+
   private portraitOf(id: string): string {
     const s = this.state.sheep[id];
     if (!s) return "";
@@ -288,14 +346,17 @@ export class App {
       return null;
     };
     const out: WorldSheep[] = [];
-    let inPaddock = 0;
+    const meadow = hasUpgrade(s, "meadow");
+    let inPaddock = 0, inFlats = 0;
     for (const id of s.flock) {
       const x = s.sheep[id];
       if (!x) continue;
       let zone: Zone;
       if (x.ill || (winter && !isAdult(x, s.season))) zone = "barn";
-      else if (p2 && inPaddock >= PADDOCK_ROOM) zone = "paddock2";
-      else { zone = "paddock"; inPaddock++; }
+      else if (p2 && inPaddock >= PADDOCK_ROOM) {
+        if (meadow && inFlats >= FLATS_ROOM) zone = "meadow";
+        else { zone = "paddock2"; inFlats++; }
+      } else { zone = "paddock"; inPaddock++; }
       out.push(this.worldSheep(x, zone, marker(x)));
     }
     for (const id of s.market) {
@@ -314,6 +375,7 @@ export class App {
       fairToday: s.unlocks.includes("fair") && s.fair.nextSeason === s.season,
       upgrades: [...(s.upgrades ?? [])],
       pets: ownedPets(s).map((p) => ({ id: p, name: PET_NAME[p], fondness: fondnessOf(s, p) })),
+      land: this.landInfo(),
     };
   }
 
@@ -330,6 +392,7 @@ export class App {
       this.closing = false;
     }
     document.body.dataset.panel = this.view.panel ?? "";
+    this.world.setKeys(!this.view.panel && !this.sleeping);
     this.world.setSnapshot(this.snapshot());
     this.syncSheepLife();
     this.syncPetPat();
@@ -691,7 +754,7 @@ export class App {
       else if (d["buy"]) this.mutate(() => { buySheep(this.state, d["buy"]!); toast(`${this.state.sheep[d["buy"]!]?.name ?? "The sheep"} joins your flock.`); });
       else if (d["sell"]) this.mutate(() => { const name = this.state.sheep[d["sell"]!]?.name; const p = sellSheep(this.state, d["sell"]!); toast(`Sold ${name ?? "the sheep"} for ${p} coins.`); });
       else if (d["hire"]) this.mutate(() => hireVisitingRam(this.state));
-      else if (d["upgrade"]) this.mutate(() => { buyUpgrade(this.state, d["upgrade"]!); toast(upgradeDef(d["upgrade"]!).done); });
+      else if (d["upgrade"]) { const opened = this.buyUpgrade(d["upgrade"]!); if (opened) { this.render(); return; } }
       else if (d["treat"]) this.treat(d["treat"]);
       else if (d["test"]) { const [id, l] = d["test"].split(":"); this.mutate(() => vetTest(this.state, id!, l!)); }
       else if (d["accept"]) this.mutate(() => acceptOrder(this.state, d["accept"]!));
@@ -704,6 +767,7 @@ export class App {
         if (name !== null) this.mutate(() => renameSheep(this.state, d["rename"]!, name));
       }
       else if (d["toggle"] === "motion") this.setReducedMotion(!this.reduced);
+      else if (d["toggle"] === "move") this.setMove(this.move === "walk" ? "pan" : "walk");
       else if (d["toggle"] === "sound") { this.voices.setOn(!this.voices.on); this.view.sound = { on: this.voices.on, volume: this.voices.volume }; this.previewSound(); }
       else if (d["export"]) this.exportSave();
       else if (d["import"]) { this.importSave(); return; }
@@ -712,6 +776,18 @@ export class App {
       toast(e instanceof Error ? e.message : String(e));
     }
     this.render();
+  }
+
+  /**
+   * Buy an improvement. One that opens land (the far paddock → the creek flats, the long meadow → the far bank)
+   * closes the market so the player sees the land open in the world. Returns whether land opened.
+   */
+  private buyUpgrade(id: string): boolean {
+    const before = JSON.stringify(this.landInfo().map((l) => l.state));
+    this.mutate(() => { buyUpgrade(this.state, id); toast(upgradeDef(id).done); });
+    const opened = JSON.stringify(this.landInfo().map((l) => l.state)) !== before;
+    if (opened) { this.view.panel = null; this.view.tab = null; }
+    return opened;
   }
 
   /** Run a state-changing core action, then save. Errors propagate (player-readable). */
@@ -734,7 +810,7 @@ export class App {
       case "decline": this.mutate(() => declineOrder(this.state, a.id)); break;
       case "enter": this.mutate(() => enterFair(this.state, a.id && a.id !== "none" ? a.id : null)); break;
       case "hire": this.mutate(() => hireVisitingRam(this.state)); break;
-      case "upgrade": this.mutate(() => buyUpgrade(this.state, a.id)); break;
+      case "upgrade": this.buyUpgrade(a.id); break;
       case "treat": this.treat(a.id); break;
       case "brush": this.brush(a.id); break;
       case "rename": this.mutate(() => renameSheep(this.state, a.id, a.name)); break;
@@ -901,6 +977,8 @@ export class App {
       /** Not part of the contract: render stats (draw calls, live portrait, the dog) for probes. */
       debug: {
         world: () => this.world.debugStats(),
+        /** Point the world camera at (x, z) with half-width halfW (probe sheets only). */
+        camera: (x: number, z: number, halfW: number) => this.world.debugCamera(x, z, halfW),
         /** The voice params of the last bleat (played or not: `played`/`reason` say which). */
         lastSound: () => this.voices.lastSound(),
         /** The stable voice of a sheep (or a dog/cat by PetId), without playing it. */

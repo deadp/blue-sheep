@@ -5,9 +5,17 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-Next: **v3 phase (2), the world pass** (DESIGN-v3 §15 items 22–25): close-iso play-scale valley map with
-expansion areas, the walking farmer with the pan option, natural friendly sheep, soft light, no default mist.
-Build any new screen (minimap, signposts, felt price tags) from `ui/felt/`.
+Next: the v3 gameplay phases on the new look (DESIGN-v3 §13 and §15 item 25), starting with Phase 2: the game
+switches to pigment colour (the world still uses the v2 `WOOL_HEX` mapping and says so in CONTRACTS §4).
+
+Follow-ups from the world pass (not started):
+- Performance in software GL: the valley at act 3 renders at ~2–2.5 fps in headless swiftshader (about 400k
+  triangles with the shadow pass, most of it the flock's wool locks and the bush); `?lite=1` roughly doubles
+  it. Candidates: a cheaper shadow proxy for sheep, terrain tiles, distance-based lock detail.
+- Birds at the woolshed stations (the three benches stand empty), the bush-edge perches and the rushy corner /
+  terraces as real expansions arrive with their phases (§9, §15 item 7).
+- The farmer stays put at night; he could walk home to the homestead for the sleep transition.
+- Pet dogs and the cat stay in the home paddock and the barn; they could follow the farmer too.
 
 Follow-ups from the UI foundation (not started):
 - The HUD tray and panels are mouse-first; keyboard users can reach everything with Tab, but there is no
@@ -100,6 +108,18 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- v3 world pass (COMMIT): the square diorama is replaced by the close-iso Kōwhai Creek valley at play scale
+  (`world3d/valley.ts`, `farm.ts`): homestead, barn, home paddock, trader's stall and pen, mailbox, woolshed with
+  its verandah stations (empty benches) and yards, vet's hut and ute, showground, creek and bridge, native bush
+  edge; the creek flats, far bank, rushy corner and terraces as locked land (scrub, rank grass, broken fences, a
+  sign, felt price tags). "Open the far paddock" opens the creek flats and "Rent the long meadow" builds the
+  bridge to the far bank, each with the reveal; the rest is "Coming later". Walking farmer by default
+  (click-to-walk with A* pathing, WASD, walk-up prompts E/F, far sheep walked to before their card opens), pan
+  mode with drag, signposts and a felt minimap (Tab or the felt switch, kept in Settings); fond sheep follow in
+  their own paddock, shy ones step away. The natural sheep with the friendlier face; soft round-3 light, no
+  mist, seasonal tints, kōwhai/pōhutukawa bloom, snow shader; `?lite=1`. Sheep card shows a one-line "what you
+  know"; the forecast litter is 5 × 2 with bigger lambs. New `probe/world.mjs`.
 
 - v3 UI foundation, felted wool (78ca7af): `ui/felt/` design system (tokens, procedural felt and blanket
   stitch, embroidered SVG icon set replacing every emoji, pom-pom badges, felt buttons with a springy press,

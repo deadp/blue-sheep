@@ -4,7 +4,7 @@ import {
   forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
-import { ageWords, chip, dot, esc, has, heartMeter, hex, numbersOn, portrait, sexMark, swatch, traitWords } from "./util.js";
+import { ageWords, chip, dot, esc, has, heartMeter, hex, numbersOn, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
 import { btn, fact, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 
@@ -83,6 +83,9 @@ function ageFact(state: GameState, s: Sheep): [string, string] {
   return [String(y), "years"];
 }
 
+/** One-word names for the compact "what you know" line on the card. */
+const KNOW_SHORT: Record<string, string> = { A: "colour", B: "brown", D: "dilute", S: "spots", P: "horns" };
+
 export function sheepCardHtml(state: GameState, view: View): string {
   const s = cardSubject(state, view);
   if (!s) return `${head("sheep", "No sheep", 2)}<p>Your fields are empty. The market has sheep for sale.</p>`;
@@ -153,6 +156,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
       ${fact(icon(young ? "sprout" : "yarn"), esc(young ? "lamb" : wool.split(" ").slice(-1)[0] ?? wool), young ? "not shorn yet" : "wool", { tone: "sage", title: `Wool: ${wool}` })}
       ${fact(icon("cake"), esc(ageN), esc(ageW), { tone: "rose", title: ageWords(state, s) })}
     </div>
+    ${facts.length ? `<div class="sc-know" data-know title="What you know about the hidden genes (open “more” for the words)">${icon("lens", "inl")}${facts.map((f) => `<span class="k-item" title="${esc(f.text)}">${dot(f.confidence, f.certain)}<span>${esc(KNOW_SHORT[f.locus] ?? LOCUS_FRIENDLY[f.locus] ?? f.label)}</span></span>`).join("")}</div>` : ""}
     ${primary.length ? `<div class="card-acts">${primary.slice(0, 2).join("")}</div>` : ""}
     ${small.length ? `<div class="card-tools">${small.join("")}</div>` : ""}
     ${more("sheep-more", "What you know, family, wool", details)}

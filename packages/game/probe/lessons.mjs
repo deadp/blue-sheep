@@ -252,19 +252,27 @@ export const lessons = {
     await assertForecastLayout(g, "forecast at 1024×768");
     ctx.artifact(await g.screenshot("forecast-1024"));
     g.assertNoErrors("forecast layout");
-    ctx.note("forecast: ten lambs on one row and long names clear of their hints at 1280×800, 1024×768 and beside a lesson card");
+    ctx.note("forecast: ten lambs as a 5 × 2 grid, all visible without scrolling, and long names clear of their hints at 1280×800, 1024×768 and beside a lesson card");
     await g.close();
   },
 };
 
-/** All ten litter tiles on one row; no candidate's name runs into its hint. @param {import("./lib/browser.mjs").GamePage} g */
+/**
+ * All ten litter tiles as a 5 × 2 grid (DESIGN-v3 §15 item 26), every one visible without scrolling (inside the
+ * window and the panel's visible box); no candidate's name runs into its hint. @param {import("./lib/browser.mjs").GamePage} g
+ */
 async function assertForecastLayout(g, /** @type {string} */ where) {
   const bad = await g.page.evaluate(() => {
     const tiles = [...document.querySelectorAll("#overlay .forecast .litter .lamb-tile")].map((t) => t.getBoundingClientRect());
     const out = [];
     if (tiles.length !== 10) out.push(`${tiles.length} lamb tiles`);
-    const tops = new Set(tiles.map((r) => Math.round(r.top)));
-    if (tops.size > 1) out.push(`the litter wraps onto ${tops.size} rows`);
+    const rows = new Map();
+    for (const r of tiles) { const k = Math.round(r.top / 4); rows.set(k, (rows.get(k) ?? 0) + 1); }
+    if (rows.size !== 2 || [...rows.values()].some((n) => n !== 5)) out.push(`the litter is not two rows of five (${[...rows.values()].join(" + ")})`);
+    const panel = document.querySelector("#overlay .panel")?.getBoundingClientRect();
+    const hidden = tiles.filter((r) => r.top < 0 || r.bottom > window.innerHeight || r.left < 0 || r.right > window.innerWidth
+      || (panel && (r.top < panel.top - 1 || r.bottom > panel.bottom + 1)));
+    if (hidden.length) out.push(`${hidden.length} lamb tile(s) need scrolling to see`);
     for (const c of document.querySelectorAll("#overlay .cand")) {
       const n = c.querySelector(".cn")?.getBoundingClientRect(), h = c.querySelector(".hint")?.getBoundingClientRect();
       if (n && h && h.width > 0 && n.right > h.left + 1) out.push(`"${c.querySelector(".cn")?.textContent?.trim()}" runs into its hint`);

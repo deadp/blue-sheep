@@ -14,6 +14,8 @@ const VOCAB = new Set([
   "tray",
   // not actions: HUD pieces (for the overlap probe) and "more" folds (kept open across re-renders)
   "hud-piece", "more",
+  // the sheep card's compact "what you know" line
+  "know",
   // not actions: markers on the care box, the animal card and improvement cards (for probes and styles)
   "care", "pet", "upgrade-card",
   // not actions: the mentor card's step markers for probes and styles
@@ -71,6 +73,17 @@ describe("every panel renders in every fixture", () => {
       checkCommon(hudHtml(f.state, view()), f.state, `${f.name}/hud`);
     }
   }, 120_000);
+
+  it("shows a compact one-line \"what you know\" with confidence dots on the sheep card, outside the \"more\" fold", () => {
+    const f = fx("afterFirst");
+    const id = f.state.flock[0]!;
+    const html = renderPanel(f.state, view({ panel: "sheep", sheepId: id }));
+    const know = html.match(/<div class="sc-know" data-know[^>]*>([\s\S]*?)<\/div>/);
+    expect(know, "the card has the know line").toBeTruthy();
+    expect((know![1]!.match(/class="dot c\d"/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(html.indexOf("data-know")).toBeLessThan(html.indexOf('data-more="sheep-more"'));
+    expect(/[A-Za-z]\/[a-z]/.test(know![1]!.replace(/<[^>]+>/g, "")), "no genotype strings").toBe(false);
+  });
 
   it("renders the sheep card, forecast (every goal) and tree for every flock sheep", () => {
     for (const f of [fx("afterFirst"), fx("act3")]) {

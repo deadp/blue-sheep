@@ -148,7 +148,7 @@ export class Dog {
     if (c.still) {
       // a good dog, sitting by the gate and facing you
       this.x = clamp(B.gateX, r.x0, r.x1); this.z = r.z1 - 0.3;
-      this.heading = -Math.PI / 4; this.sit = c.night > 0.5 ? 0 : 1; this.lie = c.night > 0.5 ? 1 : 0; this.speed = 0;
+      this.heading = -1.15; this.sit = c.night > 0.5 ? 0 : 1; this.lie = c.night > 0.5 ? 1 : 0; this.speed = 0;
       this.pose(c.time, [this.x + 1, this.z + 1]);
       return;
     }

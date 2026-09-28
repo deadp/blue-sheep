@@ -26,6 +26,8 @@ export interface View {
   lambArt?: (look: { colour: string; pattern: string; horns: string }) => string;
   /** PNG data URL of a farm dog or the cat (PetId), for the animal card (optional; an emoji without it). */
   petArt?: (id: string) => string;
+  /** Settings: walk the farmer (default) or pan the camera (optional; saved in localStorage by the controller). */
+  move?: "walk" | "pan";
   /** Settings: current reduced-motion flag (optional). */
   reducedMotion?: boolean;
   /** Settings: sound on/off and volume 0–1 (optional; saved in localStorage by the controller). */

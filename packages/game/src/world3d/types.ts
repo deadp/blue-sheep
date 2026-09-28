@@ -1,6 +1,22 @@
 // Public world types (CONTRACTS.md §4). Re-exported from ./index.ts.
 
-export type Zone = "paddock" | "paddock2" | "barn" | "market" | "visitor";
+export type Zone = "paddock" | "paddock2" | "meadow" | "barn" | "market" | "visitor";
+/** The farm's land (DESIGN-v3 §9): the home paddock, and land you can open. */
+export type AreaId = "home" | "flats" | "rushy" | "farbank" | "terraces";
+/** How the farmer gets about: walking (default) or panning the camera (drag, signposts, minimap). */
+export type MoveMode = "walk" | "pan";
+/** One piece of land as the world shows it. */
+export interface LandInfo {
+  id: AreaId;
+  /** open: fenced and grazed; locked: scrub and a felt price tag; later: a "coming later" tag. */
+  state: "open" | "locked" | "later";
+  /** Coins to open it (locked land). */
+  price?: number;
+  /** Whether the player could open it now (the tag shows "Open this land"). */
+  can?: boolean;
+  /** A short line on the tag when it can't be opened yet ("Year 2", "Needs coins"). */
+  note?: string;
+}
 export type Hotspot = "house" | "shed" | "market" | "vet" | "fairground" | "mailbox";
 /** How a sheep behaves in the field and how it greets you. Derived from boldness by the controller. */
 export type Personality = "shy" | "calm" | "curious" | "bold";
@@ -57,6 +73,11 @@ export interface WorldSnapshot {
   upgrades?: string[];
   /** Names (hover label) and fondness of the dogs and cat you own (optional). */
   pets?: { id: PetKind; name: string; fondness?: number }[];
+  /**
+   * The land (optional; default: home open, the creek flats open when `paddock2`, the rest locked). Land that
+   * turns from locked to open after the first snapshot plays the reveal (scrub clears, grass greens, fence mends).
+   */
+  land?: LandInfo[];
 }
 
 export type HoverTarget = { kind: "sheep"; id: string } | { kind: "hotspot"; id: Hotspot } | { kind: "pet"; id: PetKind } | null;
@@ -75,9 +96,17 @@ export interface WorldHandlers {
    * reported when the drag ends (at most once per mounted sheep until it is mounted afresh).
    */
   onBrush?(id: string, phase: "stroke" | "done"): void;
+  /** A felt price tag's "Open this land" (or the tag itself) was clicked. */
+  onArea?(id: AreaId): void;
+  /** The walk / pan switch was flipped in the world (Tab or the felt switch); the controller persists it. */
+  onMoveMode?(mode: MoveMode): void;
 }
 
 export interface WorldOptions {
   seed?: number;
   reducedMotion?: boolean;
+  /** Walk (default) or pan. */
+  move?: MoveMode;
+  /** Cheaper fallback (`?lite=1`): no shadows, fewer grass tufts and wool locks, pixel ratio 1. */
+  lite?: boolean;
 }

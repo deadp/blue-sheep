@@ -1,100 +1,145 @@
-// Static farm diorama: ground, buildings (hotspots), fences, pond, trees,
-// seasonal layers. Everything is batched into a few vertex-coloured meshes.
+// The river-valley farm at play scale (DESIGN-v3 §9, §15 items 20–24), built once and batched: terrain,
+// the creek, homestead, barn, home paddock, woolshed with its verandah stations (empty benches for now),
+// trader's stall, mailbox, vet's hut, showground, native bush and the land you can open (creek flats, far bank
+// over the bridge, rushy corner, terraces). Locked land reads through scrub, rank grass, broken fences and a
+// sign, never mist; each area keeps its pieces so opening it can be played as a reveal.
 import * as THREE from "three";
 import { GeoBatch, mat, type V3 } from "./builder.js";
-import type { Rng } from "./rng.js";
+import { mulberry32, type Rng } from "./rng.js";
+import { smoothGeo } from "./sheepMesh.js";
 import type { Hotspot, Zone } from "./types.js";
+import {
+  AREAS, AREA_IDS, BUSH_AT, BRIDGE, FENCES, HOTSPOT_LABEL, SPOTS, TRACKS, TREES, areaFence, bushScore, creekV, height, lerp, lineDist, roadV,
+  smoothstep as ss, softRect, toRect, type AreaId, type Rect, type URect, type UV,
+} from "./valley.js";
 
-export interface Rect { x0: number; x1: number; z0: number; z1: number }
+export { HOTSPOT_LABEL, type Rect } from "./valley.js";
 
-/** Interior rectangles where sheep may stand/wander (world units, y up, +z towards camera). */
-export const ZONES: Record<Zone, Rect> = {
-  paddock: { x0: -8.2, x1: 6.2, z0: -9.2, z1: 1.2 },
-  paddock2: { x0: 9.3, x1: 19.2, z0: -10.2, z1: 0.2 },
-  barn: { x0: -22.2, x1: -12.8, z0: -2.3, z1: 1.6 },
-  market: { x0: -21.6, x1: -16.4, z0: 10.9, z1: 14.2 },
-  visitor: { x0: -13.3, x1: -10.7, z0: 14.4, z1: 16.6 },
+/** Soft pastoral palette (round 3, "Misty Pastoral" minus the mist). */
+export const P = {
+  grass: "#a9d08a", grass2: "#98c97c", hill: "#a9c79b", tussock: "#e3cf9a", rock: "#b9b4ae", snow: "#ffffff",
+  soil: "#cdb89a", road: "#eadcc0", bush: "#5f9470", bush2: "#83ad80", pohutukawa: "#e07a7c", kowhai: "#f1d36e",
+  cabbage: "#9dbb86", fern: "#7fae84", trunk: "#a08670", wall: "#fbf6ec", trim: "#9bb6c9", roofIron: "#b9c3c9",
+  roofRed: "#d98b7c", shedWall: "#dc9484", fence: "#c2a88c", rank: "#bdb58c",
 };
 
-export const HOTSPOT_LABEL: Record<Hotspot, string> = {
-  house: "Farmhouse · sleep",
-  shed: "Shed · notice board",
-  market: "Market",
-  vet: "Vet",
-  fairground: "Fairground",
-  mailbox: "Mailbox",
+/** Zones sheep stand in (world rectangles). */
+export const ZONES: Record<Zone, Rect> = {
+  paddock: toRect(AREAS.home.rect, 0.9),
+  paddock2: toRect(AREAS.flats.rect, 0.9),
+  meadow: toRect(AREAS.farbank.rect, 0.9),
+  barn: { x0: -41.2, x1: -31.8, z0: -4.3, z1: 1.6 },
+  market: { x0: -21.6, x1: -16.4, z0: 10.9, z1: 14.2 },
+  visitor: { x0: 18.2, x1: 21, z0: -4, z1: 1 },
 };
 
 interface HotspotDef { anchor: V3; pickSize: V3; pickPos: V3 }
+const at = (u: number, v: number, y = 0): V3 => [u, y, -v];
 export const HOTSPOT_DEF: Record<Hotspot, HotspotDef> = {
-  house: { anchor: [-17, 6.2, -12], pickSize: [7.8, 6.4, 5.4], pickPos: [-17, 3.2, -12] },
-  shed: { anchor: [5.8, 4.2, 9.5], pickSize: [6, 4, 5.4], pickPos: [5.8, 2, 10] },
-  market: { anchor: [-12, 3.9, 10.6], pickSize: [4.4, 3.8, 3.2], pickPos: [-12, 1.9, 10.4] },
-  vet: { anchor: [21, 4.1, 10], pickSize: [4, 4, 4], pickPos: [21, 2, 10.2] },
-  fairground: { anchor: [14, 3.6, 11], pickSize: [8, 2.4, 8], pickPos: [14, 1.2, 11] },
-  mailbox: { anchor: [3, 2.0, 17.3], pickSize: [1.4, 2, 1.4], pickPos: [3, 1, 17.3] },
+  house: { anchor: at(-55, 1, 8.4), pickSize: [10.5, 7, 8.5], pickPos: at(-55, 0.5, 3.4) },
+  shed: { anchor: at(4, 1.5, 8.2), pickSize: [17, 6.8, 10], pickPos: at(4.8, -0.6, 3.2) },
+  market: { anchor: at(-13, -12.5, 4.2), pickSize: [5, 4.4, 3.6], pickPos: at(-13, -12.4, 2) },
+  vet: { anchor: at(17, -12.2, 5), pickSize: [5, 5, 4.4], pickPos: at(17, -12.2, 2.3) },
+  fairground: { anchor: at(36, -24.5, 4.4), pickSize: [12, 3.6, 11], pickPos: at(36, -24.5, 1.4) },
+  mailbox: { anchor: at(-4.5, -14.3, 2.8), pickSize: [1.8, 2.8, 1.8], pickPos: at(-4.5, -14.3, 1.2) },
 };
 
-export const GROUND = { x0: -25, x1: 25, z0: -19, z1: 19 };
+/** How far the terrain reaches (world units): enough for the widest pan-mode view. */
+export const GROUND = { x0: -110, x1: 150, z0: -95, z1: 60 };
+/** Static scenery is cut into square tiles this size so the close camera culls most of the valley. */
+const TILE = 24;
 
-/** Areas nothing decorative may be scattered into. */
-const KEEP_OUT: Rect[] = [
-  { x0: -21, x1: -13, z0: -15, z1: -9 }, // house
-  { x0: -24, x1: -11, z0: -6, z1: 2.8 }, // barn
-  { x0: -10, x1: 8, z0: -11, z1: 3 }, // paddock
-  { x0: 8, x1: 21, z0: -12, z1: 2 }, // paddock2
-  { x0: -21, x1: 21.5, z0: 3.9, z1: 6.1 }, // lane
-  { x0: -0.2, x1: 2.2, z0: 3.9, z1: 19 }, // gate lane
-  { x0: -18, x1: -9.5, z0: -9, z1: 5 }, // house path
-  { x0: -8.5, x1: -1.5, z0: 6, z1: 13 }, // pond
-  { x0: 2.8, x1: 9, z0: 6.8, z1: 13 }, // shed
-  { x0: -23, x1: -9.5, z0: 9, z1: 17.5 }, // market + pens
-  { x0: 9.8, x1: 18.2, z0: 6.8, z1: 15.2 }, // fair
-  { x0: 18.8, x1: 23.4, z0: 7.6, z1: 12.8 }, // vet
-  { x0: 1.8, x1: 4, z0: 16, z1: 18.8 }, // mailbox
-  { x0: -4.4, x1: 1.2, z0: -15, z1: -11 }, // shearing shed site
-];
+// ---------------------------------------------------------------- seasonal materials
 
-export function freeAt(x: number, z: number, pad = 0): boolean {
-  if (x < GROUND.x0 + 0.8 || x > GROUND.x1 - 0.8 || z < GROUND.z0 + 0.8 || z > GROUND.z1 - 0.8) return false;
-  for (const r of KEEP_OUT) if (x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad) return false;
-  return true;
+/** Uniforms shared by every seasonal surface: snow settles on what faces up. */
+export const SEASON_U = { uSnow: { value: 0 }, uSnowColor: { value: new THREE.Color("#f7f9fb") } };
+
+function seasonal<T extends THREE.MeshStandardMaterial>(m: T, snowy = true): T {
+  if (!snowy) return m;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uSnow = SEASON_U.uSnow;
+    sh.uniforms.uSnowColor = SEASON_U.uSnowColor;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying float vUp;")
+      .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\nvUp = normalize(mat3(modelMatrix) * objectNormal).y;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vUp;\nuniform float uSnow;\nuniform vec3 uSnowColor;")
+      .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uSnowColor, uSnow * smoothstep(0.45, 0.8, vUp));");
+  };
+  m.customProgramCacheKey = () => "seasonal";
+  return m;
 }
 
-const C = {
-  post: "#f1e8d6", rail: "#e2d4b8", wood: "#c89668", woodDark: "#9c6b4a", stone: "#c9c1b5",
-  cream: "#f6e7cc", roof: "#e3876f", path: "#dcc59c", dirt: "#b98e62", dirtDark: "#8f6a4a",
-  straw: "#ecd99c", hay: "#e8cc72", white: "#f7f4ee", teal: "#7cc4b8", red: "#e4574f",
-  pine: "#5c9d6c", trunk: "#9a6e4c", snow: "#fbfdff", rock: "#aeb1b3", sand: "#ecdcb0",
-};
+const std = (o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, ...o });
+
+// ---------------------------------------------------------------- the reveal pieces
+
+/** One lockable area in pieces: what goes (scrub, rank grass, broken fence and sign) and what comes (a mended fence, the gate, a trough). */
+export interface Land {
+  id: AreaId;
+  /** Terrain vertex colours: indices into the terrain colour attribute, locked and open colours, and each vertex's (u, v). */
+  idx: number[]; from: number[]; to: number[]; uv: number[];
+  scrub: THREE.InstancedMesh[];
+  scrubM: THREE.Matrix4[][];
+  tall: THREE.InstancedMesh | null; tallM: THREE.Matrix4[];
+  short: THREE.InstancedMesh | null; shortM: THREE.Matrix4[];
+  broken: THREE.Mesh | null;
+  posts: THREE.InstancedMesh | null; postsM: THREE.Matrix4[];
+  rails: THREE.InstancedMesh | null; railsM: THREE.Matrix4[];
+  open: THREE.Mesh | null;
+  /** The sweep runs from the gate across the land: 0 at the gate, 1 at the far side. */
+  sweep(u: number, v: number): number;
+}
 
 export interface FarmBuild {
   group: THREE.Group;
-  groundMat: THREE.MeshLambertMaterial;
-  foliageMat: THREE.MeshLambertMaterial;
-  meadowMat: THREE.MeshLambertMaterial;
-  pondMat: THREE.MeshLambertMaterial;
-  windowMat: THREE.MeshLambertMaterial;
+  terrainAttr: THREE.BufferAttribute;
+  mats: { terrain: THREE.MeshStandardMaterial; props: THREE.MeshStandardMaterial; foliage: THREE.MeshStandardMaterial; grass: THREE.MeshStandardMaterial; water: THREE.MeshStandardMaterial };
+  windowMat: THREE.MeshStandardMaterial;
   smoke: THREE.Mesh[];
+  smokeAt: THREE.Vector3;
   layers: {
-    snow: THREE.Object3D; spring: THREE.Object3D; flowers: THREE.Object3D; autumn: THREE.Object3D;
-    paddock2: THREE.Object3D; meadow: THREE.Object3D; mainGate: THREE.Object3D; bunting: THREE.Object3D; visitor: THREE.Object3D;
-    /** upgrades */
-    snugBarn: THREE.Object3D; shearing: THREE.Object3D; shearingSnow: THREE.Object3D; longMeadow: THREE.Object3D;
+    spring: THREE.Object3D; summer: THREE.Object3D; flowers: THREE.Object3D; autumn: THREE.Object3D; snow: THREE.Object3D;
+    bunting: THREE.Object3D; visitor: THREE.Object3D; snugBarn: THREE.Object3D; shearing: THREE.Object3D;
+    bridge: THREE.Object3D; bridgeStumps: THREE.Object3D;
   };
+  lands: Record<AreaId, Land>;
+  /** The meadow grass tufts (hidden under winter snow). */
+  grass: THREE.InstancedMesh[];
   hotspotMeshes: Record<Hotspot, THREE.Mesh>;
   hotspotPicks: THREE.Mesh[];
+  /** Pieces that cast shadows (for the lite toggle). */
   dispose(): void;
 }
 
-function fence(b: GeoBatch, x0: number, z0: number, x1: number, z1: number, h = 0.9, post = C.post, rail = C.rail): void {
+export interface FarmOpts { shadows: boolean; lite: boolean }
+
+// ---------------------------------------------------------------- small builders
+
+type B = GeoBatch;
+const rot = (b: B, geo: THREE.BufferGeometry | null, u: number, v: number, ry = 0, s = 1, y = 0, target?: B): void => {
+  if (!geo) return;
+  geo.applyMatrix4(mat([u, y, -v], [0, ry, 0], s));
+  (target ?? b).addColored(geo);
+};
+
+function fenceWood(b: B, a: UV, c: UV, h = 1.0, col = P.fence): void {
+  const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+  const n = Math.max(1, Math.round(len / 2.3));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    b.box(col, [0.16, h, 0.16], [lerp(a[0], c[0], t), h / 2, -lerp(a[1], c[1], t)]);
+  }
+  const ry = Math.atan2(c[1] - a[1], c[0] - a[0]);
+  for (const y of [0.45, 0.85]) b.box(col, [len, 0.08, 0.06], [(a[0] + c[0]) / 2, y * h, -(a[1] + c[1]) / 2], [0, ry, 0]);
+}
+
+/** The old barn fence helper (x/z space, used by the ported barn, market and fairground). */
+function fence(b: B, x0: number, z0: number, x1: number, z1: number, h = 0.9, post = "#f1e8d6", rail = "#e2d4b8"): void {
   const dx = x1 - x0, dz = z1 - z0;
   const len = Math.hypot(dx, dz);
   const n = Math.max(1, Math.round(len / 1.7));
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    b.box(post, [0.18, h, 0.18], [x0 + dx * t, h / 2, z0 + dz * t]);
-  }
+  for (let i = 0; i <= n; i++) { const t = i / n; b.box(post, [0.18, h, 0.18], [x0 + dx * t, h / 2, z0 + dz * t]); }
   const ry = -Math.atan2(dz, dx);
   for (const y of [h * 0.42, h * 0.8]) b.box(rail, [len, 0.09, 0.07], [(x0 + x1) / 2, y, (z0 + z1) / 2], [0, ry, 0]);
 }
@@ -105,20 +150,193 @@ function triangle(w: number, h: number): THREE.BufferGeometry {
   return g;
 }
 
-export function buildFarm(rng: Rng, shadows: boolean): FarmBuild {
+function blob(b: B, rng: Rng, c: THREE.ColorRepresentation, r: number, p: V3, s: V3 | number = 1, det = 1): void {
+  b.ico(c, r, det, p, s, [rng() * 3, rng() * 3, rng() * 3]);
+}
+
+function kowhai(fo: B, st: B, rng: Rng, u: number, v: number, s: number, spring: B): void {
+  st.cyl(P.trunk, 0.1 * s, 0.17 * s, 1.6 * s, 6, [u, 0.8 * s, -v], [0.1, 0, 0.12]);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    blob(fo, rng, P.bush2, 0.65 * s, [u + Math.cos(a) * 0.6 * s, 2.0 * s + rng() * 0.3, -v + Math.sin(a) * 0.6 * s], [1, 0.85, 1]);
+  }
+  blob(fo, rng, P.bush2, 0.7 * s, [u, 2.5 * s, -v]);
+  // kōwhai bloom in spring
+  for (let i = 0; i < 16; i++) {
+    const a = rng() * Math.PI * 2, r = (0.5 + rng() * 0.6) * s;
+    spring.ico(P.kowhai, 0.12 * s, 0, [u + Math.cos(a) * r, 2.0 * s + rng() * 1.0 * s, -v + Math.sin(a) * r], [1, 1.4, 1]);
+  }
+}
+function cabbage(fo: B, st: B, rng: Rng, u: number, v: number, s: number): void {
+  st.cyl(P.trunk, 0.1 * s, 0.16 * s, 2.4 * s, 6, [u, 1.2 * s, -v]);
+  const heads: V3[] = [[0.5 * s, 3.2 * s, 0.1 * s], [-0.4 * s, 3.0 * s, -0.2 * s], [0, 3.5 * s, 0]];
+  for (const h of heads) {
+    st.cyl(P.trunk, 0.06 * s, 0.09 * s, 1.1 * s, 4, [u + h[0] / 2, 2.6 * s + (h[1] - 2.4 * s) / 2 - 0.2 * s, -v + h[2] / 2], [h[2] * 0.6, 0, -h[0] * 0.6]);
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2, tilt = 0.9 + (i % 3) * 0.35;
+      fo.add(new THREE.ConeGeometry(0.07 * s, 1.1 * s, 3), i % 2 ? P.cabbage : P.fern, mat([u + h[0] + Math.cos(a) * 0.3 * s, h[1], -v + h[2] + Math.sin(a) * 0.3 * s], [Math.sin(a) * tilt, 0, -Math.cos(a) * tilt]));
+    }
+  }
+  void rng;
+}
+function pohutukawa(fo: B, st: B, rng: Rng, u: number, v: number, s: number, summer: B): void {
+  for (const [dx, dz, lean] of [[0, 0, 0.25], [0.3, 0.2, -0.35], [-0.2, -0.3, 0.1]] as const) st.cyl(P.trunk, 0.16 * s, 0.26 * s, 1.8 * s, 6, [u + dx * s, 0.8 * s, -v + dz * s], [lean, 0, lean * 0.6]);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    blob(fo, rng, i % 2 ? P.bush : P.bush2, 1.1 * s, [u + Math.cos(a) * 1.3 * s, 2.1 * s + rng() * 0.3, -v + Math.sin(a) * 1.3 * s], [1, 0.72, 1]);
+  }
+  blob(fo, rng, P.bush2, 1.3 * s, [u, 2.6 * s, -v], [1.1, 0.7, 1.1]);
+  // crimson blossom in summer
+  for (let i = 0; i < 14; i++) {
+    const a = rng() * Math.PI * 2, r = rng() * 1.9 * s;
+    summer.ico("#c9383f", 0.32 * s, 0, [u + Math.cos(a) * r, 2.8 * s + (1.9 * s - r) * 0.3, -v + Math.sin(a) * r], [1, 0.6, 1]);
+  }
+}
+function flax(fo: B, u: number, v: number, s: number): void {
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    fo.add(new THREE.ConeGeometry(0.1 * s, 1.5 * s, 3), i % 3 ? P.fern : P.bush, mat([u + Math.cos(a) * 0.2 * s, 0.65 * s, -v + Math.sin(a) * 0.2 * s], [Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45], [1, 1, 0.3]));
+  }
+}
+function ponga(fo: B, st: B, rng: Rng, u: number, v: number, s: number, y: number): void {
+  const h = 2.6 * s;
+  st.cyl(P.trunk, 0.18 * s, 0.24 * s, h, 6, [u, y + h / 2, -v]);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + rng() * 0.3;
+    const dx = Math.cos(a), dz = Math.sin(a);
+    fo.add(new THREE.BoxGeometry(1.2 * s, 0.05 * s, 0.42 * s).translate(0.6 * s, 0, 0), P.fern, mat([u, y + h + 0.05, -v], [0, -a, 0.35]));
+    fo.add(new THREE.BoxGeometry(1.0 * s, 0.05 * s, 0.3 * s).translate(0.5 * s, 0, 0), P.bush2, mat([u + dx * 1.1 * s, y + h + 0.4 * s, -v + dz * 1.1 * s], [0, -a, -0.45]));
+  }
+}
+function bushClump(fo: B, rng: Rng, u: number, v: number, s: number, y: number, det = 1): void {
+  const n = 3 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const r = (0.9 + rng() * 0.6) * s;
+    blob(fo, rng, rng() < 0.5 ? P.bush : P.bush2, r, [u + (rng() - 0.5) * 2 * s, y + r * 0.9 + rng() * 0.8 * s, -v + (rng() - 0.5) * 2 * s], [1, 1.15, 1], det);
+  }
+}
+function tussock(b: B, rng: Rng, u: number, v: number, s: number, y: number): void {
+  const cols = ["#d9c07e", "#c9a25a", "#e3cf9a"];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + rng();
+    const tilt = 0.35 + rng() * 0.35;
+    b.add(new THREE.ConeGeometry(0.08 * s, 1.0 * s, 3), cols[i % 3]!, mat([u + Math.cos(a) * 0.15 * s, y + 0.42 * s, -v + Math.sin(a) * 0.15 * s], [Math.sin(a) * tilt, 0, -Math.cos(a) * tilt]));
+  }
+}
+function rushes(b: B, u: number, v: number): void {
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    b.add(new THREE.ConeGeometry(0.06, 1.2, 3), i % 2 ? "#7d8a4f" : "#96905a", mat([u + Math.cos(a) * 0.2, 0.55, -v + Math.sin(a) * 0.2], [Math.sin(a) * 0.3, 0, -Math.cos(a) * 0.3]));
+  }
+}
+function trough(b: B, u: number, v: number): void {
+  b.box("#b9c3c9", [1.8, 0.55, 0.75], [u, 0.28, -v]);
+  b.box("#9cc9d9", [1.6, 0.05, 0.55], [u, 0.56, -v]);
+}
+function bale(b: B, u: number, v: number): void {
+  b.cyl("#e2c77e", 0.62, 0.62, 1.0, 14, [u, 0.62, -v], [Math.PI / 2, 0, 0.3]);
+  b.cyl("#d3b56a", 0.5, 0.5, 1.02, 14, [u, 0.62, -v], [Math.PI / 2, 0, 0.3]);
+}
+/** A five-bar galvanised gate swung open, hinged at (u, v), across the gate gap. */
+function gate(b: B, u: number, v: number, ry: number): void {
+  const g = new GeoBatch();
+  for (let i = 0; i < 5; i++) g.box("#c9cdd0", [3.4, 0.06, 0.06], [1.7, 0.3 + i * 0.2, 0]);
+  g.box("#c9cdd0", [0.07, 1.0, 0.07], [0.05, 0.7, 0]);
+  g.box("#c9cdd0", [0.07, 1.0, 0.07], [3.35, 0.7, 0]);
+  g.box("#c9cdd0", [3.6, 0.05, 0.05], [1.7, 0.7, 0], [0, 0, 0.27]);
+  g.box("#9d8163", [0.26, 1.3, 0.26], [0, 0.65, 0]);
+  rot(b, g.build(), u, v, ry);
+}
+function brokenFence(b: B, rng: Rng, a: UV, c: UV): void {
+  const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+  const n = Math.max(1, Math.round(len / 2.6));
+  const grey = "#b7a893";
+  let prev: THREE.Vector3 | null = null;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const u = lerp(a[0], c[0], t), v = lerp(a[1], c[1], t);
+    if (rng() < 0.16) { prev = null; continue; }
+    b.box(grey, [0.16, 0.95, 0.16], [u, 0.42, -v], [(rng() - 0.5) * 0.5, 0, (rng() - 0.5) * 0.5]);
+    const p = new THREE.Vector3(u, 0, -v);
+    if (prev && rng() < 0.5) {
+      const mid = prev.clone().add(p).multiplyScalar(0.5);
+      const d = p.clone().sub(prev);
+      b.box(grey, [d.length(), 0.07, 0.06], [mid.x, 0.4 + rng() * 0.3, mid.z], [0, -Math.atan2(d.z, d.x), (rng() - 0.5) * 0.35]);
+    }
+    prev = p;
+  }
+}
+function signPost(b: B, u: number, v: number): void {
+  b.box(P.trunk, [0.16, 2.0, 0.16], [u - 0.9, 1.0, -v]);
+  b.box(P.trunk, [0.16, 2.0, 0.16], [u + 0.9, 1.0, -v]);
+  b.box("#efe4cf", [2.4, 1.1, 0.1], [u, 1.55, -v + 0.1]);
+  b.box("#c2574a", [1.8, 0.14, 0.12], [u, 1.75, -v + 0.12]);
+  b.box("#b9a58a", [1.4, 0.1, 0.12], [u, 1.4, -v + 0.12]);
+}
+
+// ---------------------------------------------------------------- terrain
+
+function groundColour(u: number, v: number, h: number, slope: number, jit: number, openSet: Set<AreaId>): THREE.Color {
+  const hex = (c: string) => new THREE.Color(c);
+  const blot = Math.sin(u * 0.31 + Math.cos(v * 0.23) * 2) * Math.cos(v * 0.27 - u * 0.05);
+  const fine = Math.sin(u * 1.7 + v * 0.9) * Math.sin(v * 1.3 - u * 0.6);
+  const c = hex(P.grass).lerp(hex(P.hill), 0.3 + 0.25 * blot);
+  c.lerp(hex(P.tussock), ss(3.5, 8, h) * 0.85);
+  for (const id of AREA_IDS) {
+    const a = AREAS[id];
+    const w = softRect(u, v, a.rect, 0.8);
+    if (w <= 0) continue;
+    if (openSet.has(id)) {
+      const lush = hex(P.grass2).lerp(hex(P.grass), 0.15 + 0.2 * blot);
+      lush.multiplyScalar(1 + 0.03 * Math.sin((u + v * 0.3) * 0.9));
+      lush.lerp(hex("#b8d98f"), Math.max(0, fine) * 0.25);
+      c.lerp(lush, w);
+    } else {
+      const rank = hex(P.rank).lerp(hex("#9aa27a"), 0.5 + 0.4 * blot);
+      if (a.wet) rank.lerp(hex("#8f9c74"), 0.6);
+      if (a.tussock) rank.lerp(hex(P.tussock), 0.5);
+      rank.lerp(hex("#8c8f68"), Math.max(0, fine) * 0.35);
+      c.lerp(rank, w * 0.85);
+    }
+  }
+  // yards, the homestead lawn, the showground
+  c.lerp(hex("#d8ccae"), 0.55 * (1 - ss(3, 6, Math.hypot((u - 17.5) * 0.8, v - 1.5))));
+  c.lerp(hex(P.grass2), 0.5 * (1 - ss(5, 9, Math.hypot(u + 55, v + 1))));
+  c.lerp(hex("#e3d9b4"), 0.35 * (1 - ss(4, 7, Math.hypot(u - 36, v + 24.5))));
+  c.lerp(hex("#dccfa6"), 0.5 * (1 - ss(3.5, 5.5, Math.hypot((u + 36.5) * 0.7, v - 1.2))));
+  const b = bushScore(u, v);
+  if (b > BUSH_AT - 0.05) c.lerp(hex(P.bush), 0.55 * ss(BUSH_AT - 0.05, BUSH_AT + 0.1, b));
+  if (slope > 0.8) c.lerp(hex(P.rock), ss(0.8, 1.6, slope) * 0.5);
+  if (h > 19 + 1.5 * Math.sin(u * 0.2)) c.lerp(hex(P.snow), ss(19, 21, h));
+  const d = v - creekV(u);
+  if (Math.abs(d) < 3.2) c.lerp(hex(P.soil), 0.55 * (1 - ss(2, 3.2, Math.abs(d))));
+  const rd = Math.abs(v - roadV(u));
+  if (rd < 1.8) c.lerp(hex(P.road), 1 - ss(1.3, 1.8, rd));
+  for (const t of TRACKS) { const td = lineDist(u, v, t); if (td < 1) c.lerp(hex(P.road), 0.8 * (1 - ss(0.6, 1, td))); }
+  c.multiplyScalar(0.985 + jit * 0.03);
+  return c;
+}
+
+// ---------------------------------------------------------------- build
+
+export function buildFarm(seed: number, opts: FarmOpts): FarmBuild {
+  const rng = mulberry32(0x5eed ^ seed);
   const group = new THREE.Group();
   const disposables: { dispose(): void }[] = [];
-  const staticMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const foliageMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const meadowMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const pondMat = new THREE.MeshLambertMaterial({ color: "#8ccbe6" });
-  const windowMat = new THREE.MeshLambertMaterial({ color: "#a9cbe0", emissive: "#ffc766", emissiveIntensity: 0 });
-  disposables.push(staticMat, groundMat, foliageMat, meadowMat, pondMat, windowMat);
+  const shadows = opts.shadows;
+  const terrainMat = seasonal(std());
+  const propMat = seasonal(std());
+  const foliageMat = seasonal(std());
+  const grassMat = seasonal(std({ roughness: 1 }));
+  const waterMat = std({ roughness: 0.2 });
+  const plainMat = std();
+  const windowMat = std({ color: "#a9cbe0", emissive: "#ffc766", emissiveIntensity: 0, vertexColors: true });
+  disposables.push(terrainMat, propMat, foliageMat, grassMat, waterMat, plainMat, windowMat);
 
-  const mk = (b: GeoBatch, m: THREE.Material, cast = true, receive = true, parent: THREE.Object3D = group): THREE.Mesh | null => {
-    const g = b.build();
+  const mk = (b: GeoBatch, m: THREE.Material, cast = true, receive = true, parent: THREE.Object3D = group, smooth = false): THREE.Mesh | null => {
+    let g = b.build();
     if (!g) return null;
+    if (smooth) g = smoothGeo(g);
     disposables.push(g);
     const mesh = new THREE.Mesh(g, m);
     mesh.castShadow = shadows && cast;
@@ -126,462 +344,617 @@ export function buildFarm(rng: Rng, shadows: boolean): FarmBuild {
     parent.add(mesh);
     return mesh;
   };
-  const layer = (): THREE.Group => {
-    const gr = new THREE.Group();
-    group.add(gr);
-    return gr;
+  const layer = (): THREE.Group => { const gr = new THREE.Group(); group.add(gr); return gr; };
+  /** Build a big batch as square tiles (by triangle centre) so the camera culls what it can't see. */
+  const tiled = (b: GeoBatch, m: THREE.Material, cast: boolean, receive: boolean, smooth: boolean): void => {
+    const g = b.build();
+    if (!g) return;
+    const pos = g.getAttribute("position"), col = g.getAttribute("color");
+    const buckets = new Map<string, number[]>();
+    for (let t = 0; t < pos.count; t += 3) {
+      const cx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3, cz = (pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2)) / 3;
+      const key = `${Math.floor(cx / TILE)},${Math.floor(cz / TILE)}`;
+      let list = buckets.get(key);
+      if (!list) { list = []; buckets.set(key, list); }
+      list.push(t);
+    }
+    for (const list of buckets.values()) {
+      const P = new Float32Array(list.length * 9), C = new Float32Array(list.length * 9);
+      list.forEach((t, k) => { for (let v = 0; v < 3; v++) { P.set([pos.getX(t + v), pos.getY(t + v), pos.getZ(t + v)], k * 9 + v * 3); C.set([col.getX(t + v), col.getY(t + v), col.getZ(t + v)], k * 9 + v * 3); } });
+      let tg = new THREE.BufferGeometry();
+      tg.setAttribute("position", new THREE.BufferAttribute(P, 3));
+      tg.setAttribute("color", new THREE.BufferAttribute(C, 3));
+      tg.computeVertexNormals();
+      if (smooth) tg = smoothGeo(tg);
+      tg.computeBoundingSphere();
+      disposables.push(tg);
+      const mesh = new THREE.Mesh(tg, m);
+      mesh.castShadow = shadows && cast;
+      mesh.receiveShadow = shadows && receive;
+      group.add(mesh);
+    }
+    g.dispose();
   };
 
-  // ---------------------------------------------------------------- ground
-  {
-    const top = new GeoBatch(0.035, rng);
-    top.add(new THREE.PlaneGeometry(GROUND.x1 - GROUND.x0, GROUND.z1 - GROUND.z0, 25, 19).rotateX(-Math.PI / 2), "#ffffff");
-    mk(top, groundMat, false, true);
-    const sides = new GeoBatch(0.03, rng);
-    sides.box(C.dirt, [50, 1.3, 38], [0, -0.67, 0]);
-    sides.box(C.dirtDark, [50.3, 0.5, 38.3], [0, -1.5, 0]);
-    mk(sides, staticMat, false, false);
-  }
-
-  const st = new GeoBatch(0.04, rng); // static, casts shadows
-  const flat = new GeoBatch(0, rng); // flat decals on the ground (paths, floors)
-  const fol = new GeoBatch(0.1, rng); // foliage (white-ish vertex colour × seasonal material)
-  const snow = new GeoBatch(0.02, rng);
-  const spring = new GeoBatch(0.05, rng);
-  const flowers = new GeoBatch(0.05, rng);
-  const autumn = new GeoBatch(0.05, rng);
+  const st = new GeoBatch(0, rng); // buildings, fences, trunks
+  const fo = new GeoBatch(0, rng); // foliage (smooth)
+  const flat = new GeoBatch(0, rng); // decals that don't cast
+  const spring = new GeoBatch(0, rng);
+  const summer = new GeoBatch(0, rng);
+  const flowers = new GeoBatch(0, rng);
+  const autumn = new GeoBatch(0, rng);
+  const snow = new GeoBatch(0, rng);
   const win = new GeoBatch(0, rng);
 
-  // ---------------------------------------------------------------- paths
-  flat.box(C.path, [42, 0.06, 1.6], [0.5, 0.03, 5]);
-  flat.box(C.path, [1.6, 0.07, 14.2], [1, 0.035, 12]);
-  flat.box(C.path, [1.4, 0.07, 2.6], [-17, 0.035, -8.6]);
-  flat.box(C.path, [7.4, 0.075, 1.4], [-13.8, 0.037, -7.5]);
-  flat.box(C.path, [1.4, 0.08, 12.6], [-10.5, 0.04, -1.25]);
-  flat.box(C.path, [1.3, 0.07, 2.2], [-12, 0.035, 5 + 1.6 + 0.8]);
-  flat.box(C.path, [1.3, 0.07, 1.4], [21, 0.035, 6.4]);
-  flat.box(C.path, [1.3, 0.07, 1.4], [6.8, 0.035, 6.3]);
-
-  // ---------------------------------------------------------------- house (hotspot)
-  const house = new GeoBatch(0.03, rng);
-  house.box(C.stone, [7.4, 0.35, 4.9], [-17, 0.175, -12]);
-  house.box(C.cream, [7, 3, 4.5], [-17, 1.85, -12]);
-  house.gable(C.roof, 7.9, 5.4, 2.3, [-17, 3.35, -12]);
-  house.box("#c77a64", [0.75, 2.0, 0.75], [-14.8, 4.6, -12.9]);
-  house.box("#9f5f4e", [0.9, 0.18, 0.9], [-14.8, 5.65, -12.9]);
-  house.box(C.woodDark, [1.0, 1.9, 0.1], [-17, 1.3, -9.72]);
-  house.box("#e7c56b", [0.1, 0.1, 0.06], [-16.7, 1.3, -9.64]);
-  house.box(C.stone, [1.6, 0.18, 0.8], [-17, 0.09, -9.4]);
-  for (const x of [-19.2, -14.8]) {
-    house.box(C.white, [1.2, 1.05, 0.08], [x, 2.05, -9.73]);
-    house.box("#b5835a", [1.2, 0.22, 0.35], [x, 1.45, -9.6]);
-    for (let i = 0; i < 4; i++) flowers.ico(["#f28bb0", "#ffd45c", "#f7f7f7", "#c79ae8"][i]!, 0.12, 0, [x - 0.45 + i * 0.3, 1.66, -9.58]);
-    win.box("#ffffff", [0.9, 0.8, 0.08], [x, 2.05, -9.68]);
+  // ---------------------------------------------------------------- terrain (vertex colours carry paddocks, tracks, the bush)
+  const lands = {} as Record<AreaId, Land>;
+  const grassTiles: THREE.InstancedMesh[] = [];
+  const lockable: AreaId[] = ["flats", "rushy", "farbank", "terraces"];
+  for (const id of AREA_IDS) {
+    const a = AREAS[id];
+    const [u0, u1, v0, v1] = a.rect;
+    const g = a.gate;
+    const gu = g.side === "w" ? u0 : g.side === "e" ? u1 : g.at, gv = g.side === "s" ? v0 : g.side === "n" ? v1 : g.at;
+    const far = Math.max(Math.hypot(u1 - u0, v1 - v0), 1);
+    lands[id] = {
+      id, idx: [], from: [], to: [], uv: [], scrub: [], scrubM: [], tall: null, tallM: [], short: null, shortM: [],
+      broken: null, posts: null, postsM: [], rails: null, railsM: [], open: null,
+      sweep: (u, v) => Math.min(1, Math.hypot(u - gu, v - gv) / far),
+    };
   }
-  win.box("#ffffff", [0.08, 0.8, 0.9], [-13.48, 2.05, -12]);
-  house.box(C.white, [0.06, 1.05, 1.2], [-13.52, 2.05, -12]);
-  snow.gable(C.snow, 8.0, 5.55, 2.36, [-17, 3.4, -12]);
-  snow.box(C.snow, [0.95, 0.15, 0.95], [-14.8, 5.8, -12.9]);
-  // barrel + bench
-  st.cyl("#b07a52", 0.35, 0.35, 0.8, 8, [-20.2, 0.4, -9.3]);
-  st.box(C.wood, [1.4, 0.1, 0.45], [-15, 0.5, -9.2]);
-  st.box(C.woodDark, [0.1, 0.45, 0.4], [-15.6, 0.23, -9.2]);
-  st.box(C.woodDark, [0.1, 0.45, 0.4], [-14.4, 0.23, -9.2]);
-
-  // ---------------------------------------------------------------- barn / lean-to (zone "barn")
-  flat.box(C.straw, [10.6, 0.05, 7.2], [-17.5, 0.025, -1.55]);
-  st.box("#b5835a", [11.2, 2.9, 0.3], [-17.5, 1.45, -5.2]);
-  st.box("#a9774f", [0.3, 2.9, 2.8], [-23, 1.45, -3.85]);
-  for (const x of [-22.8, -17.5, -12.2]) st.cyl(C.woodDark, 0.13, 0.15, 2.5, 6, [x, 1.25, -2.6]);
-  st.box("#cf7560", [11.8, 0.18, 3.4], [-17.5, 2.75, -3.95], [0.2, 0, 0]);
-  snow.box(C.snow, [11.9, 0.08, 3.45], [-17.5, 2.87, -3.95], [0.2, 0, 0]);
-  for (const [x, z] of [[-22.2, -4.4], [-21.1, -4.4], [-22.2, -3.4]] as const) st.box(C.hay, [1, 0.7, 0.9], [x, 0.35, z]);
-  st.box(C.hay, [1, 0.7, 0.9], [-21.65, 1.05, -4.4]);
-  st.box(C.wood, [2.2, 0.5, 0.6], [-15, 0.3, -4.6]); // trough
-  fence(st, -23, 2.3, -15.2, 2.3, 0.8, C.wood, "#b98a5e");
-  fence(st, -13.8, 2.3, -12, 2.3, 0.8, C.wood, "#b98a5e");
-  fence(st, -23, -2.6, -23, 2.3, 0.8, C.wood, "#b98a5e");
-  win.box("#ffffff", [0.25, 0.35, 0.25], [-17.5, 2.2, -2.45]); // lantern
-
-  // ---------------------------------------------------------------- main paddock
-  fence(st, -9, -10, 7, -10);
-  fence(st, -9, -10, -9, 2);
-  fence(st, 7, -10, 7, -5.2);
-  fence(st, 7, -3.2, 7, 2);
-  fence(st, -9, 2, 0.2, 2);
-  fence(st, 1.8, 2, 7, 2);
-  st.box(C.rail, [1.4, 0.7, 0.08], [0.9, 0.5, 2.7], [0, -1.2, 0]); // open gate leaf
-  st.box(C.wood, [1.8, 0.5, 0.7], [-6.5, 0.28, -10.7]); // water trough (outside the fence)
-  st.box("#9fd0e8", [1.6, 0.05, 0.5], [-6.5, 0.54, -10.7]);
-  const mainGate = layer();
-  { const b = new GeoBatch(0.03, rng); fence(b, 7, -5.2, 7, -3.2, 0.9, C.post, "#d8c6a2"); mk(b, staticMat, true, true, mainGate); }
-
-  // ---------------------------------------------------------------- paddock 2 (fenced) / meadow
-  const pad2 = layer();
+  let terrainAttr: THREE.BufferAttribute;
   {
-    const b = new GeoBatch(0.03, rng);
-    fence(b, 8.5, -11, 20, -11);
-    fence(b, 20, -11, 20, 1);
-    fence(b, 8.5, 1, 20, 1);
-    fence(b, 8.5, -11, 8.5, -5.2);
-    fence(b, 8.5, -3.2, 8.5, 1);
-    fence(b, 7, -5.2, 8.5, -5.2, 0.9);
-    fence(b, 7, -3.2, 8.5, -3.2, 0.9);
-    b.box(C.rail, [1.9, 0.7, 0.08], [7.2, 0.5, -6.1], [0, -1.35, 0]);
-    b.box(C.wood, [0.9, 0.9, 0.12], [9.2, 1.2, 1.3]);
-    mk(b, staticMat, true, true, pad2);
-  }
-  const meadow = layer();
-  {
-    const b = new GeoBatch(0.12, rng);
-    for (let i = 0; i < 70; i++) {
-      const x = 9 + rng() * 11, z = -11 + rng() * 12;
-      const h = 0.35 + rng() * 0.45;
-      b.cone("#ffffff", 0.16 + rng() * 0.1, h, 4, [x, h / 2, z], [0, rng() * 3, 0]);
+    const S = opts.lite ? 1.6 : 1.25;
+    const U0 = GROUND.x0, U1 = GROUND.x1, V0 = -GROUND.z1, V1 = -GROUND.z0;
+    const nu = Math.round((U1 - U0) / S), nv = Math.round((V1 - V0) / S);
+    const pos = new Float32Array((nu + 1) * (nv + 1) * 3), col = new Float32Array((nu + 1) * (nv + 1) * 3);
+    const idx: number[] = [];
+    const home = new Set<AreaId>(["home"]);
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const u = U0 + i * S, v = V0 + j * S;
+      const h = height(u, v);
+      const slope = Math.hypot(height(u + 0.5, v) - h, height(u, v + 0.5) - h) * 2;
+      const jit = rng();
+      const c = groundColour(u, v, h, slope, jit, home);
+      const k = (j * (nu + 1) + i) * 3;
+      for (const id of lockable) {
+        if (softRect(u, v, AREAS[id].rect, 0.8) <= 0) continue;
+        const L = lands[id];
+        const o = groundColour(u, v, h, slope, jit, new Set<AreaId>(["home", id]));
+        L.idx.push(k); L.from.push(c.r, c.g, c.b); L.to.push(o.r, o.g, o.b); L.uv.push(u, v);
+      }
+      pos[k] = u; pos[k + 1] = h; pos[k + 2] = -v;
+      col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
     }
-    mk(b, meadowMat, false, true, meadow);
-    const r = new GeoBatch(0.05, rng);
-    r.box(C.woodDark, [0.16, 0.6, 0.16], [8.6, 0.3, -9.5], [0.2, 0, 0.1]);
-    r.box(C.woodDark, [0.16, 0.45, 0.16], [12.3, 0.22, -11], [0, 0, -0.3]);
-    r.ico(C.rock, 0.45, 0, [16.5, 0.2, -2.5], [1.2, 0.7, 1]);
-    mk(r, staticMat, true, true, meadow);
-  }
-
-  // ---------------------------------------------------------------- pond
-  {
-    const g = new THREE.CylinderGeometry(2.9, 2.9, 0.06, 14).translate(-5, 0.035, 9.5);
-    g.scale(1, 1, 0.82).translate(0, 0, 9.5 * 0.18);
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      const a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1;
+      idx.push(a, b, c, b, d, c);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    terrainAttr = new THREE.BufferAttribute(col, 3);
+    g.setAttribute("color", terrainAttr);
+    g.setIndex(idx);
+    g.computeVertexNormals();
     disposables.push(g);
-    const pond = new THREE.Mesh(g, pondMat);
-    pond.receiveShadow = shadows;
-    group.add(pond);
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2 + rng() * 0.2;
-      st.ico(C.rock, 0.28 + rng() * 0.12, 0, [-5 + Math.cos(a) * 3.05, 0.08, 9.5 + Math.sin(a) * 2.5], [1.2, 0.55, 1]);
+    const t = new THREE.Mesh(g, terrainMat);
+    t.receiveShadow = shadows;
+    group.add(t);
+    // the creek: a ribbon of water, deeper blue down the middle
+    const wpos: number[] = [], wcol: number[] = [];
+    const shallow = new THREE.Color("#a6d2df"), deep = new THREE.Color("#6fa9c4");
+    const Y = -0.3, w = 2.1;
+    for (let u = U0; u < U1; u += 1) {
+      const a0 = creekV(u), a1 = creekV(u + 1);
+      const quad = (p: V3[], c: THREE.Color[]) => { for (let k = 0; k < 3; k++) { wpos.push(...p[k]!); wcol.push(c[k]!.r, c[k]!.g, c[k]!.b); } };
+      const L0: V3 = [u, Y, -(a0 - w)], L1: V3 = [u + 1, Y, -(a1 - w)], M0: V3 = [u, Y, -a0], M1: V3 = [u + 1, Y, -a1], R0: V3 = [u, Y, -(a0 + w)], R1: V3 = [u + 1, Y, -(a1 + w)];
+      quad([L0, L1, M0], [shallow, shallow, deep]); quad([L1, M1, M0], [shallow, deep, deep]);
+      quad([M0, M1, R0], [deep, deep, shallow]); quad([M1, R1, R0], [deep, shallow, shallow]);
     }
-    for (let i = 0; i < 7; i++) st.cone("#79a95b", 0.06, 0.9 + rng() * 0.4, 4, [-7.4 + rng() * 0.9, 0.5, 7.9 + rng() * 0.9]);
-    flowers.cyl("#6fb35d", 0.3, 0.3, 0.03, 7, [-4.2, 0.08, 10.2]);
-    flowers.cyl("#6fb35d", 0.24, 0.24, 0.03, 7, [-3.5, 0.08, 9.3]);
-    flowers.ico("#f7a8c8", 0.08, 0, [-4.1, 0.14, 10.1]);
-    // duck
-    st.ico("#fbf8f0", 0.22, 0, [-5.6, 0.18, 9.9], [1.3, 0.8, 1]);
-    st.ico("#fbf8f0", 0.13, 0, [-5.3, 0.4, 9.9]);
-    st.box("#f0a53a", [0.14, 0.05, 0.08], [-5.15, 0.38, 9.9]);
+    const wg = new THREE.BufferGeometry();
+    wg.setAttribute("position", new THREE.Float32BufferAttribute(wpos, 3));
+    wg.setAttribute("color", new THREE.Float32BufferAttribute(wcol, 3));
+    wg.computeVertexNormals();
+    disposables.push(wg);
+    const wm = new THREE.Mesh(wg, waterMat);
+    wm.receiveShadow = shadows;
+    group.add(wm);
   }
 
-  // ---------------------------------------------------------------- shed with notice board (hotspot)
-  const shed = new GeoBatch(0.03, rng);
-  shed.box(C.wood, [5, 2.5, 3.6], [5.8, 1.25, 9.1]);
-  for (let i = 0; i < 6; i++) shed.box("#b8875b", [0.06, 2.4, 0.04], [3.6 + i * 0.85, 1.2, 10.92]);
-  shed.gable("#8ea4bf", 5.6, 4.3, 1.4, [5.8, 2.5, 9.1]);
-  shed.box(C.woodDark, [1.2, 1.9, 0.08], [7.3, 0.95, 10.93]);
-  shed.box("#b5cfe0", [0.8, 0.6, 0.06], [4.4, 1.7, 10.95]);
-  shed.box(C.woodDark, [0.14, 1.8, 0.14], [4.0, 0.9, 12.1]);
-  shed.box(C.woodDark, [0.14, 1.8, 0.14], [6.0, 0.9, 12.1]);
-  shed.box("#b78655", [2.4, 1.3, 0.14], [5.0, 1.55, 12.1]);
-  shed.box("#8c6340", [2.6, 0.12, 0.3], [5.0, 2.25, 12.1]);
-  const papers: [number, number, string][] = [[4.35, 1.75, "#fffdf5"], [4.95, 1.55, "#fff1a8"], [5.55, 1.8, "#ffd3e0"], [4.6, 1.25, "#d9f0ff"], [5.45, 1.25, "#fffdf5"]];
-  for (const [x, y, c] of papers) shed.box(c, [0.45, 0.5, 0.03], [x, y, 12.19], [0, 0, (x * 7) % 0.3 - 0.15]);
-  snow.gable(C.snow, 5.7, 4.45, 1.45, [5.8, 2.55, 9.1]);
-  win.box("#ffffff", [0.7, 0.5, 0.05], [4.4, 1.7, 10.98]);
+  // ---------------------------------------------------------------- homestead (hotspot "house")
+  const house = new GeoBatch(0, rng);
+  {
+    const hb = new GeoBatch(0, rng);
+    hb.box(P.wall, [5, 2.2, 3.6], [0, 1.3, 0]);
+    hb.box(P.soil, [5.2, 0.3, 3.8], [0, 0.15, 0]);
+    hb.add(new THREE.ConeGeometry(3.6, 1.8, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 0.78), P.roofIron, mat([0, 3.2, 0]));
+    hb.box(P.wall, [2.2, 2.0, 1.6], [1.4, 1.2, 2.3]);
+    hb.gable(P.roofIron, 2.4, 1.9, 1.1, [1.4, 2.2, 2.3], Math.PI / 2);
+    hb.box(P.roofIron, [3.1, 0.12, 1.4], [-1.0, 2.25, 2.3], [0.18, 0, 0]);
+    for (const x of [-2.4, -1.0, 0.3]) hb.cyl(P.trim, 0.06, 0.06, 2.0, 4, [x, 1.2, 2.9]);
+    hb.box(P.fence, [3.1, 0.12, 1.3], [-1.0, 0.3, 2.3]);
+    hb.box(P.roofRed, [0.6, 1.2, 0.06], [-0.1, 1.0, 1.83]);
+    hb.box(P.roofRed, [0.5, 1.6, 0.5], [-1.6, 3.6, -0.6]);
+    hb.cyl(P.roofIron, 0.8, 0.8, 1.7, 12, [3.4, 0.95, -0.8]);
+    hb.cone(P.roofIron, 0.85, 0.35, 12, [3.4, 1.98, -0.8]);
+    hb.cyl("#2f3a2f", 0.1, 0.1, 0.4, 5, [-0.3, 0.5, 2.7]);
+    hb.cyl("#2f3a2f", 0.1, 0.1, 0.4, 5, [-0.05, 0.5, 2.75]);
+    for (let i = 0; i < 6; i++) blob(hb, rng, i % 2 ? P.kowhai : P.pohutukawa, 0.28, [-2.6 + i * 0.5, 0.35, 3.6], [1, 0.8, 1]);
+    rot(house, hb.build(), SPOTS.homestead[0], SPOTS.homestead[1], -0.1, 1.7);
+    const wb = new GeoBatch(0, rng);
+    for (const x of [-1.8, -0.4]) wb.box("#ffffff", [0.7, 0.9, 0.06], [x, 1.5, 1.84]);
+    wb.box("#ffffff", [0.7, 0.9, 0.06], [1.4, 1.4, 3.14]);
+    rot(win, wb.build(), SPOTS.homestead[0], SPOTS.homestead[1], -0.1, 1.7);
+    const sb = new GeoBatch(0, rng);
+    sb.add(new THREE.ConeGeometry(3.7, 1.85, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 0.78), P.snow, mat([0, 3.25, 0]));
+    rot(snow, sb.build(), SPOTS.homestead[0], SPOTS.homestead[1], -0.1, 1.7);
+  }
+  // garden fence, the shelter belt behind
+  for (const [a, c] of FENCES.slice(0, 2)) fenceWood(st, a, c, 0.9);
+  for (let u = -76; u < -40; u += 2.6) {
+    const v = 10.5 + (Math.abs(u) % 2);
+    st.cyl(P.trunk, 0.25, 0.35, 2, 6, [u, 1, -v]);
+    for (let i = 0; i < 3; i++) blob(fo, rng, i % 2 ? "#4e7a5a" : "#5c8a64", 1.7 - i * 0.3, [u + (rng() - 0.5) * 0.5, 2.6 + i * 1.3, -v - 0.5 + (rng() - 0.5)], [1, 0.8, 1]);
+  }
 
-  // ---------------------------------------------------------------- market stall + trader (hotspot)
-  const mkt = new GeoBatch(0.03, rng);
-  mkt.box("#d9a36b", [3.6, 1.1, 1.1], [-12, 0.55, 11]);
-  mkt.box("#e9bd85", [3.8, 0.12, 1.3], [-12, 1.14, 11]);
-  for (const [x, z] of [[-13.75, 10.45], [-10.25, 10.45], [-13.75, 11.5], [-10.25, 11.5]] as const) mkt.cyl(C.woodDark, 0.07, 0.07, 2.6, 5, [x, 1.3, z]);
-  for (let i = 0; i < 6; i++) mkt.box(i % 2 ? "#fff6ea" : "#f28b82", [0.66, 0.08, 1.9], [-13.65 + i * 0.66, 2.65, 10.95], [0.28, 0, 0]);
-  for (let i = 0; i < 6; i++) mkt.box(i % 2 ? "#fff6ea" : "#f28b82", [0.66, 0.3, 0.05], [-13.65 + i * 0.66, 2.3, 11.92]);
-  const produce = ["#e45b52", "#8cc76b", "#f3eee2", "#f0b34a", "#e45b52", "#8fa8d8"];
-  for (let i = 0; i < 6; i++) mkt.ico(produce[i]!, 0.2, 0, [-13.3 + i * 0.52, 1.35, 11.05 + (i % 2) * 0.2]);
-  mkt.box("#fff6ea", [2.2, 0.45, 0.08], [-12, 3.05, 11.1]);
-  // trader
-  mkt.cyl("#7fb3d5", 0.26, 0.36, 1.25, 7, [-12, 0.62, 10.1]);
-  mkt.ico("#f0c9a4", 0.27, 1, [-12, 1.5, 10.1]);
-  mkt.cyl("#e2c07a", 0.5, 0.5, 0.05, 10, [-12, 1.68, 10.1]);
-  mkt.cyl("#e2c07a", 0.22, 0.28, 0.25, 8, [-12, 1.82, 10.1]);
-  mkt.ico("#3a302e", 0.04, 0, [-11.85, 1.55, 10.34]);
-  mkt.ico("#3a302e", 0.04, 0, [-12.15, 1.55, 10.34]);
-  mkt.box("#7fb3d5", [0.16, 0.6, 0.16], [-11.72, 1.05, 10.3], [0.4, 0, 0.5]);
-  snow.box(C.snow, [4.0, 0.06, 1.9], [-12, 2.72, 10.95], [0.28, 0, 0]);
-  // market pen + visitor pen
-  flat.box(C.straw, [6.2, 0.05, 4.4], [-19, 0.025, 12.5]);
-  fence(st, -22.2, 10.2, -15.8, 10.2, 0.8, C.wood, "#b98a5e");
-  fence(st, -22.2, 14.8, -15.8, 14.8, 0.8, C.wood, "#b98a5e");
-  fence(st, -22.2, 10.2, -22.2, 14.8, 0.8, C.wood, "#b98a5e");
-  fence(st, -15.8, 10.2, -15.8, 11.6, 0.8, C.wood, "#b98a5e");
-  fence(st, -15.8, 13.2, -15.8, 14.8, 0.8, C.wood, "#b98a5e");
-  flat.box(C.straw, [3.4, 0.05, 2.9], [-12, 0.025, 15.5]);
-  fence(st, -13.8, 13.9, -10.2, 13.9, 0.8, "#e9d7b6", "#d7c19a");
-  fence(st, -13.8, 17.1, -10.2, 17.1, 0.8, "#e9d7b6", "#d7c19a");
-  fence(st, -13.8, 13.9, -13.8, 17.1, 0.8, "#e9d7b6", "#d7c19a");
-  fence(st, -10.2, 13.9, -10.2, 17.1, 0.8, "#e9d7b6", "#d7c19a");
-  st.box(C.wood, [0.1, 1.3, 0.1], [-9.8, 0.65, 13.7]);
-  st.box("#fff6ea", [0.9, 0.5, 0.06], [-9.8, 1.35, 13.75]);
+  // ---------------------------------------------------------------- the barn (lean-to, zone "barn"), ported from the diorama and moved
+  const BX = -19; // the old barn's x shift
+  const snugL = layer();
+  {
+    const b = new GeoBatch(0.02, rng);
+    b.box("#e8d596", [10.6, 0.05, 7.2], [-17.5, 0.03, -1.55]);
+    b.box("#b5835a", [11.2, 2.9, 0.3], [-17.5, 1.45, -5.2]);
+    b.box("#a9774f", [0.3, 2.9, 2.8], [-23, 1.45, -3.85]);
+    for (const x of [-22.8, -17.5, -12.2]) b.cyl("#9c6b4a", 0.13, 0.15, 2.5, 6, [x, 1.25, -2.6]);
+    b.box("#cf7560", [11.8, 0.18, 3.4], [-17.5, 2.75, -3.95], [0.2, 0, 0]);
+    for (const [x, z] of [[-22.2, -4.4], [-21.1, -4.4], [-22.2, -3.4]] as const) b.box("#e8cc72", [1, 0.7, 0.9], [x, 0.35, z]);
+    b.box("#e8cc72", [1, 0.7, 0.9], [-21.65, 1.05, -4.4]);
+    b.box("#c89668", [2.2, 0.5, 0.6], [-15, 0.3, -4.6]);
+    fence(b, -23, 2.3, -15.2, 2.3, 0.8, "#c89668", "#b98a5e");
+    fence(b, -13.8, 2.3, -12, 2.3, 0.8, "#c89668", "#b98a5e");
+    fence(b, -23, -2.6, -23, 2.3, 0.8, "#c89668", "#b98a5e");
+    const g = b.build()!;
+    g.translate(BX, 0, 0);
+    st.addColored(g);
+    const s = new GeoBatch(0, rng);
+    s.box(P.snow, [11.9, 0.08, 3.45], [-17.5 + BX, 2.87, -3.95], [0.2, 0, 0]);
+    snow.addColored(s.build()!);
+    win.box("#ffffff", [0.25, 0.35, 0.25], [-17.5 + BX, 2.2, -2.45]);
+    // the snug barn upgrade: a second wall, kick boards, a red door, hay and a weathervane
+    const u = new GeoBatch(0.03, rng);
+    u.box("#a9774f", [0.3, 2.9, 2.8], [-12.05, 1.45, -3.85]);
+    for (const [x0, x1] of [[-22.8, -19.2], [-15.8, -12.2]] as const) {
+      const n = Math.round((x1 - x0) / 0.45);
+      for (let i = 0; i < n; i++) u.box(i % 2 ? "#b98a5e" : "#c69466", [0.44, 0.95, 0.1], [x0 + (i + 0.5) * ((x1 - x0) / n), 0.48, -2.45]);
+    }
+    u.box("#d0574c", [0.08, 1.8, 1.3], [-11.86, 0.9, -3.85]);
+    u.box("#f4e9d8", [0.06, 2.1, 0.1], [-11.8, 0.9, -3.85], [0.64, 0, 0]);
+    u.box("#f4e9d8", [0.06, 2.1, 0.1], [-11.8, 0.9, -3.85], [-0.64, 0, 0]);
+    u.box("#e8cc72", [1.1, 0.7, 0.9], [-13.2, 0.35, -4.5]);
+    u.box("#e8cc72", [1.1, 0.7, 0.9], [-14.4, 0.35, -4.5]);
+    u.box("#8a8f96", [0.06, 1.1, 0.06], [-17.5, 3.6, -4.8]);
+    u.box("#8a8f96", [0.7, 0.05, 0.05], [-17.5, 4.05, -4.8]);
+    u.ico("#f2c257", 0.08, 0, [-17.5, 4.15, -4.8]);
+    const ug = u.build()!;
+    ug.translate(BX, 0, 0);
+    const ub = new GeoBatch(); ub.addColored(ug);
+    mk(ub, propMat, true, true, snugL);
+  }
+
+  // ---------------------------------------------------------------- the home paddock: fence, open gate, trough, a bale
+  for (const [a, c] of areaFence(AREAS.home)) fenceWood(st, a, c);
+  gate(st, AREAS.home.rect[1], AREAS.home.gate.at - 1.8, 0.2);
+  trough(st, -27.5, 6.8);
+  bale(st, -9, 6.5);
+
+  // ---------------------------------------------------------------- woolshed with the verandah stations (hotspot "shed")
+  const shed = new GeoBatch(0, rng);
+  {
+    const [u, v] = SPOTS.woolshed;
+    const S = 1.75, W = 7.4 * S, D = 3.8 * S;
+    const b = new GeoBatch(0, rng);
+    for (let i = -4; i <= 4; i++) for (const z of [-D / 2 + 0.2, D / 2 - 0.2]) b.box(P.trunk, [0.3, 0.8, 0.3], [i * (W / 9), 0.4, z]);
+    b.box(P.shedWall, [W, 4.2, D], [0, 2.9, 0]);
+    b.gable(P.roofRed, W + 0.8, D + 1.2, 2.6, [0, 5.0, 0]);
+    b.box(P.shedWall, [4.2, 3.0, 4.2], [-W / 2 - 2.1, 2.3, -0.6]);
+    b.box(P.roofRed, [4.8, 0.14, 4.8], [-W / 2 - 2.1, 4.35, -0.6], [0, 0, 0.18]);
+    b.box(P.wall, [2.4, 2.8, 0.06], [W * 0.3, 2.2, D / 2 + 0.02]);
+    b.box(P.fence, [0.1, 2.8, 0.08], [W * 0.3, 2.2, D / 2 + 0.05]);
+    for (let i = -6; i <= 6; i++) b.box("#c9786b", [0.08, 4.2, 0.05], [i * (W / 13), 2.9, D / 2 + 0.01]);
+    b.box(P.roofRed, [W * 0.72, 0.14, 1.6], [-W * 0.13, 4.3, D / 2 + 0.75], [0.3, 0, 0]);
+    b.box(P.fence, [W * 0.74, 0.16, 4.4], [-W * 0.13, 0.55, D / 2 + 2.1]);
+    // three station bays: benches with a little wool and an empty perch (birds come in a later phase)
+    const bays = [{ bench: "#e7d3a8", x: -W * 0.37 }, { bench: "#d9c6e0", x: -W * 0.13 }, { bench: "#bcd8c0", x: W * 0.11 }];
+    for (const [k, bay] of bays.entries()) {
+      b.box("#c2a88c", [2.0, 0.12, 1.1], [bay.x, 1.55, D / 2 + 2.6]);
+      for (const dx of [-0.85, 0.85]) b.box("#a08670", [0.12, 1.0, 1.0], [bay.x + dx, 1.05, D / 2 + 2.6]);
+      b.box(bay.bench, [1.9, 0.06, 1.0], [bay.x, 1.63, D / 2 + 2.6]);
+      if (k === 0) for (let i = 0; i < 4; i++) b.ico("#efe6d4", 0.26, 1, [bay.x - 0.5 + i * 0.3, 1.82, D / 2 + 2.5 + (i % 2) * 0.2], [1.3, 0.7, 1]);
+      if (k === 1) { b.cyl("#8a6d55", 0.35, 0.35, 0.08, 16, [bay.x - 0.35, 1.7, D / 2 + 2.6]); b.ico("#e39a95", 0.2, 1, [bay.x + 0.4, 1.82, D / 2 + 2.6]); }
+      if (k === 2) { b.box("#c0a9cf", [0.7, 0.06, 0.5], [bay.x - 0.2, 1.7, D / 2 + 2.6]); b.cyl("#d9cbb4", 0.02, 0.02, 0.9, 5, [bay.x - 0.1, 1.85, D / 2 + 2.6], [0, 0, 1.2]); }
+      b.cyl(P.trunk, 0.05, 0.05, 1.0, 5, [bay.x + 0.7, 2.1, D / 2 + 3.5]);
+      b.box(P.trunk, [0.7, 0.07, 0.07], [bay.x + 0.7, 2.6, D / 2 + 3.5]);
+    }
+    for (let i = 0; i < 3; i++) b.box("#efe6d4", [1.0, 1.1, 0.9], [W * 0.43 + (i % 2) * 0.2, 1.35 + Math.floor(i / 2) * 1.1, D / 2 + 1.0 + (i === 1 ? 1.0 : 0)]);
+    b.box(P.fence, [1.4, 0.14, 3.2], [W * 0.3, 0.45, D / 2 + 1.9], [-0.3, 0, 0]);
+    // notice board on the verandah post
+    b.box(P.trunk, [0.14, 2.2, 0.14], [-W * 0.52, 1.1, D / 2 + 3.9]);
+    b.box("#b78655", [1.4, 1.0, 0.12], [-W * 0.52, 1.9, D / 2 + 3.95]);
+    for (const [x, y, c] of [[-0.35, 2.0, "#fffdf5"], [0.1, 1.85, "#fff1a8"], [0.4, 2.05, "#ffd3e0"]] as const) b.box(c, [0.35, 0.4, 0.03], [-W * 0.52 + x, y, D / 2 + 4.03]);
+    rot(shed, b.build(), u, v);
+    const s = new GeoBatch(0, rng);
+    s.gable(P.snow, W + 0.9, D + 1.3, 2.62, [0, 5.05, 0]);
+    rot(snow, s.build(), u, v);
+    // yards on the east end (the visiting ram's pen)
+    const Y: URect = [u + W / 2 + 1, u + W / 2 + 9, v - 3, v + 3];
+    for (const [a, c] of [[[Y[0], Y[3]], [Y[1], Y[3]]], [[Y[1], Y[3]], [Y[1], Y[2]]], [[Y[1], Y[2]], [Y[0], Y[2]]], [[Y[0], Y[2]], [Y[0], Y[3]]], [[Y[0] + 4, Y[2]], [Y[0] + 4, Y[3]]]] as [UV, UV][]) fenceWood(st, a, c, 1.1);
+  }
   const visitorL = layer();
   {
     const b = new GeoBatch(0, rng);
-    b.box("#ffffff", [0.05, 1.1, 0.05], [-10.2, 1.35, 13.9]);
-    b.add(triangle(0.55, 0.36).rotateZ(-Math.PI / 2).translate(0.02, 1.9, 0), "#8fa8d8", mat([-10.2, 0, 13.9]));
-    b.box("#ffd257", [0.5, 0.12, 0.08], [-9.8, 1.35, 13.8]);
-    mk(b, staticMat, false, false, visitorL);
+    b.box("#ffffff", [0.05, 1.3, 0.05], [21.8, 1.35, 3.2]);
+    b.add(triangle(0.6, 0.4).rotateZ(-Math.PI / 2).translate(0.02, 2.0, 0), "#8fa8d8", mat([21.8, 0, 3.2]));
+    mk(b, plainMat, false, false, visitorL);
   }
-  st.box(C.hay, [0.9, 0.5, 0.7], [-21.5, 0.25, 14.1]);
-
-  // ---------------------------------------------------------------- vet hut (hotspot)
-  const vet = new GeoBatch(0.03, rng);
-  vet.box(C.white, [3.4, 2.3, 3], [21, 1.15, 10]);
-  vet.gable(C.teal, 3.9, 3.6, 1.3, [21, 2.3, 10]);
-  vet.box("#7aa7c7", [0.95, 1.7, 0.08], [21.6, 0.85, 11.52]);
-  vet.box(C.white, [1.1, 1.1, 0.1], [20.3, 1.9, 11.6]);
-  vet.box(C.red, [0.8, 0.24, 0.06], [20.3, 1.9, 11.67]);
-  vet.box(C.red, [0.24, 0.8, 0.06], [20.3, 1.9, 11.67]);
-  vet.box(C.woodDark, [0.12, 1.6, 0.12], [22.9, 0.8, 12.2]);
-  vet.box(C.white, [0.8, 0.8, 0.1], [22.9, 1.8, 12.2]);
-  vet.box(C.red, [0.56, 0.17, 0.06], [22.9, 1.8, 12.27]);
-  vet.box(C.red, [0.17, 0.56, 0.06], [22.9, 1.8, 12.27]);
-  snow.gable(C.snow, 4.0, 3.75, 1.35, [21, 2.35, 10]);
-  win.box("#ffffff", [0.08, 0.7, 0.9], [22.73, 1.4, 10]);
-
-  // ---------------------------------------------------------------- fairground (hotspot)
-  const fair = new GeoBatch(0.03, rng);
-  fair.cyl(C.sand, 3.7, 3.7, 0.08, 16, [14, 0.04, 11]);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    if (i === 4) continue; // entrance facing the camera
-    fair.box(C.white, [0.14, 0.6, 0.14], [14 + Math.cos(a) * 3.4, 0.3, 11 + Math.sin(a) * 3.4]);
-    const a2 = ((i + 1) / 16) * Math.PI * 2;
-    if (i + 1 === 4) continue;
-    const mx = 14 + (Math.cos(a) + Math.cos(a2)) * 1.7, mz = 11 + (Math.sin(a) + Math.sin(a2)) * 1.7;
-    const len = 2 * 3.4 * Math.sin(Math.PI / 16);
-    fair.box("#f2b5c4", [len, 0.08, 0.06], [mx, 0.48, mz], [0, -(a + a2) / 2 + Math.PI / 2, 0]);
-  }
-  fair.box("#ffd257", [0.8, 0.6, 0.8], [14, 0.3, 9]);
-  fair.box("#d8dde3", [0.8, 0.4, 0.8], [13.2, 0.2, 9]);
-  fair.box("#e2a36b", [0.8, 0.28, 0.8], [14.8, 0.14, 9]);
-  const poleA = [Math.PI * 0.25, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 1.75];
-  const poleP = poleA.map((a) => [14 + Math.cos(a) * 4.0, 11 + Math.sin(a) * 4.0] as const);
-  for (const [x, z] of poleP) {
-    fair.cyl(C.white, 0.07, 0.09, 3.0, 6, [x, 1.5, z]);
-    fair.ico("#ffd257", 0.13, 0, [x, 3.05, z]);
-  }
-  const bunt = layer();
-  {
-    const b = new GeoBatch(0, rng);
-    const cols = ["#f28b82", "#ffd257", "#8fd0e8", "#b9e39a", "#d6a8ee"];
-    let ci = 0;
-    for (let k = 0; k < 4; k++) {
-      const [ax, az] = poleP[k]!;
-      const [bx, bz] = poleP[(k + 1) % 4]!;
-      const n = 9;
-      const ry = -Math.atan2(bz - az, bx - ax);
-      for (let i = 0; i < n; i++) {
-        const t = (i + 0.5) / n;
-        const y = 2.9 - Math.sin(t * Math.PI) * 0.6;
-        const m = mat([ax + (bx - ax) * t, y, az + (bz - az) * t], [0, ry, 0]);
-        b.add(triangle(0.42, 0.5).translate(-0.21, 0, 0), cols[ci++ % cols.length]!, m);
-      }
-      const len = Math.hypot(bx - ax, bz - az);
-      for (let s = 0; s < 6; s++) {
-        const t0 = s / 6, t1 = (s + 1) / 6;
-        const y0 = 2.92 - Math.sin(t0 * Math.PI) * 0.6, y1 = 2.92 - Math.sin(t1 * Math.PI) * 0.6;
-        const tm = (t0 + t1) / 2;
-        b.box("#fffaf0", [len / 6 + 0.02, 0.03, 0.03], [ax + (bx - ax) * tm, (y0 + y1) / 2, az + (bz - az) * tm], [0, ry, Math.atan2(y1 - y0, len / 6)]);
-      }
-    }
-    b.box("#ffffff", [0.06, 1.2, 0.06], [14, 1.2, 9]);
-    b.add(triangle(0.6, 0.4).rotateZ(-Math.PI / 2).translate(0.03, 1.8, 0), "#f28b82", mat([14, 0, 9]));
-    mk(b, staticMat, false, false, bunt);
-  }
-
-  // ---------------------------------------------------------------- mailbox + gate + lamp (mailbox is a hotspot)
-  const mail = new GeoBatch(0.03, rng);
-  mail.box(C.woodDark, [0.14, 1.1, 0.14], [3, 0.55, 17.3]);
-  mail.box("#6f9fd8", [0.5, 0.42, 0.75], [3, 1.3, 17.3]);
-  mail.cyl("#6f9fd8", 0.25, 0.25, 0.75, 8, [3, 1.5, 17.3], [Math.PI / 2, 0, 0]);
-  mail.box(C.red, [0.05, 0.4, 0.06], [3.29, 1.6, 17.0]);
-  mail.box(C.red, [0.05, 0.14, 0.2], [3.29, 1.75, 16.9]);
-  snow.box(C.snow, [0.55, 0.1, 0.8], [3, 1.76, 17.3]);
-  st.box(C.post, [0.3, 1.4, 0.3], [0.05, 0.7, 18.6]);
-  st.box(C.post, [0.3, 1.4, 0.3], [1.95, 0.7, 18.6]);
-  st.box(C.rail, [1.5, 0.8, 0.08], [2.6, 0.6, 17.9], [0, 1.25, 0]);
-  st.cyl("#5f6b73", 0.06, 0.08, 2.4, 6, [-0.7, 1.2, 17.9]);
-  st.box("#5f6b73", [0.4, 0.08, 0.4], [-0.7, 2.62, 17.9]);
-  win.box("#ffffff", [0.28, 0.32, 0.28], [-0.7, 2.42, 17.9]);
-
-  // front hedge
-  for (let x = -24.2; x < 24.5; x += 1.1) {
-    if (x > -0.9 && x < 3.7) continue;
-    fol.ico("#e6f0e0", 0.62, 0, [x, 0.45, 18.4], [1.1, 0.8, 0.85], [rng(), rng(), rng()]);
-    snow.ico(C.snow, 0.4, 0, [x, 0.8, 18.4], [1.2, 0.35, 0.8]);
-  }
-
-  // ---------------------------------------------------------------- trees
-  const spots: [number, number][] = [
-    [-23, -16.5], [-10, -16.4], [-4.5, -16.8], [2.5, -16], [9, -16.8], [15, -16.3], [22.5, -15.8],
-    [23.2, -6.5], [22.8, 3.2], [-23.5, 7.3], [-23.4, 17.2], [23.3, 16.8],
-  ];
-  const trees: [number, number, boolean][] = [];
-  for (const [x, z] of spots) {
-    if (rng() < 0.22 && trees.length > 7) continue;
-    trees.push([x + (rng() - 0.5) * 1.2, z + (rng() - 0.5) * 0.8, rng() < 0.35]);
-  }
-  for (const [x, z, pine] of trees) {
-    const s = 0.85 + rng() * 0.35;
-    if (pine) {
-      st.cyl(C.trunk, 0.18 * s, 0.24 * s, 1.0 * s, 6, [x, 0.5 * s, z]);
-      for (let k = 0; k < 3; k++) {
-        const r = (1.5 - k * 0.38) * s, h = (1.7 - k * 0.2) * s, y = (1.0 + k * 1.05) * s + h / 2;
-        st.cone(C.pine, r, h, 7, [x, y, z], [0, rng(), 0]);
-        snow.cone(C.snow, r * 0.55, h * 0.45, 7, [x, y + h * 0.3, z]);
-      }
-    } else {
-      st.cyl(C.trunk, 0.2 * s, 0.3 * s, 1.8 * s, 6, [x, 0.9 * s, z]);
-      const blobs: [number, number, number, number][] = [[0, 2.6, 0, 1.35], [0.8, 2.1, 0.3, 0.95], [-0.7, 2.2, -0.2, 1.0], [0.1, 3.3, -0.1, 0.9]];
-      for (const [bx, by, bz, br] of blobs) {
-        const shade = 0.82 + rng() * 0.18;
-        const g = Math.round(255 * shade);
-        fol.ico(`rgb(${g},${g},${g})`, br * s, 0, [x + bx * s, by * s, z + bz * s], 1, [rng() * 3, rng() * 3, 0]);
-      }
-      snow.ico(C.snow, 0.95 * s, 0, [x + 0.05 * s, 3.65 * s, z - 0.05 * s], [1.1, 0.42, 1.1]);
-      for (let k = 0; k < 9; k++) {
-        const a = rng() * Math.PI * 2, e = rng() * 1.2;
-        spring.ico(k % 3 ? "#f7b6cf" : "#fde6ef", 0.16, 0, [x + Math.cos(a) * 1.25 * s, (2.6 + e) * s, z + Math.sin(a) * 1.25 * s]);
-      }
-      for (let k = 0; k < 5; k++) autumn.ico(k % 2 ? "#e0673f" : "#ee9a4c", 0.14, 0, [x + (rng() - 0.5) * 3, 0.03, z + (rng() - 0.5) * 3], [1, 0.25, 1]);
-    }
-  }
-  // bushes
-  for (let i = 0; i < 18; i++) {
-    const x = -24 + rng() * 48, z = -18 + rng() * 36;
-    if (!freeAt(x, z, 0.8)) continue;
-    const s = 0.4 + rng() * 0.3;
-    fol.ico("#dfe9d8", s, 0, [x, s * 0.6, z], [1.2, 0.8, 1]);
-    snow.ico(C.snow, s * 0.8, 0, [x, s * 1.0, z], [1.2, 0.4, 1]);
-    if (rng() < 0.5) spring.ico("#fff4a8", 0.08, 0, [x + 0.2, s * 1.1, z + 0.3]);
-  }
-  // rocks
-  for (let i = 0; i < 10; i++) {
-    const x = -24 + rng() * 48, z = -18 + rng() * 36;
-    if (!freeAt(x, z, 0.3)) continue;
-    st.ico(C.rock, 0.2 + rng() * 0.25, 0, [x, 0.08, z], [1.3, 0.6, 1], [rng(), rng(), rng()]);
-  }
-  // flowers + grass tufts
-  const fcols = ["#f28bb0", "#ffd45c", "#ffffff", "#c79ae8", "#ff9d7a", "#8fc8f0"];
-  for (let i = 0, placed = 0; i < 400 && placed < 90; i++) {
-    const x = -24.5 + rng() * 49, z = -18.5 + rng() * 37;
-    if (!freeAt(x, z, 0.2)) continue;
-    placed++;
-    const c = fcols[Math.floor(rng() * fcols.length)]!;
-    flowers.box("#6fb35d", [0.04, 0.26, 0.04], [x, 0.13, z]);
-    flowers.ico(c, 0.1, 0, [x, 0.28, z]);
-    if (rng() < 0.5) autumn.ico(rng() < 0.5 ? "#e0673f" : "#f2c257", 0.12, 0, [x, 0.02, z], [1, 0.2, 1]);
-  }
-  // pumpkins (autumn) & snowman (winter)
-  for (const [x, z, r] of [[-18.3, -9.1, 0.32], [-17.8, -8.9, 0.24], [-10.9, 11.9, 0.26], [-13.1, 12.0, 0.3]] as const) {
-    autumn.ico("#f09a3e", r, 1, [x, r * 0.8, z], [1.2, 0.85, 1.2]);
-    autumn.box("#6c8a3e", [0.06, 0.15, 0.06], [x, r * 1.55, z]);
-  }
-  snow.ico(C.snow, 0.55, 1, [-20.3, 0.5, -7.7]);
-  snow.ico(C.snow, 0.4, 1, [-20.3, 1.25, -7.7]);
-  snow.ico(C.snow, 0.28, 1, [-20.3, 1.8, -7.7]);
-  snow.cone("#f0a53a", 0.06, 0.3, 5, [-20.05, 1.8, -7.55], [0, 0, -Math.PI / 2]);
-
-  // ---------------------------------------------------------------- upgrades (shown when owned)
-  // Snug barn: the lean-to gets a second wall, kick boards, a red door, a lantern and a weathervane.
-  const snugL = layer();
-  {
-    const b = new GeoBatch(0.03, rng);
-    b.box("#a9774f", [0.3, 2.9, 2.8], [-12.05, 1.45, -3.85]);
-    for (const [x0, x1] of [[-22.8, -19.2], [-15.8, -12.2]] as const) {
-      const n = Math.round((x1 - x0) / 0.45);
-      for (let i = 0; i < n; i++) b.box(i % 2 ? "#b98a5e" : "#c69466", [0.44, 0.95, 0.1], [x0 + (i + 0.5) * ((x1 - x0) / n), 0.48, -2.45]);
-    }
-    b.box("#d0574c", [0.08, 1.8, 1.3], [-11.86, 0.9, -3.85]); // door
-    b.box("#f4e9d8", [0.06, 0.1, 1.5], [-11.8, 1.84, -3.85]);
-    b.box("#f4e9d8", [0.06, 2.1, 0.1], [-11.8, 0.9, -3.85], [0.64, 0, 0]); // X brace
-    b.box("#f4e9d8", [0.06, 2.1, 0.1], [-11.8, 0.9, -3.85], [-0.64, 0, 0]);
-    b.box(C.hay, [1.1, 0.7, 0.9], [-13.2, 0.35, -4.5]);
-    b.box(C.hay, [1.1, 0.7, 0.9], [-14.4, 0.35, -4.5]);
-    b.box(C.hay, [1.1, 0.7, 0.9], [-13.8, 1.05, -4.5]);
-    b.box("#8a8f96", [0.06, 1.1, 0.06], [-17.5, 3.6, -4.8]); // weathervane
-    b.box("#8a8f96", [0.7, 0.05, 0.05], [-17.5, 4.05, -4.8]);
-    b.add(triangle(0.32, 0.26).rotateZ(-Math.PI / 2).translate(0.2, 4.2, 0), "#8a8f96", mat([-17.5, 0, -4.8]));
-    b.ico("#f2c257", 0.08, 0, [-17.5, 4.15, -4.8]);
-    mk(b, staticMat, true, true, snugL);
-    const w = new GeoBatch(0, rng);
-    w.box("#ffffff", [0.22, 0.3, 0.22], [-12.5, 2.2, -2.5]);
-    w.box("#ffffff", [0.22, 0.3, 0.22], [-22.5, 2.2, -2.5]);
-    const wm2 = mk(w, windowMat, false, false, snugL);
-    if (wm2) wm2.userData.windows = true;
-  }
-  // Shearing shed: an open-sided shed behind the paddock with a board, shears sign and bales of wool.
+  // the shearing upgrade: a shearing stand, wool press and a stack of bales by the yards
   const shearL = layer();
-  let shearSnow: THREE.Object3D = new THREE.Group();
   {
     const b = new GeoBatch(0.03, rng);
-    const cx = -1.6, cz = -13;
-    b.box(C.wood, [4.2, 0.25, 2.6], [cx, 0.13, cz]); // board floor
-    for (const [x, z] of [[-2, -1.2], [2, -1.2], [-2, 1.2], [2, 1.2]] as const) b.cyl(C.woodDark, 0.1, 0.12, 2.3, 6, [cx + x, 1.25, cz + z]);
-    b.box("#b5835a", [4.2, 2.1, 0.14], [cx, 1.3, cz - 1.25]); // back wall
-    b.box("#9aa9b8", [4.8, 0.12, 3.3], [cx, 2.45, cz], [0.14, 0, 0]); // tin roof
-    for (let i = 0; i < 7; i++) b.box("#8394a6", [0.05, 0.05, 3.3], [cx - 2.1 + i * 0.7, 2.53, cz], [0.14, 0, 0]);
-    // wool bales
-    for (const [x, y, z] of [[-1.3, 0.55, -0.55], [-0.5, 0.55, -0.55], [-0.9, 1.15, -0.55], [1.2, 0.55, -0.6]] as const) {
+    const cx = 15.5, cz = 7.5;
+    b.box("#c89668", [3.6, 0.2, 2.4], [cx, 0.1, cz]);
+    for (const [x, y, z] of [[-1.1, 0.5, -0.5], [-0.3, 0.5, -0.5], [-0.7, 1.1, -0.5], [1.0, 0.5, -0.6]] as const) {
       b.box("#f3eee2", [0.75, 0.6, 0.7], [cx + x, y, cz + z]);
       b.box("#c9b89a", [0.77, 0.06, 0.72], [cx + x, y, cz + z]);
     }
-    b.box(C.woodDark, [0.9, 0.7, 0.6], [cx + 1.2, 0.6, cz + 0.4]); // wool table
-    b.box("#e9dcc2", [0.8, 0.06, 0.5], [cx + 1.2, 0.97, cz + 0.4]);
-    // sign with shears
-    b.box(C.woodDark, [0.1, 1.5, 0.1], [cx + 2.5, 0.75, cz + 1.5]);
-    b.box("#fff6ea", [0.9, 0.6, 0.08], [cx + 2.5, 1.55, cz + 1.52]);
-    b.box("#6f7c8a", [0.5, 0.05, 0.04], [cx + 2.5, 1.58, cz + 1.58], [0, 0, 0.6]);
-    b.box("#6f7c8a", [0.5, 0.05, 0.04], [cx + 2.5, 1.58, cz + 1.58], [0, 0, -0.6]);
-    b.ico(C.red, 0.07, 0, [cx + 2.33, 1.4, cz + 1.6]);
-    b.ico(C.red, 0.07, 0, [cx + 2.67, 1.4, cz + 1.6]);
-    mk(b, staticMat, true, true, shearL);
-    const sn = new GeoBatch(0.02, rng);
-    sn.box(C.snow, [4.85, 0.07, 3.35], [cx, 2.55, cz], [0.14, 0, 0]);
-    const snowG = new THREE.Group();
-    shearL.add(snowG);
-    mk(sn, staticMat, false, false, snowG);
-    shearSnow = snowG;
+    b.box("#9c6b4a", [0.9, 1.3, 0.8], [cx + 1.1, 0.8, cz + 0.5]);
+    b.box("#9c6b4a", [0.1, 1.5, 0.1], [cx - 1.6, 0.75, cz + 1.2]);
+    b.box("#fff6ea", [0.9, 0.6, 0.08], [cx - 1.6, 1.55, cz + 1.22]);
+    b.box("#6f7c8a", [0.5, 0.05, 0.04], [cx - 1.6, 1.58, cz + 1.28], [0, 0, 0.6]);
+    b.box("#6f7c8a", [0.5, 0.05, 0.04], [cx - 1.6, 1.58, cz + 1.28], [0, 0, -0.6]);
+    mk(b, propMat, true, true, shearL);
   }
-  // Long meadow: a fenced strip of tall grass and wildflowers behind the far paddock.
-  const longL = layer();
+
+  // ---------------------------------------------------------------- the trader's stall and the market pen (hotspot "market")
+  const mkt = new GeoBatch(0, rng);
   {
-    const b = new GeoBatch(0.03, rng);
-    fence(b, 8.5, -16.8, 21.5, -16.8, 0.8, C.post, "#d8c6a2");
-    fence(b, 21.5, -16.8, 21.5, -11.4, 0.8, C.post, "#d8c6a2");
-    fence(b, 8.5, -16.8, 8.5, -11.4, 0.8, C.post, "#d8c6a2");
-    b.box(C.woodDark, [0.12, 1.3, 0.12], [21.9, 0.65, -11.6]);
-    b.box("#fff6ea", [0.08, 0.5, 1.1], [21.95, 1.25, -11.6]);
-    b.box("#8fcb66", [0.04, 0.12, 0.7], [22.0, 1.25, -11.6]);
-    mk(b, staticMat, true, true, longL);
-    const g = new GeoBatch(0.12, rng);
-    const f = new GeoBatch(0.05, rng);
-    const cols = ["#f28bb0", "#ffd45c", "#ffffff", "#c79ae8", "#8fc8f0"];
-    for (let i = 0; i < 90; i++) {
-      const x = 9 + rng() * 12, z = -16.4 + rng() * 4.8;
-      const h = 0.4 + rng() * 0.5;
-      g.cone("#ffffff", 0.14 + rng() * 0.1, h, 4, [x, h / 2, z], [0, rng() * 3, 0]);
-      if (i % 2 === 0) f.ico(cols[i % cols.length]!, 0.09, 0, [x + 0.15, h * 0.9, z + 0.1]);
+    const b = new GeoBatch(0.02, rng);
+    b.box("#d9a36b", [3.6, 1.1, 1.1], [-12, 0.55, 11]);
+    b.box("#e9bd85", [3.8, 0.12, 1.3], [-12, 1.14, 11]);
+    for (const [x, z] of [[-13.75, 10.45], [-10.25, 10.45], [-13.75, 11.5], [-10.25, 11.5]] as const) b.cyl("#9c6b4a", 0.07, 0.07, 2.6, 5, [x, 1.3, z]);
+    for (let i = 0; i < 6; i++) b.box(i % 2 ? "#fff6ea" : "#f28b82", [0.66, 0.08, 1.9], [-13.65 + i * 0.66, 2.65, 10.95], [0.28, 0, 0]);
+    for (let i = 0; i < 6; i++) b.box(i % 2 ? "#fff6ea" : "#f28b82", [0.66, 0.3, 0.05], [-13.65 + i * 0.66, 2.3, 11.92]);
+    const produce = ["#e45b52", "#8cc76b", "#f3eee2", "#f0b34a", "#e45b52", "#8fa8d8"];
+    for (let i = 0; i < 6; i++) b.ico(produce[i]!, 0.2, 0, [-13.3 + i * 0.52, 1.35, 11.05 + (i % 2) * 0.2]);
+    b.box("#fff6ea", [2.2, 0.45, 0.08], [-12, 3.05, 11.1]);
+    // Sheryl the trader stands behind the stall
+    b.cyl("#7fb3d5", 0.26, 0.36, 1.25, 7, [-12, 0.62, 10.1]);
+    b.ico("#f0c9a4", 0.27, 1, [-12, 1.5, 10.1]);
+    b.cyl("#e2c07a", 0.5, 0.5, 0.05, 10, [-12, 1.68, 10.1]);
+    b.cyl("#e2c07a", 0.22, 0.28, 0.25, 8, [-12, 1.82, 10.1]);
+    b.ico("#3a302e", 0.04, 0, [-11.85, 1.55, 10.34]);
+    b.ico("#3a302e", 0.04, 0, [-12.15, 1.55, 10.34]);
+    const g = b.build()!;
+    g.translate(-1, 0, 1.5);
+    mkt.addColored(g);
+    // the pen for sheep on sale
+    flat.box("#e8d596", [6.2, 0.05, 4.4], [-19, 0.03, 12.5]);
+    for (const [a, c] of FENCES.slice(4)) fenceWood(st, a, c, 0.85, "#c89668");
+    st.box("#e8cc72", [0.9, 0.5, 0.7], [-21.5, 0.25, 14.1]);
+    const s = new GeoBatch(0, rng);
+    s.box(P.snow, [4.0, 0.06, 1.9], [-13, 2.72, 12.45], [0.28, 0, 0]);
+    snow.addColored(s.build()!);
+  }
+
+  // ---------------------------------------------------------------- mailbox by the road (hotspot)
+  const mail = new GeoBatch(0, rng);
+  {
+    const [u, v] = SPOTS.mailbox;
+    const b = new GeoBatch(0, rng);
+    b.box(P.trunk, [0.16, 1.3, 0.16], [0, 0.65, 0]);
+    b.box("#c2574a", [0.75, 0.55, 0.5], [0, 1.45, 0]);
+    b.cyl("#c2574a", 0.25, 0.25, 0.75, 12, [0, 1.72, 0], [0, 0, Math.PI / 2]);
+    b.box("#f1d36e", [0.05, 0.4, 0.12], [0.1, 1.95, 0.3]);
+    rot(mail, b.build(), u, v, 0.3, 1.2);
+  }
+
+  // ---------------------------------------------------------------- the vet's hut and ute by the road (hotspot)
+  const vet = new GeoBatch(0, rng);
+  {
+    const [u, v] = SPOTS.vet;
+    const b = new GeoBatch(0.02, rng);
+    b.box("#f7f4ee", [3.4, 2.3, 3], [0, 1.15, 0]);
+    b.gable("#7cc4b8", 3.9, 3.6, 1.3, [0, 2.3, 0]);
+    b.box("#7aa7c7", [0.95, 1.7, 0.08], [0.6, 0.85, 1.52]);
+    b.box("#f7f4ee", [1.1, 1.1, 0.1], [-0.7, 1.9, 1.6]);
+    b.box("#e4574f", [0.8, 0.24, 0.06], [-0.7, 1.9, 1.67]);
+    b.box("#e4574f", [0.24, 0.8, 0.06], [-0.7, 1.9, 1.67]);
+    rot(vet, b.build(), u, v, 0, 1.15);
+    const s = new GeoBatch(0, rng);
+    s.gable(P.snow, 4.0, 3.75, 1.35, [0, 2.35, 0]);
+    rot(snow, s.build(), u, v, 0, 1.15);
+    const w = new GeoBatch(0, rng);
+    w.box("#ffffff", [0.08, 0.7, 0.9], [1.73, 1.4, 0]);
+    rot(win, w.build(), u, v, 0, 1.15);
+    const ute = new GeoBatch(0, rng);
+    ute.box("#e8e1cf", [1.4, 0.7, 2.8], [0, 0.65, 0]);
+    ute.box("#e8e1cf", [1.3, 0.6, 1.2], [0, 1.25, 0.6]);
+    ute.box("#b9d6e0", [1.2, 0.4, 0.05], [0, 1.3, 1.22]);
+    for (const x of [-0.72, 0.72]) for (const z of [-0.9, 0.9]) ute.cyl("#2a2a2a", 0.3, 0.3, 0.2, 10, [x, 0.3, z], [0, 0, Math.PI / 2]);
+    rot(st, ute.build(), SPOTS.ute[0], SPOTS.ute[1], 1.3, 1.25);
+  }
+
+  // ---------------------------------------------------------------- the showground down the road (hotspot "fairground")
+  const fair = new GeoBatch(0, rng);
+  const buntL = layer();
+  {
+    const [cu, cv] = SPOTS.showground;
+    const b = new GeoBatch(0.02, rng);
+    b.cyl("#ecdcb0", 4.6, 4.6, 0.08, 20, [0, 0.04, 0]);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      if (i === 4 || i === 5) continue; // entrance towards the camera and the road
+      b.box("#f7f4ee", [0.14, 0.6, 0.14], [Math.cos(a) * 4.3, 0.3, Math.sin(a) * 4.3]);
+      const a2 = ((i + 1) / 18) * Math.PI * 2;
+      if (i + 1 === 4) continue;
+      const len = 2 * 4.3 * Math.sin(Math.PI / 18);
+      b.box("#f2b5c4", [len, 0.08, 0.06], [(Math.cos(a) + Math.cos(a2)) * 2.15, 0.48, (Math.sin(a) + Math.sin(a2)) * 2.15], [0, -(a + a2) / 2 + Math.PI / 2, 0]);
     }
-    mk(g, meadowMat, false, true, longL);
-    mk(f, staticMat, false, false, longL);
+    // a little grandstand and a marquee
+    for (let i = 0; i < 3; i++) b.box(P.wall, [4, 0.5, 0.8], [0.5, 0.25 + i * 0.5, -5.6 - i * 0.8]);
+    b.box(P.roofRed, [4.4, 0.12, 3], [0.5, 2.6, -6.4], [-0.2, 0, 0]);
+    for (const x of [-1.5, 2.5]) b.cyl(P.trunk, 0.06, 0.06, 2.6, 4, [x, 1.3, -5.2]);
+    for (let i = 0; i < 6; i++) b.box(i % 2 ? "#fffaf2" : "#f0a9a0", [0.6, 1.4, 3], [5.6 + i * 0.6, 0.7, 1.5]);
+    b.add(new THREE.ConeGeometry(2.6, 1.5, 4, 1).rotateY(Math.PI / 4).scale(0.85, 1, 0.75), "#f0a9a0", mat([7.1, 2.15, 1.5]));
+    b.box("#ffd257", [0.8, 0.6, 0.8], [0, 0.3, -1.4]);
+    b.box("#d8dde3", [0.8, 0.4, 0.8], [-0.8, 0.2, -1.4]);
+    b.box("#e2a36b", [0.8, 0.28, 0.8], [0.8, 0.14, -1.4]);
+    const poles = [Math.PI * 0.25, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 1.75].map((a) => [Math.cos(a) * 4.9, Math.sin(a) * 4.9] as const);
+    for (const [x, z] of poles) { b.cyl("#f7f4ee", 0.07, 0.09, 3.0, 6, [x, 1.5, z]); b.ico("#ffd257", 0.13, 0, [x, 3.05, z]); }
+    rot(fair, b.build(), cu, cv);
+    const bb = new GeoBatch(0, rng);
+    const cols = ["#f28b82", "#ffd257", "#8fd0e8", "#b9e39a", "#d6a8ee"];
+    let ci = 0;
+    for (let k = 0; k < 4; k++) {
+      const [ax, az] = poles[k]!, [bx, bz] = poles[(k + 1) % 4]!;
+      const ry = -Math.atan2(bz - az, bx - ax);
+      for (let i = 0; i < 9; i++) {
+        const t = (i + 0.5) / 9;
+        bb.add(triangle(0.42, 0.5).translate(-0.21, 0, 0), cols[ci++ % cols.length]!, mat([ax + (bx - ax) * t, 2.9 - Math.sin(t * Math.PI) * 0.6, az + (bz - az) * t], [0, ry, 0]));
+      }
+    }
+    const bg = bb.build()!;
+    bg.translate(cu, 0, -cv);
+    const b2 = new GeoBatch(); b2.addColored(bg);
+    mk(b2, plainMat, false, false, buntL);
+    // a sign by the road
+    st.box(P.trunk, [0.14, 2.2, 0.14], [cu - 3.2, 1.1, -(cv + 5.8)]);
+    st.box("#f7e7c6", [2.2, 0.8, 0.1], [cu - 3.2, 2.0, -(cv + 5.8)]);
+    st.box("#c2574a", [1.8, 0.14, 0.12], [cu - 3.2, 2.15, -(cv + 5.8) + 0.05]);
+  }
+
+  // ---------------------------------------------------------------- bridge to the far bank (built when the far bank opens)
+  const bridgeL = layer();
+  const stumpsL = layer();
+  {
+    const [u, v] = BRIDGE;
+    const b = new GeoBatch(0, rng);
+    b.box(P.fence, [2.6, 0.22, 8.6], [0, 0.1, 0]);
+    for (const x of [-1.25, 1.25]) {
+      b.box(P.trunk, [0.12, 0.12, 8.6], [x, 0.9, 0]);
+      for (const z of [-4, -2, 0, 2, 4]) b.box(P.trunk, [0.16, 0.9, 0.16], [x, 0.5, z]);
+    }
+    for (const z of [-4.1, 4.1]) b.box(P.soil, [2.8, 0.5, 0.7], [0, -0.1, z]);
+    const g = b.build()!;
+    g.translate(u, 0, -v);
+    const bb = new GeoBatch(); bb.addColored(g);
+    mk(bb, propMat, true, true, bridgeL);
+    const s = new GeoBatch(0, rng);
+    for (const z of [-4.1, 4.1]) s.box(P.soil, [2.8, 0.5, 0.7], [u, -0.1, -v + z]);
+    s.box("#b7a893", [0.2, 1.4, 0.2], [u - 0.8, 0.3, -v + 3.4], [0.3, 0, 0.2]);
+    s.box("#b7a893", [2.2, 0.16, 0.5], [u + 0.2, -0.05, -v - 2.6], [0.1, 0.4, 0.2]);
+    mk(s, propMat, true, true, stumpsL);
+  }
+
+  // ---------------------------------------------------------------- lockable land: scrub, rank grass, broken fences, a sign; mended fences, gates and a trough
+  const scrubGeos = (() => {
+    const out: THREE.BufferGeometry[] = [];
+    for (const gorse of [true, false]) {
+      const b = new GeoBatch(0, rng);
+      const base = gorse ? "#6f7f4c" : "#9b7f55";
+      for (let i = 0; i < 3; i++) { const r = 0.5 + i * 0.12; b.ico(base, r, 1, [(i - 1) * 0.55, r * 0.7, (i % 2 - 0.5) * 0.6], [1, 0.8, 1]); }
+      if (gorse) for (let i = 0; i < 6; i++) b.ico("#e6c65a", 0.12, 0, [(i / 5 - 0.5) * 1.2, 0.75 + (i % 3) * 0.15, ((i * 7) % 5 / 5 - 0.5) * 1.1]);
+      out.push(smoothGeo(b.build()!));
+    }
+    return out;
+  })();
+  const postGeo = new THREE.BoxGeometry(0.16, 1.0, 0.16).translate(0, 0.5, 0);
+  const railGeo = new GeoBatch().box(P.fence, [1, 0.08, 0.06], [0.5, 0.45, 0]).box(P.fence, [1, 0.08, 0.06], [0.5, 0.85, 0]).build()!;
+  const postMat = std({ vertexColors: false, color: P.fence });
+  disposables.push(...scrubGeos, postGeo, railGeo, postMat);
+  const tuftGeo = (() => {
+    const blade = new THREE.ConeGeometry(0.05, 0.42, 3, 1, true);
+    const t = new GeoBatch(0);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      t.add(blade.clone(), "#ffffff", mat([Math.cos(a) * 0.08, 0.18, Math.sin(a) * 0.08], [Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35]));
+    }
+    blade.dispose();
+    return t.build()!;
+  })();
+  disposables.push(tuftGeo);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p3 = new THREE.Vector3(), s3 = new THREE.Vector3();
+  const inst = (geo: THREE.BufferGeometry, m: THREE.Material, list: THREE.Matrix4[], cast: boolean, colours?: THREE.Color[]): THREE.InstancedMesh | null => {
+    if (!list.length) return null;
+    const im = new THREE.InstancedMesh(geo, m, list.length);
+    list.forEach((mm, i) => { im.setMatrixAt(i, mm); if (colours) im.setColorAt(i, colours[i]!); });
+    im.castShadow = shadows && cast;
+    im.receiveShadow = shadows;
+    im.computeBoundingSphere();
+    group.add(im);
+    return im;
+  };
+  const scrubMat = std();
+  disposables.push(scrubMat);
+  for (const id of ["flats", "rushy", "farbank", "terraces"] as AreaId[]) {
+    const a = AREAS[id], L = lands[id];
+    const [u0, u1, v0, v1] = a.rect;
+    const pick = (m: number): UV => [lerp(u0 + m, u1 - m, rng()), lerp(v0 + m, v1 - m, rng())];
+    // scrub (gorse and bracken), two instanced meshes
+    const lists: THREE.Matrix4[][] = [[], []];
+    const area = (u1 - u0) * (v1 - v0);
+    const n = Math.round(area / (a.wet ? 14 : a.tussock ? 16 : 10) * (opts.lite ? 0.6 : 1));
+    const loose = new GeoBatch(0, rng);
+    for (let i = 0; i < n; i++) {
+      const [u, v] = pick(0.9);
+      if (a.wet && rng() < 0.6) { rushes(loose, u, v); continue; }
+      if (a.tussock && rng() < 0.6) { tussock(loose, rng, u, v, 1.3, 0); continue; }
+      const s = 0.8 + rng() * 0.5;
+      e.set(0, rng() * 6, 0); q.setFromEuler(e);
+      lists[rng() < 0.55 ? 0 : 1]!.push(new THREE.Matrix4().compose(p3.set(u, 0, -v), q, s3.set(s, s, s)));
+    }
+    if (a.wet) for (let i = 0; i < 5; i++) { const [u, v] = pick(1.5); loose.add(new THREE.CircleGeometry(0.9 + rng() * 0.8, 16).rotateX(-Math.PI / 2).scale(1.4, 1, 1), "#a9c9cf", mat([u, 0.04, -v])); }
+    L.scrubM = lists;
+    for (const [k, list] of lists.entries()) { const im = inst(scrubGeos[k]!, scrubMat, list, true); if (im) L.scrub.push(im); }
+    // rank grass now, short lawn after the reveal
+    const nf = Math.round(area * (opts.lite ? 0.35 : 0.8));
+    const tallC: THREE.Color[] = [], shortC: THREE.Color[] = [];
+    const c = new THREE.Color();
+    for (let i = 0; i < nf; i++) {
+      const [u, v] = pick(0.4);
+      const s = 1.5 + rng() * 0.9, s2 = 0.55 + rng() * 0.4;
+      e.set(0, rng() * 6, 0); q.setFromEuler(e);
+      L.tallM.push(new THREE.Matrix4().compose(p3.set(u, -0.02, -v), q, s3.set(s, s * (0.8 + rng() * 0.5), s)));
+      L.shortM.push(new THREE.Matrix4().compose(p3.set(u, -0.02, -v), q, s3.set(s2, s2 * (0.8 + rng() * 0.5), s2)));
+      tallC.push(c.set(a.tussock ? "#c9b57e" : "#a9a57a").lerp(new THREE.Color("#8f9a6a"), rng()).multiplyScalar(0.92 + rng() * 0.12).clone());
+      shortC.push(c.set(P.grass2).lerp(new THREE.Color("#7fb86a"), rng()).multiplyScalar(0.92 + rng() * 0.12).clone());
+    }
+    L.tall = inst(tuftGeo, grassMat, L.tallM, false, tallC);
+    L.short = inst(tuftGeo, grassMat, L.shortM, false, shortC);
+    // broken fence, a sign, the loose dressing (rushes, tussock, pools)
+    const br = new GeoBatch(0, rng);
+    for (const [pa, pc] of areaFence(a)) brokenFence(br, rng, pa, pc);
+    if (id !== "farbank") signPost(br, u0 + 3, v0 - 0.9);
+    for (const g of [loose.build()]) if (g) br.addColored(g);
+    L.broken = mk(br, propMat, true, true);
+    // the mended fence as posts and rails, raised one after another around the paddock
+    for (const [pa, pc] of areaFence(a)) {
+      const len = Math.hypot(pc[0] - pa[0], pc[1] - pa[1]);
+      const k = Math.max(1, Math.round(len / 2.3));
+      const ry = Math.atan2(pc[1] - pa[1], pc[0] - pa[0]);
+      for (let i = 0; i <= k; i++) {
+        const u = lerp(pa[0], pc[0], i / k), v = lerp(pa[1], pc[1], i / k);
+        L.postsM.push(new THREE.Matrix4().makeTranslation(u, 0, -v));
+        if (i < k) { e.set(0, ry, 0); q.setFromEuler(e); L.railsM.push(new THREE.Matrix4().compose(p3.set(u, 0, -v), q, s3.set(len / k, 1, 1))); }
+      }
+    }
+    L.posts = inst(postGeo, postMat, L.postsM, true);
+    L.rails = inst(railGeo, propMat, L.railsM, true);
+    // what arrives with the land: the gate swung open, a trough and a couple of bales
+    const ob = new GeoBatch(0, rng);
+    const g = a.gate;
+    if (g.side === "w") gate(ob, u0, g.at - 1.8, Math.PI - 0.2);
+    else if (g.side === "s") gate(ob, g.at - 1.8, v0, -1.4);
+    trough(ob, u0 + 2.5, v1 - 2.2);
+    bale(ob, u1 - 3, v1 - 2.5);
+    bale(ob, u1 - 5, v0 + 3);
+    L.open = mk(ob, propMat, true, true);
+  }
+
+  // ---------------------------------------------------------------- trees, the native bush edge, tussock on the slopes
+  for (const [kind, u, v, s] of TREES) {
+    if (kind === "kowhai") kowhai(fo, st, rng, u, v, s, spring);
+    else if (kind === "cabbage") cabbage(fo, st, rng, u, v, s);
+    else if (kind === "pohutukawa") pohutukawa(fo, st, rng, u, v, s, summer);
+    else flax(fo, u, v, s);
+  }
+  // flax along the creek banks
+  for (let u = -60; u < 80; u += 7 + rng() * 6) {
+    if (Math.abs(u - BRIDGE[0]) < 4) continue;
+    const side = rng() < 0.5 ? -1 : 1;
+    const v = creekV(u) + side * (2.9 + rng() * 0.6);
+    flax(fo, u, v, 0.9 + rng() * 0.3);
+  }
+  {
+    const step = opts.lite ? 3.4 : 2.6;
+    for (let u = -70; u < 125; u += step) for (let v = -24; v < 58; v += step) {
+      const pu = u + (rng() - 0.5) * step * 0.8, pv = v + (rng() - 0.5) * step * 0.8;
+      const s = bushScore(pu, pv);
+      if (s <= BUSH_AT) continue;
+      const d = pv - creekV(pu);
+      if (Math.abs(d) < 2.8 || Math.abs(pv - roadV(pu)) < 3) continue;
+      if (AREA_IDS.some((id) => softRect(pu, pv, AREAS[id].rect, 0.5) > 0.01)) continue;
+      const y = Math.max(0, height(pu, pv));
+      const r = rng();
+      const far = pv > 22 || pu > 95;
+      if (r < (far ? 0.7 : 0.46)) bushClump(fo, rng, pu, pv, 1.3 + rng() * 0.6, y, far || opts.lite ? 0 : 1);
+      else if (r < 0.74) ponga(fo, st, rng, pu, pv, 1.2 + rng() * 0.4, y);
+      else if (r < 0.88) { const b = new GeoBatch(0, rng); kowhai(b, b, rng, 0, 0, 1.3, spring); rot(fo, b.build(), pu, pv, 0, 1, y); }
+      else { const b = new GeoBatch(0, rng); cabbage(b, b, rng, 0, 0, 1.3); rot(fo, b.build(), pu, pv, 0, 1, y); }
+    }
+    const tb = new GeoBatch(0, rng);
+    for (let i = 0; i < (opts.lite ? 260 : 520); i++) {
+      const u = -80 + rng() * 200, v = 20 + rng() * 45;
+      const h = height(u, v);
+      if (h < 2.5 || h > 19 || bushScore(u, v) > BUSH_AT) continue;
+      if (AREA_IDS.some((id) => softRect(u, v, AREAS[id].rect, 0.5) > 0.01)) continue;
+      tussock(tb, rng, u, v, 1.1 + rng() * 0.6, h);
+    }
+    const tg = tb.build();
+    if (tg) st.addColored(tg);
+  }
+
+  // ---------------------------------------------------------------- grass tufts and flowers (instanced)
+  {
+    const N = opts.lite ? 2200 : 6500;
+    const r2 = mulberry32(99 ^ seed);
+    const list: THREE.Matrix4[] = [], cols: THREE.Color[] = [];
+    const c = new THREE.Color();
+    for (let t = 0; t < N * 4 && list.length < N; t++) {
+      const u = -70 + r2() * 160, v = -30 + r2() * 46;
+      const d = v - creekV(u);
+      if (d > -2.6 || Math.abs(v - roadV(u)) < 1.9) continue;
+      if (AREA_IDS.some((id) => id !== "home" && softRect(u, v, AREAS[id].rect, 0.2) > 0.1)) continue;
+      const inPad = softRect(u, v, AREAS.home.rect, 0.2) > 0.5;
+      if (!inPad && r2() < 0.45) continue;
+      const s = inPad ? 0.42 + r2() * 0.34 : 0.55 + r2() * 0.45;
+      e.set(0, r2() * 6, 0); q.setFromEuler(e);
+      list.push(new THREE.Matrix4().compose(p3.set(u, -0.02, -v), q, s3.set(s, s * (0.8 + r2() * 0.5), s)));
+      cols.push(c.set(P.grass2).lerp(new THREE.Color("#7fb86a"), r2()).multiplyScalar(0.92 + r2() * 0.12).clone());
+    }
+    const tiles = new Map<string, number[]>();
+    list.forEach((mm, i) => { const k = `${Math.floor(mm.elements[12]! / TILE)},${Math.floor(mm.elements[14]! / TILE)}`; const a = tiles.get(k) ?? []; a.push(i); tiles.set(k, a); });
+    for (const idx of tiles.values()) { const im = inst(tuftGeo, grassMat, idx.map((i) => list[i]!), false, idx.map((i) => cols[i]!)); if (im) grassTiles.push(im); }
+    // daisies and buttercups in the home paddock and round the homestead
+    const fl = new GeoBatch(0, rng);
+    const n = opts.lite ? 160 : 380;
+    for (let i = 0, placed = 0; i < n * 5 && placed < n; i++) {
+      const u = -64 + r2() * 90, v = -12 + r2() * 24;
+      if (!(softRect(u, v, AREAS.home.rect, 0.2) > 0.5 || Math.hypot(u + 55, v + 1) < 9)) continue;
+      placed++;
+      fl.ico(r2() < 0.65 ? "#fbf8ef" : "#f1d36e", 0.065, 0, [u, 0.18, -v]);
+    }
+    mk(fl, plainMat, false, false);
+    // autumn leaves under the trees, a snowman in winter
+    for (const [, u, v, s] of TREES) for (let k = 0; k < 6; k++) autumn.ico(k % 2 ? "#e0673f" : "#ee9a4c", 0.14, 0, [u + (rng() - 0.5) * 3 * s, 0.03, -v + (rng() - 0.5) * 3 * s], [1, 0.25, 1]);
+    snow.ico(P.snow, 0.55, 1, [-49, 0.5, 8.5]);
+    snow.ico(P.snow, 0.4, 1, [-49, 1.25, 8.5]);
+    snow.ico(P.snow, 0.28, 1, [-49, 1.8, 8.5]);
+    snow.cone("#f0a53a", 0.06, 0.3, 5, [-48.75, 1.8, 8.65], [0, 0, -Math.PI / 2]);
+    // a few wildflowers along the fence lines
+    for (let i = 0; i < 60; i++) { const u = -30 + rng() * 24, side = rng() < 0.5; flowers.ico(["#f28bb0", "#c79ae8", "#ff9d7a"][i % 3]!, 0.08, 0, [side ? u : (rng() < 0.5 ? -29.4 : -6.6), 0.16, -(side ? (rng() < 0.5 ? -8.5 : 8.5) : -8 + rng() * 16)]); }
   }
 
   // ---------------------------------------------------------------- build meshes
-  mk(flat, staticMat, false, true);
-  mk(st, staticMat);
-  mk(fol, foliageMat);
+  tiled(flat, plainMat, false, true, false);
+  tiled(st, propMat, true, true, false);
+  tiled(fo, foliageMat, true, true, true);
   const wm = mk(win, windowMat, false, false);
   if (wm) wm.userData.windows = true;
-  const snowL = layer(); mk(snow, staticMat, true, true, snowL);
-  const springL = layer(); mk(spring, staticMat, true, true, springL);
-  const flowersL = layer(); mk(flowers, staticMat, false, true, flowersL);
-  const autumnL = layer(); mk(autumn, staticMat, false, true, autumnL);
+  const springL = layer(); mk(spring, foliageMat, true, false, springL);
+  const summerL = layer(); mk(summer, foliageMat, true, false, summerL);
+  const flowersL = layer(); mk(flowers, plainMat, false, false, flowersL);
+  const autumnL = layer(); mk(autumn, plainMat, false, true, autumnL);
+  const snowL = layer(); mk(snow, plainMat, false, true, snowL);
 
   const hotspotMeshes = {} as Record<Hotspot, THREE.Mesh>;
   const hotspotPicks: THREE.Mesh[] = [];
@@ -590,7 +963,7 @@ export function buildFarm(rng: Rng, shadows: boolean): FarmBuild {
   disposables.push(pickGeo, pickMat);
   const hs: [Hotspot, GeoBatch][] = [["house", house], ["shed", shed], ["market", mkt], ["vet", vet], ["fairground", fair], ["mailbox", mail]];
   for (const [id, b] of hs) {
-    const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: "#fff3c4", emissiveIntensity: 0 });
+    const m = std({ emissive: "#fff3c4", emissiveIntensity: 0 });
     disposables.push(m);
     const mesh = mk(b, m, id !== "fairground", true)!;
     mesh.userData.hotspot = id;
@@ -605,24 +978,20 @@ export function buildFarm(rng: Rng, shadows: boolean): FarmBuild {
   }
 
   // chimney smoke puffs (animated by the view)
-  const smokeGeo = new THREE.IcosahedronGeometry(0.28, 0);
-  const smokeMat = new THREE.MeshLambertMaterial({ color: "#f4f4f4", transparent: true, opacity: 0.8, flatShading: true });
+  const smokeGeo = new THREE.IcosahedronGeometry(0.4, 1);
+  const smokeMat = new THREE.MeshStandardMaterial({ color: "#f4f4f4", transparent: true, opacity: 0.75, roughness: 1 });
   disposables.push(smokeGeo, smokeMat);
   const smoke: THREE.Mesh[] = [];
-  for (let i = 0; i < 4; i++) {
-    const m = new THREE.Mesh(smokeGeo, smokeMat);
-    m.position.set(-14.8, 6.2 + i * 0.6, -12.9);
-    group.add(m);
-    smoke.push(m);
-  }
+  const smokeAt = new THREE.Vector3(-1.6, 4.5, -0.6).applyMatrix4(mat([SPOTS.homestead[0], 0, -SPOTS.homestead[1]], [0, -0.1, 0], 1.7));
+  for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(smokeGeo, smokeMat); m.position.copy(smokeAt); group.add(m); smoke.push(m); }
 
   return {
-    group, groundMat, foliageMat, meadowMat, pondMat, windowMat, smoke,
-    layers: {
-      snow: snowL, spring: springL, flowers: flowersL, autumn: autumnL, paddock2: pad2, meadow, mainGate, bunting: bunt, visitor: visitorL,
-      snugBarn: snugL, shearing: shearL, shearingSnow: shearSnow, longMeadow: longL,
-    },
-    hotspotMeshes, hotspotPicks,
+    group, terrainAttr: terrainAttr!, windowMat, smoke, smokeAt,
+    mats: { terrain: terrainMat, props: propMat, foliage: foliageMat, grass: grassMat, water: waterMat },
+    layers: { spring: springL, summer: summerL, flowers: flowersL, autumn: autumnL, snow: snowL, bunting: buntL, visitor: visitorL, snugBarn: snugL, shearing: shearL, bridge: bridgeL, bridgeStumps: stumpsL },
+    lands, grass: grassTiles, hotspotMeshes, hotspotPicks,
     dispose() { for (const d of disposables) d.dispose(); },
   };
 }
+
+export type { AreaId } from "./valley.js";

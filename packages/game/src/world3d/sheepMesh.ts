@@ -4,6 +4,7 @@
 // articulated parts: instanced flock-wide in the world (parts.ts), real
 // meshes in portraits (buildFullRig). SheepPose drives both.
 import * as THREE from "three";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { GeoBatch, mat, type V3 } from "./builder.js";
 import { hashString, mulberry32 } from "./rng.js";
 import { WOOL_HEX } from "./palette.js";
@@ -17,13 +18,13 @@ export interface SheepDims {
   W: number;
   legLen: number;
   bodyY: number;
-  /** neck pivot (body space) */
+  /** head pivot at the poll (body space) */
   neck: V3;
-  /** head scale (chibi: big heads, bigger still on lambs) */
+  /** head scale (the friendlier round-3 face: a touch bigger; bigger still on lambs) */
   hs: number;
   /** marker height in root space (before lamb scale) */
   top: number;
-  /** root scale (lambs are 0.62) */
+  /** root scale (lambs are 0.66) */
   rootScale: number;
 }
 
@@ -31,7 +32,7 @@ export interface SheepDims {
 export interface SheepParts {
   /** Hip pivots in root space (before rootScale): front-left, front-right, back-left, back-right. */
   hips: V3[];
-  /** Leg thickness scale. */
+  /** Leg radius (root space). */
   legR: number;
   /** Ear pivots in head space (after head scale): left (+z), right (-z). */
   ears: V3[];
@@ -39,6 +40,8 @@ export interface SheepParts {
   /** Eye centres in head space (after head scale). */
   eyes: V3[];
   eyeR: number;
+  /** Eyes sit on the sides of the head: how far each turns from straight ahead (rad). */
+  eyeYaw: number;
   face: string;
 }
 
@@ -55,6 +58,10 @@ export const WORLD_SCALE = 1.22;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const num = (v: number, d: number) => (Number.isFinite(v) ? v : d);
 
+/** Detail of the fleece (wool locks per sheep): "lite" halves the triangles for slow machines. */
+let LOCKS = 52;
+export function setSheepDetail(d: "full" | "lite"): void { LOCKS = d === "lite" ? 34 : 52; }
+
 export function sheepKey(w: WorldSheep): string {
   return [
     w.id, w.colour, w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
@@ -62,35 +69,36 @@ export function sheepKey(w: WorldSheep): string {
   ].join("|");
 }
 
+/** The natural sheep (DESIGN-v3 §15 items 20–22): a woolly barrel on slim legs, a natural head carried forward. */
 export function sheepDims(w: WorldSheep): SheepDims {
   const s = clamp(0.75 + (num(w.size, 60) - 40) * 0.0105, 0.62, 1.25);
-  const p = clamp(0.88 + num(w.fleeceWeight, 4) * 0.045, 0.9, 1.2);
-  // round, cloud-like body: nearly as tall and wide as it is long
-  const L = 0.7 * s * p;
-  const H = 0.6 * s * p;
-  const W = 0.6 * s * p;
-  // short stubby legs
-  const legLen = 0.25 * s;
-  const bodyY = legLen + H * 0.74;
-  const hs = w.adult ? 1.68 : 2.1;
-  const neck: V3 = [L * 0.92, bodyY + H * 0.52, 0];
+  const p = clamp(0.9 + num(w.fleeceWeight, 4) * 0.04, 0.95, 1.18);
+  const L = 0.62 * s * p;
+  const H = 0.38 * s * p;
+  const W = 0.37 * s * p;
+  const legLen = (w.adult ? 0.47 : 0.52) * Math.sqrt(s);
+  const bodyY = legLen + H * 0.62;
+  const hs = (w.adult ? 1.34 : 1.62) * Math.sqrt(s);
+  const neck: V3 = [L * 1.16, bodyY + H * 0.98, 0];
   return {
     s, L, H, W, legLen, bodyY, neck, hs,
-    top: Math.max(bodyY + H + 0.5, neck[1] + 0.34 * hs + 0.28),
-    rootScale: WORLD_SCALE * (w.adult ? 1 : 0.62),
+    top: Math.max(bodyY + H + 0.45, neck[1] + 0.22 * hs + 0.3),
+    rootScale: WORLD_SCALE * (w.adult ? 1 : 0.66),
   };
 }
 
+/** Face and leg colour: cream on white sheep, a warm dark brown (faintly tinted by the fleece) otherwise. */
 export function faceHex(w: WorldSheep): string {
-  return w.colour === "black" ? "#2e2628" : "#47393a";
+  if (w.colour === "white") return "#eadfce";
+  const c = new THREE.Color("#6a564d").lerp(new THREE.Color(WOOL_HEX[w.colour] ?? "#ffffff"), 0.14);
+  return `#${c.getHexString()}`;
 }
 
-const HORN = "#e3cb98";
-const CHEEK = "#f3a2a6";
+const HORN = "#dcc59a";
 const _c = new THREE.Color();
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
-/** Golden-angle points on a sphere: an even spread for the wool puffs. */
+/** Golden-angle points on a sphere: an even spread for the wool locks. */
 function fib(i: number, n: number): [number, number, number] {
   const y = 1 - (2 * (i + 0.5)) / n;
   const r = Math.sqrt(Math.max(0, 1 - y * y));
@@ -98,105 +106,128 @@ function fib(i: number, n: number): [number, number, number] {
   return [Math.cos(a) * r, y, Math.sin(a) * r];
 }
 
+/** Soft top light baked into the fleece: shaded belly, bright back. */
+function shadeByHeight(geo: THREE.BufferGeometry, y0: number, y1: number, lo: number, hi: number): void {
+  const p = geo.getAttribute("position");
+  const c = geo.getAttribute("color");
+  for (let i = 0; i < p.count; i++) {
+    const t = clamp((p.getY(i) - y0) / (y1 - y0), 0, 1);
+    const k = lo + (hi - lo) * (t * t * (3 - 2 * t));
+    c.setXYZ(i, Math.min(1, c.getX(i) * k), Math.min(1, c.getY(i) * k), Math.min(1, c.getZ(i) * k));
+  }
+  c.needsUpdate = true;
+}
+
+/** Weld a merged, vertex-coloured geometry so it shades smoothly (soft wool rather than facets). */
+export function smoothGeo(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  geo.deleteAttribute("normal");
+  const g = mergeVertices(geo, 1e-4);
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  geo.dispose();
+  return g;
+}
+
+/** Head-space transform shared by the head mesh, eyes and ears: tilted a little down, then scaled. */
+const HEAD_TILT = -0.28;
+function headPoint(x: number, y: number, z: number, hs: number): V3 {
+  const c = Math.cos(HEAD_TILT), s = Math.sin(HEAD_TILT);
+  return [(x * c - y * s) * hs, (x * s + y * c) * hs, z * hs];
+}
+
 export function buildSheepGeos(w: WorldSheep): SheepGeos {
   const d = sheepDims(w);
   const rng = mulberry32(hashString(w.id) ^ 0x5eed);
-  const wool = WOOL_HEX[w.colour] ?? WOOL_HEX.white;
+  const wool = new THREE.Color(WOOL_HEX[w.colour] ?? WOOL_HEX.white);
   const face = faceHex(w);
+  const faceC = new THREE.Color(face);
   const spotHex = w.colour === "white" ? "#6b5646" : "#f6f1e6";
+  const { L, H, W } = d;
 
-  // ---- body: a cloud of overlapping wool puffs around a soft core.
-  // crimp → curliness (more, smaller, lumpier puffs); fleece weight → puffiness (bigger puffs, set in dims).
+  // ---- fleece: a barrel covered in small locks (crimp → more, smaller locks; fleece weight → a fuller barrel)
   const crimp = clamp(num(w.crimp, 5), 1, 10);
-  const curl = (crimp - 2) / 6; // 0 smooth … 1 very curly
-  const fleece = clamp((num(w.fleeceWeight, 4) - 2) / 4, 0, 1);
+  const curl = (crimp - 2) / 6;
   const spots: THREE.Vector3[] = [];
   if (w.pattern === "spotted") {
-    const k = 2 + Math.floor(rng() * 3);
-    for (let i = 0; i < k; i++) spots.push(new THREE.Vector3(rng() * 2 - 1, rng() * 1.1 - 0.1, rng() * 2 - 1).normalize());
+    const k = 3 + Math.floor(rng() * 3);
+    for (let i = 0; i < k; i++) spots.push(new THREE.Vector3(rng() * 2 - 1, rng() * 1.2 - 0.1, rng() * 2 - 1).normalize());
   }
-  const bb = new GeoBatch(0.025, rng);
-  bb.ico(wool, 1, 1, [0, -0.02 * d.H, 0], [d.L * 0.84, d.H * 0.8, d.W * 0.84]);
-  const total = Math.round(15 + curl * 8);
-  const pr = (0.36 - curl * 0.07 + fleece * 0.04) * (d.L + d.H + d.W) / 3 / 0.62;
-  for (let i = 0; i < total; i++) {
-    const [x, y, z] = fib(i, total);
-    if (y < -0.42) continue; // the belly stays smooth
-    const jig = 0.1 + curl * 0.12;
-    _dir.set(x + (rng() - 0.5) * jig, y + (rng() - 0.5) * jig, z + (rng() - 0.5) * jig).normalize();
-    let spotted = false;
-    for (const sp of spots) if (_dir.dot(sp) > 0.8) { spotted = true; break; }
-    _c.set(spotted ? spotHex : wool);
-    const shade = (0.97 + rng() * 0.04) * (_dir.y < -0.15 ? 0.92 : 1);
-    _c.multiplyScalar(shade);
-    const r = pr * (0.9 + rng() * 0.2) * (1 - Math.max(0, -_dir.y) * 0.25);
-    bb.ico(_c.getHex(), r, 1, [_dir.x * d.L * 0.74, _dir.y * d.H * 0.7 + 0.02, _dir.z * d.W * 0.74],
-      [1, 0.9 + rng() * 0.15, 1], [rng() * 3, rng() * 3, rng() * 3]);
+  const isSpot = (x: number, y: number, z: number) => { _dir.set(x, y, z).normalize(); return spots.some((sp) => _dir.dot(sp) > 0.82); };
+  const bb = new GeoBatch(0, rng);
+  bb.ico(wool, 1, 2, [0, 0, 0], [L, H, W]);
+  const n = Math.round(LOCKS * (0.85 + curl * 0.35));
+  const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS);
+  for (let i = 0; i < n; i++) {
+    const [x, y, z] = fib(i, n);
+    if (y < -0.72) continue;
+    _c.set(isSpot(x, y, z) ? spotHex : wool).multiplyScalar(0.97 + rng() * 0.06);
+    const r = lockR * (0.85 + rng() * 0.4);
+    bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], [1.2, 0.85 + curl * 0.2, 1], [rng() * 3, rng() * 3, rng() * 3]);
   }
-  // tiny tail: two puffs
-  bb.ico(wool, 0.13 * d.s, 1, [-d.L * 1.02, d.H * 0.32, 0]);
-  bb.ico(wool, 0.08 * d.s, 1, [-d.L * 1.12, d.H * 0.22, 0]);
-  const body = bb.build()!;
+  // rump and breast fullness, a woolly neck carrying the head forward, a short docked tail
+  const woolAt = (x: number, y: number, z: number) => (isSpot(x, y, z) ? spotHex : wool);
+  bb.ico(woolAt(-1, 0.1, 0), 0.3 * (L / 0.62), 2, [-L * 0.62, H * 0.12, 0], [1, 1.02, 1.08]);
+  bb.ico(woolAt(1, 0.3, 0), 0.26 * (L / 0.62), 2, [L * 0.7, H * 0.3, 0], [1, 1.1, 0.95]);
+  bb.ico(wool, 0.2 * (L / 0.62), 2, [L * 0.98, H * 0.72, 0], [1.15, 1.1, 0.82]);
+  bb.ico(wool, 0.1 * (L / 0.62), 1, [-L * 1.05, H * 0.18, 0], [0.9, 1.3, 0.9]);
+  const body = smoothGeo(bb.build()!);
+  shadeByHeight(body, -H * 1.05, H * 0.9, 0.8, 1.03);
 
-  // ---- head (local frame: pivot at neck, sheep faces +x). Ears and eyes are separate parts.
-  const hb = new GeoBatch(0.035, rng);
-  const muzzle = _c.set(face).lerp(new THREE.Color("#c9a898"), w.colour === "black" ? 0.2 : 0.3).getHex();
-  hb.ico(face, 0.25, 1, [0.17, -0.02, 0], [1.0, 0.94, 0.94]);
-  // soft round muzzle, a little lighter, with a button nose
-  hb.ico(muzzle, 0.13, 1, [0.36, -0.1, 0], [0.9, 0.74, 1.12]);
-  hb.ico("#1d1515", 0.017, 0, [0.475, -0.075, 0.042]);
-  hb.ico("#1d1515", 0.017, 0, [0.475, -0.075, -0.042]);
-  // rosy cheeks
-  for (const side of [1, -1]) hb.ico(CHEEK, 0.05, 1, [0.325, -0.085, side * 0.172], [0.95, 0.7, 0.32], [0, side * 0.5, 0]);
-  // wool bonnet round the back of the head and a tuft on top
-  hb.ico(wool, 0.2, 1, [0.03, 0.06, 0], [1.0, 1.0, 1.2]);
-  hb.ico(wool, 0.105, 1, [0.17, 0.2, 0]);
-  hb.ico(wool, 0.085, 1, [0.08, 0.215, 0.08]);
-  hb.ico(wool, 0.085, 1, [0.08, 0.215, -0.08]);
-  hb.ico(wool, 0.07, 1, [0.24, 0.16, 0.05]);
-  hb.ico(wool, 0.065, 1, [0.25, 0.165, -0.055]);
+  // ---- head (pivot at the poll; faces +x; the friendlier round-3 face). Ears and eyes are separate parts.
+  const hs = d.hs;
+  const hb = new GeoBatch(0, rng);
+  const at = (x: number, y: number, z: number) => headPoint(x, y, z, hs);
+  const sc = (x: number, y: number, z: number): V3 => [x * hs, y * hs, z * hs];
+  const hico = (c: THREE.ColorRepresentation, r: number, det: number, p: V3, s: V3 = [1, 1, 1], rot: V3 = [0, 0, 0]) =>
+    hb.add(new THREE.IcosahedronGeometry(r, det), c, mat(at(p[0], p[1], p[2]), [rot[0], rot[1], rot[2] + HEAD_TILT], sc(s[0], s[1], s[2])));
+  hico(face, 1, 2, [0.08, 0, 0], [0.18, 0.145, 0.125]);
+  hico(face, 1, 2, [0.07, 0.01, 0], [0.19, 0.155, 0.14]);
+  hico(face, 1, 2, [0.2, -0.045, 0], [0.13, 0.092, 0.095]);
+  const nose = faceC.clone().lerp(new THREE.Color("#c99a90"), w.colour === "white" ? 0.5 : 0.3);
+  hico(nose, 1, 1, [0.31, -0.055, 0], [0.035, 0.055, 0.065]);
+  // wool topknot and fleece behind the face
+  hico(wool, 0.1, 1, [0.02, 0.1, 0], [1.1, 0.85, 1.15]);
+  hico(wool, 0.06, 1, [0.1, 0.12, 0.04]);
+  hico(wool, 0.06, 1, [0.1, 0.12, -0.04]);
+  hico(wool, 0.13, 1, [-0.06, -0.02, 0], [1, 1.1, 1.2]);
+  // a faint pale patch round each soft eye
+  const patch = faceC.clone().lerp(new THREE.Color("#f4e8da"), 0.22);
+  for (const side of [1, -1]) hico(patch, 0.064, 1, [0.138, 0.042, side * 0.106], [1.1, 1.05, 0.55], [0, side * 0.35, 0]);
   if (w.horns === "horned") {
-    // little round curls; rams' are bigger
     const ram = w.sex === "ram" && w.adult;
-    const R = ram ? 0.14 : 0.085;
-    const turn = ram ? Math.PI * 1.75 : Math.PI * 1.25;
-    const r0 = ram ? 0.062 : 0.042;
-    const r1 = ram ? 0.03 : 0.022;
-    const segs = ram ? 12 : 8;
+    const R = ram ? 0.13 : 0.085, turn = ram ? Math.PI * 1.8 : Math.PI * 1.35, segs = ram ? 12 : 9;
+    const r0 = ram ? 0.05 : 0.036, r1 = ram ? 0.022 : 0.018;
     for (const side of [1, -1]) {
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i <= segs; i++) {
         const t = i / segs;
-        const a = Math.PI / 2 + t * turn;
-        const r = R * (1 - 0.3 * t);
-        pts.push(new THREE.Vector3(0.06 + r * Math.cos(a), 0.16 - R + r * Math.sin(a), side * (0.23 + (ram ? 0.1 : 0.05) * t)));
+        const a = Math.PI * 0.6 + t * turn;
+        const r = R * (1 - 0.35 * t);
+        const p = at(-0.02 + r * Math.cos(a), 0.04 + r * Math.sin(a), side * (0.1 + (ram ? 0.1 : 0.07) * t));
+        pts.push(new THREE.Vector3(p[0], p[1], p[2]));
       }
       for (let i = 0; i < segs; i++) {
         const a = pts[i]!, b = pts[i + 1]!;
-        const dir = new THREE.Vector3().subVectors(b, a);
-        const len = dir.length();
-        dir.normalize();
-        const t0 = i / segs, t1 = (i + 1) / segs;
-        const cg = new THREE.CylinderGeometry(r0 + (r1 - r0) * t1, r0 + (r1 - r0) * t0, len * 1.25, 7);
-        const q = new THREE.Quaternion().setFromUnitVectors(_up, dir);
-        const m = new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, 1, 1));
-        hb.add(cg, HORN, m);
+        const dv = new THREE.Vector3().subVectors(b, a);
+        const len = dv.length();
+        const q = new THREE.Quaternion().setFromUnitVectors(_up, dv.normalize());
+        const rr = (r0 + (r1 - r0) * (i / segs)) * hs;
+        hb.add(new THREE.CylinderGeometry(rr * 0.88, rr, len * 1.3, 7), HORN, new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, 1, 1)));
       }
-      hb.ico(HORN, r1 * 1.05, 0, [pts[segs]!.x, pts[segs]!.y, pts[segs]!.z]);
     }
   }
-  const head = hb.build()!;
-  const hs = d.hs;
-  head.scale(hs, hs, hs);
+  const head = smoothGeo(hb.build()!);
 
-  const lh = d.legLen + d.H * 0.3;
+  const hipY = d.legLen + 0.05;
   const parts: SheepParts = {
-    hips: [[0.45 * d.L, lh, 0.42 * d.W], [0.45 * d.L, lh, -0.42 * d.W], [-0.45 * d.L, lh, 0.42 * d.W], [-0.45 * d.L, lh, -0.42 * d.W]],
-    legR: d.s * (w.adult ? 1 : 1.2),
-    ears: [[0.07 * hs, 0.08 * hs, 0.19 * hs], [0.07 * hs, 0.08 * hs, -0.19 * hs]],
-    earScale: hs * (w.adult ? 1 : 1.1),
-    eyes: [[0.335 * hs, 0.035 * hs, 0.128 * hs], [0.335 * hs, 0.035 * hs, -0.128 * hs]],
-    eyeR: 0.062 * hs * (w.adult ? 1 : 1.08),
+    hips: [[0.45 * L, hipY, 0.42 * W], [0.45 * L, hipY, -0.42 * W], [-0.45 * L, hipY, 0.42 * W], [-0.45 * L, hipY, -0.42 * W]],
+    legR: 0.056 * Math.sqrt(d.s) * (w.adult ? 1 : 1.12),
+    ears: [at(-0.01, 0.06, 0.1), at(-0.01, 0.06, -0.1)],
+    earScale: hs * 1.05,
+    eyes: [at(0.148, 0.042, 0.117), at(0.148, 0.042, -0.117)],
+    eyeR: 0.05 * hs,
+    eyeYaw: Math.PI / 2 - 0.42,
     face,
   };
   return { key: sheepKey(w), body, head, dims: d, parts };
@@ -246,8 +277,8 @@ export function restPose(): SheepPose {
   };
 }
 
-/** Floppy ears hang a little lower than they used to. */
-export const EAR_REST = 0.85;
+/** Ears held out to the side, tips a little down (the natural sheep). */
+export const EAR_REST = 0.32;
 
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -264,7 +295,7 @@ export function legMatrix(out: THREE.Matrix4, geos: SheepGeos, i: number, pose: 
   const len = Math.max(0.05, h[1] - drop);
   _e.set(side * 0.9 * pose.fold, 0, pose.legs[i]! * (1 - pose.fold));
   _q.setFromEuler(_e);
-  const r = 0.085 * geos.parts.legR;
+  const r = geos.parts.legR;
   return out.compose(_v.set(h[0], h[1] - drop, h[2]), _q, _s.set(r, len * (1 - 0.35 * pose.fold), r));
 }
 
@@ -279,15 +310,13 @@ export function earMatrix(out: THREE.Matrix4, geos: SheepGeos, i: number, pose: 
 }
 const _qFlip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
-/** Eyes look forward and a little outward, so a three-quarter view sees one big eye. */
-const EYE_YAW = 0.42;
 const _yAxis = new THREE.Vector3(0, 1, 0);
 /** Eye matrix in head-pivot space (blink squashes it flat). */
 export function eyeMatrix(out: THREE.Matrix4, geos: SheepGeos, i: number, pose: SheepPose): THREE.Matrix4 {
   const p = geos.parts.eyes[i]!;
   const r = geos.parts.eyeR;
-  _q.setFromAxisAngle(_yAxis, i === 0 ? -EYE_YAW : EYE_YAW);
-  return out.compose(_v.set(p[0], p[1], p[2]), _q, _s.set(r * 0.8, r * Math.max(0.12, 1 - pose.blink), r));
+  _q.setFromAxisAngle(_yAxis, i === 0 ? -geos.parts.eyeYaw : geos.parts.eyeYaw);
+  return out.compose(_v.set(p[0], p[1], p[2]), _q, _s.set(r, r * Math.max(0.12, 1 - pose.blink), r));
 }
 
 /** Transforms for the merged pieces (bob group, body, head pivot). */
@@ -309,42 +338,42 @@ export function applyPose(rig: SheepRig, geos: SheepGeos, pose: SheepPose): void
 /** Shared flock materials and unit part geometries. Wool sheen is bucketed by fineness so materials stay shared. */
 export class SheepMaterials {
   readonly wool: THREE.MeshStandardMaterial[];
-  readonly skin = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  readonly skin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
   /** instanced parts take their colour from instanceColor */
-  readonly part = new THREE.MeshLambertMaterial({ color: "#ffffff", flatShading: true, vertexColors: true });
-  /** eyes: vertex-coloured (white, dark iris, highlight dot) */
+  readonly part = new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.9, metalness: 0 });
+  /** eyes: vertex-coloured (a soft dark eye, a warm iris and catch-lights) */
   readonly eye = new THREE.MeshBasicMaterial({ vertexColors: true });
   readonly outlineSel = new THREE.MeshBasicMaterial({ color: "#ffd257", side: THREE.BackSide });
   readonly outlineHover = new THREE.MeshBasicMaterial({ color: "#ffffff", side: THREE.BackSide, transparent: true, opacity: 0.85 });
   readonly pick = new THREE.MeshBasicMaterial({ visible: false });
   readonly pickGeo = new THREE.BoxGeometry(1, 1, 1);
-  /** unit stubby leg with a little hoof: radius 1 at the hip, hangs from y=0 to y=-1 (vertex colour tints the hoof) */
-  readonly legGeo = new GeoBatch()
-    .add(new THREE.CylinderGeometry(1, 0.92, 0.8, 7).translate(0, -0.4, 0), "#ffffff")
-    .add(new THREE.CylinderGeometry(1.0, 1.08, 0.2, 7).translate(0, -0.9, 0), "#d8b6a0")
-    .build()!;
-  /** soft floppy ear pointing +z from its pivot */
-  readonly earGeo = new GeoBatch()
-    .add(new THREE.IcosahedronGeometry(1, 1).scale(0.075, 0.026, 0.12).translate(0, 0, 0.1), "#ffffff")
-    .build()!;
-  /** world eye: white, a big dark iris looking forward (+x) and a highlight dot, one geometry */
+  /** unit slim leg with a darker hoof: radius 1 at the hip, hangs from y=0 to y=-1 (vertex colour tints the hoof) */
+  readonly legGeo = smoothGeo(new GeoBatch()
+    .add(new THREE.CylinderGeometry(1, 0.82, 0.86, 8).translate(0, -0.43, 0), "#ffffff")
+    .add(new THREE.CylinderGeometry(0.92, 1.02, 0.14, 8).translate(0, -0.93, 0), "#8c8580")
+    .build()!);
+  /** an ear held out to the side, pointing +z from its pivot */
+  readonly earGeo = smoothGeo(new GeoBatch()
+    .add(new THREE.IcosahedronGeometry(1, 1).scale(0.055, 0.025, 0.13).translate(0, 0, 0.085), "#ffffff")
+    .build()!);
+  /** world eye (the friendlier face): a soft dark eye facing +x, a warm iris and two catch-lights, one geometry */
   readonly eyeGeo = new GeoBatch()
-    .add(new THREE.IcosahedronGeometry(1, 1), "#fbf7ef")
-    .add(new THREE.IcosahedronGeometry(0.86, 1).translate(0.3, 0.02, 0), "#1d1516")
-    .add(new THREE.IcosahedronGeometry(0.27, 1).translate(1.0, 0.4, 0.28), "#ffffff")
-    .add(new THREE.IcosahedronGeometry(0.1, 0).translate(1.1, -0.2, -0.12), "#ffffff")
+    .add(new THREE.IcosahedronGeometry(1, 2).scale(0.62, 1.04, 1), "#2b1e19")
+    .add(new THREE.IcosahedronGeometry(0.56, 1).scale(0.6, 1, 1).translate(0.22, -0.18, 0), "#6a4636")
+    .add(new THREE.IcosahedronGeometry(0.4, 1).translate(0.42, 0.4, 0), "#ffffff")
+    .add(new THREE.IcosahedronGeometry(0.16, 0).translate(0.5, -0.42, 0), "#ffffff")
     .build()!;
-  /** portrait eye: the white alone, the iris is a child that follows the look */
-  readonly eyeWhiteGeo = new GeoBatch().add(new THREE.IcosahedronGeometry(1, 1), "#fbf7ef").build()!;
+  /** portrait eye: the dark eye alone; the iris and catch-lights are a child that follows the look */
+  readonly eyeWhiteGeo = new GeoBatch().add(new THREE.IcosahedronGeometry(1, 2).scale(0.62, 1.04, 1), "#2b1e19").build()!;
   readonly irisGeo = new GeoBatch()
-    .add(new THREE.IcosahedronGeometry(0.86, 1), "#1d1516")
-    .add(new THREE.IcosahedronGeometry(0.27, 1).translate(0.7, 0.38, 0.28), "#ffffff")
-    .add(new THREE.IcosahedronGeometry(0.1, 0).translate(0.8, -0.22, -0.12), "#ffffff")
+    .add(new THREE.IcosahedronGeometry(0.56, 1).scale(0.5, 1, 1).translate(-0.02, -0.18, 0), "#6a4636")
+    .add(new THREE.IcosahedronGeometry(0.4, 1).translate(0.14, 0.4, 0), "#ffffff")
+    .add(new THREE.IcosahedronGeometry(0.16, 0).translate(0.2, -0.42, 0), "#ffffff")
     .build()!;
 
   constructor() {
-    this.wool = [0.42, 0.68, 0.95].map(
-      (roughness) => new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness, metalness: 0 }),
+    this.wool = [0.62, 0.8, 0.96].map(
+      (roughness) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness, metalness: 0 }),
     );
   }
 
@@ -452,7 +481,7 @@ export function buildFullRig(geos: SheepGeos, w: WorldSheep, mats: SheepMaterial
         earMatrix(ears[i]!.matrix, geos, i, p); ears[i]!.matrixWorldNeedsUpdate = true;
         eyeMatrix(eyes[i]!.matrix, geos, i, p); eyes[i]!.matrixWorldNeedsUpdate = true;
         // pupil sits on the front of the eye, nudged by the look direction (eye space is unit sized)
-        pupils[i]!.position.set(0.3, 0.02 + p.lookY * 0.16, (i === 0 ? 0.03 : -0.03) - p.lookX * 0.2);
+        pupils[i]!.position.set(0.3, 0.02 + p.lookY * 0.16, (i === 0 ? 1 : -1) * p.lookX * 0.2);
         pupils[i]!.visible = p.blink < 0.6;
       }
     },

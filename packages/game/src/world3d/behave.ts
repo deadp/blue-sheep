@@ -61,6 +61,12 @@ export interface Ent {
   attendT: number;
   /** a point to glance at while idle (x, z) */
   look: [number, number] | null;
+  /** following the farmer: seconds until the target is refreshed, or -1 */
+  follow: number;
+  /** the fond follower's place in the loose trail behind the farmer */
+  slot: number;
+  /** seconds left of stepping away from the farmer (shy), or -1 */
+  flee: number;
 }
 
 export interface FlockCtx {
@@ -70,6 +76,8 @@ export interface FlockCtx {
   ents: Iterable<Ent>;
   insetRect(zone: Zone, r: number): Rect;
   puff(x: number, z: number, n: number, size?: number): void;
+  /** The walking farmer (world x, z), or null in pan mode. Fond sheep follow within their own paddock; shy ones step away. */
+  farmer: { x: number; z: number; moving: boolean } | null;
 }
 
 /** Fondness at or above this: the sheep seeks you out (comes to the front, follows the sheep you visit). */
@@ -82,8 +90,10 @@ export function fondOf(e: Ent): number {
   return typeof f === "number" && Number.isFinite(f) ? f : 30;
 }
 
-/** Heading that faces the isometric camera (which looks from +x +z). */
-export const FACE_CAMERA = -Math.PI / 4;
+/** The close-iso camera's yaw about y (it looks from +z, turned a little towards +x). */
+export const CAM_YAW = 0.42;
+/** Heading that faces the camera. */
+export const FACE_CAMERA = CAM_YAW - Math.PI / 2;
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -98,11 +108,12 @@ const TEMPER: Record<Personality, Temper> = {
   bold: { reach: 6.5, speed: 0.72, graze: 0.3, idle: 0.2, nuzzle: 0.08 },
 };
 
-export function newAnimState(): Pick<Ent, "pose" | "speed" | "turnRate" | "stride" | "pitch" | "yaw" | "roll" | "hop" | "hopDur" | "hopH" | "hopBack" | "landed" | "fold" | "blinkIn" | "blinkT" | "earT" | "earIn" | "skip" | "nuzzle" | "attendT" | "look"> {
+export function newAnimState(): Pick<Ent, "pose" | "speed" | "turnRate" | "stride" | "pitch" | "yaw" | "roll" | "hop" | "hopDur" | "hopH" | "hopBack" | "landed" | "fold" | "blinkIn" | "blinkT" | "earT" | "earIn" | "skip" | "nuzzle" | "attendT" | "look" | "follow" | "slot" | "flee"> {
   return {
     pose: restPose(), speed: 0, turnRate: 0, stride: 0, pitch: 0, yaw: 0, roll: 0,
     hop: -1, hopDur: 0.5, hopH: 0.3, hopBack: 0, landed: 99, fold: 0,
     blinkIn: rnd(1, 4), blinkT: -1, earT: [-1, -1], earIn: rnd(2, 7), skip: false, nuzzle: null, attendT: -1, look: null,
+    follow: -1, slot: 0, flee: -1,
   };
 }
 
@@ -154,9 +165,11 @@ function choose(e: Ent, ctx: FlockCtx): void {
     walkTo(e, dam.x + Math.cos(a) * 1.3, dam.z + Math.sin(a) * 1.3, ctx, true);
     return;
   }
+  const fond = fondOf(e);
+  // Fond sheep trail after the walking farmer, but only inside their own paddock (never out through a gate).
+  if (followTarget(e, ctx)) return;
   // Curious sheep, and sheep that are fond of you, come over to see who's getting attention.
   const att = ctx.attended;
-  const fond = fondOf(e);
   if ((e.personality === "curious" || fond >= FOND_TRUSTING) && fond >= FOND_SKITTISH && att && att !== e && sameZone(e, att)) {
     const d = dist(e, att);
     if (d > 2.6) {
@@ -213,6 +226,24 @@ function choose(e: Ent, ctx: FlockCtx): void {
     return;
   }
   walkTo(e, e.x + (Math.random() - 0.5) * 2 * T.reach, e.z + (Math.random() - 0.5) * 2 * T.reach, ctx, !e.ws.adult && Math.random() < 0.6);
+}
+
+/** Is the farmer in (or right by) this sheep's paddock, and is it fond enough to follow? Sets a walk if so. */
+function followTarget(e: Ent, ctx: FlockCtx): boolean {
+  const F = ctx.farmer;
+  e.follow = -1;
+  if (!F || e.personality === "shy" || fondOf(e) < FOND_TRUSTING || ctx.attended === e) return false;
+  if (e.zone !== "paddock" && e.zone !== "paddock2" && e.zone !== "meadow") return false;
+  const r = ctx.insetRect(e.zone, 0);
+  if (F.x < r.x0 - 3 || F.x > r.x1 + 3 || F.z < r.z0 - 3 || F.z > r.z1 + 3) return false;
+  const d = Math.hypot(F.x - e.x, F.z - e.z);
+  if (d < 2.4 + e.slot * 0.7 && !F.moving) { e.mode = "idle"; e.timer = rnd(0.8, 1.6); e.look = [F.x, F.z]; e.follow = 0.6; return true; }
+  // a loose trail: each follower keeps its own spot around and behind the farmer
+  const a = Math.atan2(e.z - F.z, e.x - F.x) + (e.slot - 1) * 0.35;
+  const rr = 2.0 + e.slot * 0.8;
+  walkTo(e, F.x + Math.cos(a) * rr, F.z + Math.sin(a) * rr, ctx);
+  e.follow = 0.5;
+  return true;
 }
 
 function turnToward(e: Ent, desired: number, dt: number, rate = 3): number {
@@ -296,6 +327,16 @@ export function stepSheep(e: Ent, dt: number, ctx: FlockCtx): void {
   }
   if (e.attendT >= 0) { e.attendT = -1; e.mode = "idle"; e.timer = rnd(0.8, 2); }
 
+  // following: refresh the spot behind the farmer now and then; shy (or skittish) sheep step away from him
+  const F = ctx.farmer;
+  if (e.follow >= 0 && (e.follow -= dt) <= 0 && e.hop < 0 && !e.nuzzle) { if (!followTarget(e, ctx) && e.mode === "walk") e.timer = 0; }
+  if (F && e.flee < 0 && (e.personality === "shy" || fondOf(e) < FOND_SKITTISH) && Math.hypot(F.x - e.x, F.z - e.z) < 3.4) {
+    const a = Math.atan2(e.z - F.z, e.x - F.x) + (Math.random() - 0.5) * 0.5;
+    walkTo(e, e.x + Math.cos(a) * 3.5, e.z + Math.sin(a) * 3.5, ctx);
+    e.flee = 1.4; e.nuzzle = null;
+    flickEars(e);
+  }
+  if (e.flee >= 0) e.flee -= dt;
   e.timer -= dt;
   if (e.timer <= 0 && e.hop < 0) choose(e, ctx);
 
@@ -312,7 +353,8 @@ export function stepSheep(e: Ent, dt: number, ctx: FlockCtx): void {
     } else {
       const turn = turnToward(e, Math.atan2(-dz, dx), dt);
       const cos = Math.max(0, Math.cos(turn));
-      speedTo = (e.ws.adult ? T.speed : T.speed * 1.35) * cos * cos * clamp(d / 0.8, 0.35, 1);
+      const hurry = e.flee > 0 ? 2.6 : e.follow >= 0 ? (d > 4 ? 3.4 : 2.2) : 1;
+      speedTo = (e.ws.adult ? T.speed : T.speed * 1.35) * hurry * cos * cos * clamp(d / 0.8, 0.35, 1);
       if (e.skip && e.hop < 0 && e.landed > 0.25 && Math.random() < dt * 2.2) startHop(e, 0.22, 0.32);
     }
     pitch = -0.06 + 0.04 * Math.sin(e.stride * 2);

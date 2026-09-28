@@ -329,72 +329,123 @@ blues born, coins earned, discoveries, fairs won).
 
 ## 4. World API (Stream B) — `packages/game/src/world3d/index.ts`
 
-Zero imports from `core/`. Pure presentation driven by snapshots.
+Zero imports from `core/`. Pure presentation driven by snapshots. (world3d may import the pure icon strings in
+`ui/felt/icons.ts` for its own felt chrome; nothing else from `ui/`.)
 
 ```ts
-export type Zone = "paddock" | "paddock2" | "barn" | "market" | "visitor";
+export type Zone = "paddock" | "paddock2" | "meadow" | "barn" | "market" | "visitor";
+  // paddock = home paddock, paddock2 = creek flats, meadow = the far bank over the bridge
 export type Hotspot = "house" | "shed" | "market" | "vet" | "fairground" | "mailbox";
+  // homestead (sleep, board), woolshed (notice board), trader's stall, vet's hut, showground, mailbox
+export type AreaId = "home" | "flats" | "rushy" | "farbank" | "terraces";
+export type MoveMode = "walk" | "pan";
+export interface LandInfo {
+  id: AreaId;
+  state: "open" | "locked" | "later";  // later = a "Coming later" felt tag
+  price?: number;                      // locked land's felt price tag
+  can?: boolean;                       // the tag shows "Open this land" (the improvement is on offer)
+  note?: string;                       // a short line on the tag when it can't be opened yet
+}
 export interface WorldSheep {
   id: string; name: string; sex: "ewe" | "ram"; adult: boolean;
   colour: "white" | "black" | "brown" | "blue" | "fawn";
   pattern: "solid" | "spotted"; horns: "polled" | "horned";
-  size: number;         // kg, typically 40–80 → body scale
-  fleeceWeight: number; // kg, typically 2–6 → wool puffiness
-  fineness: number;     // µm, 16–36 → lower = subtle sheen
-  crimp: number;        // /cm, 2–8 → wool bumpiness
+  size: number; fleeceWeight: number; fineness: number; crimp: number;
   zone: Zone;
   marker?: "planned" | "new" | "ill" | "rosette" | "selected" | null;
-  personality?: "shy" | "calm" | "curious" | "bold"; // idle behaviour + greeting (default calm)
-  dam?: string | null;  // lambs stay near their mother
-  fondness?: number;    // 0–100 (default 30): 60+ come to the front and follow the visited sheep; <20 back away
+  personality?: "shy" | "calm" | "curious" | "bold";
+  dam?: string | null;
+  fondness?: number;    // 0–100 (default 30): 60+ follow the walking farmer in their paddock; <20 step away
 }
 export interface WorldSnapshot {
-  season: 0 | 1 | 2 | 3;      // spring..winter: light, foliage colour, snow in winter
+  season: 0 | 1 | 2 | 3;      // spring..winter: tint, blossom (kōwhai spring, pōhutukawa summer), leaves, snow
   year: number;
   sheep: WorldSheep[];
   selected: string | null;
-  paddock2: boolean;          // second paddock fenced & open
-  visitorPresent: boolean;    // visiting ram pen occupied
-  fairToday: boolean;         // bunting on the fairground
-  upgrades?: string[];        // owned: "terrier" | "collie" | "maremma" (dogs; old "dog" = collie), "cat", "barn", "shearing", "meadow"
-  pets?: { id: PetKind; name: string; fondness?: number }[];  // hover names of the dogs and cat
+  paddock2: boolean;          // (legacy) creek flats open; used only when `land` is absent
+  visitorPresent: boolean;    // visiting ram's pen (the woolshed yards) flag
+  fairToday: boolean;         // bunting on the showground
+  upgrades?: string[];        // "terrier" | "collie" | "maremma" (old "dog" = collie), "cat", "barn", "shearing", "meadow"
+  pets?: { id: PetKind; name: string; fondness?: number }[];
+  land?: LandInfo[];          // the land; a change locked → open after the first snapshot plays the reveal
 }
 export interface WorldHandlers {
   onSheep(id: string): void;
   onHotspot(h: Hotspot): void;
-  onHover?(target: { kind: "sheep"; id: string } | { kind: "hotspot"; id: Hotspot } | null): void;
-  onPortraitClick?(id: string): void; // the live portrait was clicked (it hops); the controller plays the voice
-  onPet?(id: PetKind): void;          // a dog or the cat was clicked in the field (PetKind = terrier|collie|maremma|cat)
+  onHover?(target): void;
+  onPortraitClick?(id: string): void;
+  onPet?(id: PetKind): void;
+  onBrush?(id: string, phase: "stroke" | "done"): void; // the live portrait's hold, or F held beside a sheep
+  onArea?(id: AreaId): void;          // a price tag's "Open this land"
+  onMoveMode?(mode: MoveMode): void;  // the felt walk/pan switch or Tab; the controller persists it
 }
+export interface WorldOptions { seed?: number; reducedMotion?: boolean; move?: MoveMode; lite?: boolean }
 export class WorldView {
-  constructor(container: HTMLElement, handlers: WorldHandlers, opts?: { seed?: number; reducedMotion?: boolean });
-  setSnapshot(s: WorldSnapshot): void;  // diff: new sheep pop in with a little bounce; removed fade out
-  portrait(sheep: WorldSheep, px?: number): string; // PNG data URL of that sheep on a pastel background
-  celebrate(id: string): void;         // sparkles/confetti above a sheep
-  focus(id: string | Hotspot): void;   // glide camera
+  constructor(container: HTMLElement, handlers: WorldHandlers, opts?: WorldOptions);
+  setSnapshot(s: WorldSnapshot): void;
+  setMoveMode(m: MoveMode): void;      // walk (the farmer) or pan (drag, signposts, minimap)
+  setKeys(on: boolean): void;          // WASD / E / F / Tab on (the controller turns them off while a panel is open)
+  portrait(sheep: WorldSheep, px?: number): string;
+  celebrate(id: string): void;
+  focus(id: string | Hotspot): void;   // glide the camera there (in walk mode it returns to the farmer when he moves)
   screenPoint(id: string | Hotspot): { x: number; y: number; inView: boolean } | null;
-    // client px just above a sheep's head (or a hotspot's anchor); the tutorial's arrow points there
   attend(id: string | null, opts?: { offsetPx?: number; say?: string }): void;
-    // visit a sheep (its card is open): camera glides in beside it (shifted left by offsetPx for a
-    // right-hand card), it stops, turns to the camera, flicks its ears, hops or tilts its head and
-    // says hello in a speech bubble chosen by personality. null releases it and restores the camera.
   mountPortrait(el: HTMLElement, sheep: WorldSheep): () => void;
-    // live animated 3D portrait (own small renderer, canvas[data-live-portrait]) inside el; one at a
-    // time; mounting the same sheep again moves the canvas. The disposer stops rendering.
-  love(id: string, n?: number): void;  // pink hearts float up from a sheep, dog or cat (greeted / treated)
-  portraitCheer(): void;               // after a full brushing: hearts + a contented bubble in the live portrait
-  // handlers.onBrush?(id, "stroke" | "done"): press and hold on the live portrait brushes it (a ring fills
-  // above the pointer, tufts of wool drift off, the sheep squints and leans in, hearts rise); "stroke" every
-  // 0.4 s for a swish sound, "done" when the hold reaches HOLD_MS (1.2 s). Letting go early cancels; a press
-  // under HOLD_CLICK_MS is still a click. `Hold` (world3d/hold.ts) is the shared gesture (the animal card's pat).
-  say(id: PetKind, text: string): void; // speech bubble over a dog or the cat
-  petPortrait(id: PetKind, px?: number): string; // PNG data URL of a dog or the cat sitting (animal card)
-  sleepTransition(): Promise<void>;    // dusk → night → dawn, ~1.5 s, resolves at darkest point? No: resolves when fully dark; call again with dawn(): Promise<void>
+  love(id: string, n?: number): void;
+  portraitCheer(): void;
+  say(id: PetKind, text: string): void;
+  petPortrait(id: PetKind, px?: number): string;
+  sleepTransition(): Promise<void>;
   dawn(): Promise<void>;
   resize(): void;
   dispose(): void;
 }
 ```
+
+**The valley (DESIGN-v3 §9, §15 items 20–24; `world3d/valley.ts` layout, `farm.ts` meshes).** Farm coordinates
+(u, v) with world x = u, z = −v; the farm floor is flat at y = 0. Along the valley from west to east: the
+homestead (hotspot `house`), the barn lean-to (zone `barn`, the cat's roof), the home paddock (zone `paddock`,
+gate on the east side), the trader's stall with the pen of sheep for sale (`market`), the mailbox by the road,
+the woolshed with its verandah of three empty station benches and a notice board (`shed`; birds come in a later
+phase), its yards (zone `visitor`, flag when a ram visits), the vet's hut and ute by the road (`vet`), the
+showground south of the road (`fairground`), the creek flats (zone `paddock2`), the rushy corner and the native
+bush edge (never cleared). Over the creek: the far bank (zone `meadow`, reached by the bridge) and the terraces
+above it. Locked land reads through scrub, rank grass, broken fences and a sign, with a felt price tag; never
+mist. Opening land plays the reveal (~5 s): the camera frames it, scrub clears in a sweep from the gate with
+dust, rank grass gives way to lawn and the ground greens, the broken fence goes and new posts stand up round
+the paddock, the gate, a trough and bales arrive (the far bank's bridge is built first). `#world[data-reveal]`
+is `running` then `done`. Reduced motion opens land at once.
+
+Mapping to the game (controller): the creek flats open with `paddock2Open()` (the "Open the far paddock"
+improvement, act 3 or a cap of 16, as before); the far bank opens with "Rent the long meadow"; the rushy corner
+and the terraces are "Coming later". Flock caps are unchanged. Sheep fill the home paddock (10), then the flats
+(8), then the far bank; ill sheep and winter lambs go to the barn.
+
+**Getting about.** Walk (default): the farmer (gumboots, check shirt, hat, crook; drawn bigger than the
+prototype) with a close camera (half-width 11 world units; wheel 7.5–16) that follows him with a little
+look-ahead. Tap the ground to walk (A* on a 0.5-unit grid round fences, buildings, trees, the creek and locked
+land; the bridge once the far bank is open); WASD / arrows walk, Shift runs. Clicking a sheep within 9 units
+opens its card at once while he strolls over; further away he walks there first, then the card opens.
+Clicking a building walks him to its door and opens it. Walk-up prompts: beside a sheep "E Say hello" (opens
+its card: the greeting) and "F Brush · hold" (1.2 s, `onBrush` strokes then done); at a place "E" and its verb.
+Fond sheep (60+, not shy) trail after the farmer inside their own paddock only (they line up at the fence,
+never out through a gate); shy or skittish sheep step away from him. Pan: no farmer; drag (with a little
+coast), wheel zoom 7.5–32, arrows nudge; felt signposts (Home paddock, Woolshed, Creek flats, Far bank, The
+road) and a felt minimap (sheep dots in their wool colours, the view window; click to glide). Signposts and
+the minimap walk the farmer there in walk mode. Tab or the felt switch (top right) toggles; the controller
+keeps the choice in `localStorage["blue-sheep-move-mode"]` and in Settings ("Getting about").
+Reduced motion: walking is instant (the farmer is simply there), the camera jumps, poses are static.
+
+**Look.** Soft pastoral light from round 3 (hemisphere + a warm sun, soft shadows, neutral tone mapping), no
+mist. Seasons tint the ground and foliage (golden summer, russet autumn), bring kōwhai bloom in spring,
+pōhutukawa red in summer, leaves in autumn, and snow on everything facing up in winter (a shader uniform) plus
+falling particles; night for the sleep transition (sky, stars, lit windows). Static scenery is cut into 24-unit
+tiles so the close camera culls most of the valley. `?lite=1` (controller → `opts.lite`): no shadows, no
+antialias, pixel ratio 1, fewer grass tufts and wool locks, a coarser terrain.
+
+`debugStats()` (not contract) adds `mode`, `farmer {x,z,moving,path,visible}`, `camera {x,z,halfW,gliding,held}`,
+`land`, `reveal {area,t,done}`, `prompt`, `keys`, `lite`, `shadows` and `sheepAt` (id → x, z, zone).
+`debugCamera(x, z, halfW)` (not contract) points the camera for probe sheets.
 
 Personality greetings (`BLEATS`, first line is the greeting): shy "…", calm "Mehh.", curious "Baa!",
 bold "BAA!". In the field shy sheep keep to the fence and hop back from a fuss, bold ones roam wide and
@@ -412,20 +463,13 @@ front and come over to the visited sheep; under 20 keep to the fence and hop bac
 neighbour is); 80+ add "♥" to their greeting.
 `debugStats()` (not contract) reports draw calls, the dogs (`dog`, `dogs[]`), `cat`, live `hearts`, the visited sheep, the bubble and the portrait.
 
-Sheep look (`sheepMesh.ts`): chibi proportions. A round body made of overlapping wool puffs around a
-soft core (crimp → more, smaller, lumpier puffs; fleece weight → bigger puffs; size → body scale; spots
-colour whole puffs), a big head (×1.68 adults, ×2.1 lambs) with a wool bonnet and top tuft, a lighter
-round muzzle, rosy cheeks, big eyes (white, dark iris, highlight dot; one vertex-coloured instanced
-geometry in the world, a movable iris in the live portrait), floppy ears, short stubby legs with little
-hooves, a two-puff tail, small round horn curls (bigger on rams).
-
-Visual direction: orthographic isometric camera, flat-shaded low-poly, pastel
-palette, soft shadows, sheep idle animations (breathing, head bob, grazing,
-occasional wander within their zone). Farm diorama: farmhouse (sleep), shed
-with notice board, market stall with a trader, vet hut, fairground with
-bunting, mailbox by the gate, two paddocks, pond, a few trees. Hotspots glow
-faintly on hover and show a floating label. Must render in headless Chrome
-(swiftshader) and on a laptop iGPU at 60 fps with 40 sheep.
+Sheep look (`sheepMesh.ts`): the natural sheep with the friendlier round-3 face (DESIGN-v3 §15 items 20–22): a
+woolly barrel covered in small locks (crimp → more, smaller locks; fleece weight → a fuller barrel; size →
+scale; spots colour whole locks), rump, breast and a woolly neck carrying a natural head forward; a rounder
+skull, a short soft muzzle, a pale patch round each big soft eye (dark eye, warm iris, two catch-lights; one
+instanced geometry in the world, a movable iris in the live portrait), ears held out to the side, slim legs
+with darker hooves, a short docked tail; horns curl from the poll (bigger on rams). Wool colour still uses
+the v2 mapping (`WOOL_HEX`) until pigment colours arrive. Legs, ears and eyes stay instanced flock-wide.
 
 ## 5. UI panels (Stream C) — `packages/game/src/ui/`
 
@@ -510,12 +554,13 @@ Panels (all fewer words, facts as icons, details behind `more`):
 - **sheep**: a docked felt card as in the style lab. Oval live portrait (`[data-live-portrait-slot]`), the
   name (handwritten) with sex and rename, persona + one flavour, hearts (with the treat's gain as a faint
   forecast and "→ Friendly"), "Press and hold the picture to brush" (`[data-brushed]`), "said hello this
-  season" (`.c-said`), the personality line, three fact tiles (colour, wool, age), two buttons (**Find a
+  season" (`.c-said`), the personality line, three fact tiles (colour, wool, age), a compact one-line "what
+  you know" (`.sc-know[data-know]`: a confidence dot and a one-word name per hidden gene), two buttons (**Find a
   mate**, **Give a treat · 1**) and small ghost tools (Vet, Family, Sell · n). `more`: traits, the treat and
   brush forecasts, what fondness does for the wool, parents and lambs, what you know (dots).
 - **animal**: the same card for a dog or the cat, with its job (predator odds or mice).
 - **forecast**: parents on the left (both portraits, then the mates list best first), goal tabs, ten lamb
-  tiles on a felt patch with "Each lamb = one chance in ten" and the horned/spotted share, one hint line
+  tiles as a 5 × 2 grid of bigger lambs (DESIGN-v3 §15 item 26) on a felt patch with "Each lamb = one chance in ten" and the horned/spotted share, one hint line
   for the chosen goal (blue odds, what you'd learn, or wool), inbreeding warnings, one commit button
   (Plan / Switch / Cancel, or Hire for a visitor). `more`: the colour key (% with numbers), range bars or
   the wool hint, kinship, the learn meter.
@@ -572,7 +617,9 @@ discovery/concept cards.
   player acts), `?tutorial=1` a new tutorial game (with `?seed=N` if given; not saved until the player
   acts; `?tutorial=0` or no param keeps the normal start), `?panel=<name>` open a panel on boot, `?act=N` new game
   fast-forwarded to act N with a fixture flock (debug), `?nomotion=1` disable
-  animation, `?fresh=1` clear save.
+  animation, `?fresh=1` clear save, `?lite=1` the cheaper world (no shadows, fewer tufts and wool locks, pixel
+  ratio 1), `?move=walk|pan` override the saved walk/pan setting (`localStorage["blue-sheep-move-mode"]`).
+  `__game.debug.camera(x, z, halfW)` (not contract) points the world camera for probe sheets.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
   `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"brush", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?} | {type:"lesson", op:"ack"|"skip"}`.
@@ -650,6 +697,18 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    read back from the portrait mid-hold), `brush-pat-hold`, `brush-pat`. A staged
    season shows "Happy sheep: +N", a wolf and mice in the report. Screenshots `care-*` (sheep card, treat,
    market pets, each animal card, report, and motion close-ups `care-close-<pet>-*`).
+6a2. World (`world.mjs`, DESIGN-v3 §15 items 22–24): boots `?seed=7&fresh=1&act=1` with motion. Walk is the
+   default with the farmer showing and the creek flats locked; clicking a home-paddock sheep ≥ 9 units away
+   (after a WASD walk if needed) does not open the card at once, the farmer walks over (moves ≥ 3, stops within
+   3.4 of it) and then the card opens and the world visits it. The felt switch turns on pan (no farmer, the
+   minimap and ≥ 4 signposts showing, `localStorage` says pan), a drag moves the camera, the Woolshed signpost
+   glides it there, a reload keeps pan, Tab returns to walk. The creek flats' price tag's "Open this land" opens
+   the market with "Open the far paddock" in view; buying it closes the market, `#world[data-reveal]` goes
+   `running` then `done`, the flats are open and the flock cap rises by exactly 4 (money is topped up first
+   when the act-2 fixture is short); walking from the Creek flats signpost puts the farmer inside the flats.
+   Notes frame rate, draw calls and triangles for `?act=3` normal and `&lite=1` and asserts lite has no
+   shadows and fewer triangles. Screenshots `world-walk-*`, `world-pan-*`, `world-reveal-0…6`, `world-lite`,
+   `world-1024`.
 6b. Voices (`voices.mjs`): renders lamb/ewe/ram × shy/calm/curious/bold offline in the real build,
    measures length, peak/RMS level and pitch (YIN), asserts measured pitch lamb > ewe > ram per temperament
    and near the designed pitch, lambs shorter than rams, shy ≥ 3 dB quieter than bold, and writes
@@ -671,7 +730,7 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    act, never in a calendar season), each with its lesson (hidden behind the report, shown after); no fox or
    mice before dogs/cat; the orders, vet, farm, dogs and cat lessons are completed by real clicks where the
    arrow points (the world hotspot, else the HUD button; Accept; the ringed Test; Got it; Maybe later; buying
-   Mog); the farm lesson resumes after a sleep; the forecast keeps ten lambs on one row and long names clear
+   Mog); the farm lesson resumes after a sleep; the forecast shows ten lambs as a 5 × 2 grid, all visible without scrolling, and long names clear
    of their hints at 1280×800, 1024×768 and beside a lesson card. Screenshots `lesson-<id>-1`, `lesson-vet-2/3`,
    `lesson-dogs-2`, `lesson-cat-2`, `lesson-farm-resumed`, `forecast-1280`, `forecast-1024`, `forecast-lesson-1280`.
 8. Records a 10 s webm of the idle world.

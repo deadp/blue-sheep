@@ -47,6 +47,7 @@ export function helpHtml(_state: GameState, _view: View): string {
     <li>${icon("house", "inl")} House or shed: the board and diary.</li>
     <li>${icon("store", "inl")} Market: buy and sell. ${icon("vet", "inl")} Vet: tests. ${icon("rosette", "inl")} Fairground: the autumn show. ${icon("mail", "inl")} Mailbox: letters.</li>
     <li>Forecasts use what you know, not the whole truth: surprises teach you, and the next forecast gets sharper.</li>
+    <li><b>W A S D</b> or a tap walks the farmer; <b>E</b> says hello or opens a place; hold <b>F</b> to brush; <b>Tab</b> switches to panning.</li>
     <li><b>Esc</b> closes a panel.</li></ul>`)}
   <div class="row">${btn("Got it", { kind: "primary", icon: "check", data: { close: "" } })}</div>`;
 }
@@ -58,6 +59,7 @@ export function settingsHtml(_state: GameState, view: View): string {
   const on = view.sound?.on ?? true;
   const vol = Math.round((view.sound?.volume ?? 0.7) * 100);
   return `${head("gear", "Settings", 2)}
+    ${row("paw", "Getting about", `<button class="toggle move ${view.move === "pan" ? "on" : ""}" data-toggle="move" role="switch" aria-checked="${view.move === "pan" ? "true" : "false"}"><span class="knob"></span><span class="b-t">${view.move === "pan" ? "Pan" : "Walk"}</span></button>`)}
     ${row("wave", "Calm motion", toggle("motion", !!view.reducedMotion))}
     ${row("sound", "Sheep voices", `${toggle("sound", on)}<label class="volume ${on ? "" : "off"}"><span class="sr">Volume</span><input type="range" min="0" max="100" step="5" value="${vol}" data-volume aria-label="Volume" ${on ? "" : "disabled"}></label>`)}
     ${row("box", "Save file", `${btn("Export", { data: { export: "1" } })}${btn("Import", { data: { import: "1" } })}`)}

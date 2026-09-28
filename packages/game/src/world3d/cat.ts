@@ -31,7 +31,7 @@ export class Cat {
   private readonly head = new THREE.Group();
   private readonly tail: THREE.Group[] = [];
   private readonly legs: THREE.Group[] = [];
-  x = ROOF[0]; y = ROOF[1]; z = ROOF[2]; heading = -Math.PI / 4;
+  x = ROOF[0]; y = ROOF[1]; z = ROOF[2]; heading = -1.15;
   private mode: Mode = "nap";
   private timer = 4;
   private route: { to: P3; mode: Mode }[] = [];
@@ -45,7 +45,8 @@ export class Cat {
   private sitAmt = 0;
   private yaw = 0;
 
-  constructor(parent: THREE.Object3D, shadows: boolean) {
+  /** `ox` shifts the whole barn-side routine along x (the barn moved in the valley). */
+  constructor(parent: THREE.Object3D, shadows: boolean, private readonly ox = 0) {
     const mk = (b: GeoBatch, par: THREE.Object3D, cast = true) => {
       const g = b.build()!;
       this.geos.push(g);
@@ -128,13 +129,13 @@ export class Cat {
 
   /** Where to draw a speech bubble or hearts (world coords, above its head). */
   top(): THREE.Vector3 {
-    return new THREE.Vector3(this.x, this.y + 0.95, this.z);
+    return new THREE.Vector3(this.x + this.ox, this.y + 0.95, this.z);
   }
 
   update(dt: number, time: number, night: number, still: boolean): void {
     if (!this.group.visible) return;
     if (still) {
-      [this.x, this.y, this.z] = ROOF; this.heading = -Math.PI / 4;
+      [this.x, this.y, this.z] = ROOF; this.heading = -1.15;
       this.mode = night > 0.5 ? "nap" : "sit";
       this.curl = night > 0.5 ? 1 : 0; this.sitAmt = night > 0.5 ? 0 : 1; this.crouch = 0; this.speed = 0;
       this.pose(time);
@@ -250,7 +251,7 @@ export class Cat {
   }
 
   private pose(time: number): void {
-    this.group.position.set(this.x, this.y, this.z);
+    this.group.position.set(this.x + this.ox, this.y, this.z);
     this.group.rotation.y = this.heading;
     const walk = clamp(this.speed / 0.8, 0, 1);
     const s = Math.sin(this.stride);
