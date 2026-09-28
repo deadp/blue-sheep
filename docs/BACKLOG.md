@@ -101,7 +101,7 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Done
 
-- v3 UI foundation, felted wool (COMMIT): `ui/felt/` design system (tokens, procedural felt and blanket
+- v3 UI foundation, felted wool (78ca7af): `ui/felt/` design system (tokens, procedural felt and blanket
   stitch, embroidered SVG icon set replacing every emoji, pom-pom badges, felt buttons with a springy press,
   tags, tabs, one meter style for odds/learning/hearts/dots, "more" folds, fact tiles, toast, mentor card;
   Patrick Hand for headings and names, Nunito for the rest). Minimal HUD (season/coins/flock poms, goal tag,
