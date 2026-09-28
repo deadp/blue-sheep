@@ -1069,3 +1069,16 @@ and tuning is a separate commit only if a target is badly missed.
     as an occasional weather/time-of-day effect (early mornings, some winter
     days), never over paddocks. The "Misty Pastoral" direction keeps its soft
     light and palette, not the mist.
+24. **Movement (user, 2026-09-28, after the playable prototype):** walking
+    farmer is the default, with drag-pan, signposts and minimap available as
+    an option (signpost/minimap clicks walk or glide there). Make the farmer
+    bigger and bring the camera closer than the prototype. Fond sheep follow
+    the farmer **within their own paddock only** — they don't follow you out
+    through gates. The land-opening reveal (scrub clears, grass greens, fence
+    mends) is kept.
+25. **v3 phase order from here:** (1) UI foundation — felted-wool design
+    system with pom-pom badges, HUD and every existing panel restyled with
+    fewer words/more icons, progressive disclosure, handwritten headings/names
+    only; applied to the live game. (2) World pass — close-iso play-scale
+    valley map with expansion areas, walking farmer + pan option, natural
+    friendly sheep, soft light, no default mist. Then the gameplay phases.
