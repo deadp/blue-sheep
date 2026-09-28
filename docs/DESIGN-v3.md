@@ -1082,3 +1082,8 @@ and tuning is a separate commit only if a target is badly missed.
     only; applied to the live game. (2) World pass — close-iso play-scale
     valley map with expansion areas, walking farmer + pan option, natural
     friendly sheep, soft light, no default mist. Then the gameplay phases.
+26. **UI foundation feedback (user, 2026-09-29):** text size is fine; keep
+    small labels under the bag-tray icons; show a compact one-line "what you
+    know" (confidence dots) on the sheep card without opening "more"; forecast
+    shows ten lambs as a 5 × 2 grid with bigger lambs (update the probe that
+    required one row).
