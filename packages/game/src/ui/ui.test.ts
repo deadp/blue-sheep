@@ -12,6 +12,8 @@ const VOCAB = new Set([
   "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial", "treat", "lesson",
   // the HUD's bag: opens and closes the tray of farm places
   "tray",
+  // Settings: the world's Detail (auto / full / lite)
+  "detail",
   // not actions: HUD pieces (for the overlap probe) and "more" folds (kept open across re-renders)
   "hud-piece", "more",
   // the sheep card's compact "what you know" line
@@ -644,3 +646,18 @@ describe("mini-lesson card", () => {
     expect(lessonMentorHtml(g, view({ panel: "vet" }))).toContain('data-lesson="ack"');
   });
 });
+
+describe("settings: Detail", () => {
+  it("offers Auto / Full / Lite with the saved choice pressed, and says when auto has gone lite", () => {
+    const f = FX[0]!;
+    const base = { ...f.view, panel: "settings" as PanelName };
+    const html = (d: View["detail"]) => renderPanel(f.state, { ...base, detail: d });
+    const auto = html({ pref: "auto", now: "full" });
+    expect([...auto.matchAll(/data-detail="(auto|full|lite)"/g)].map((m) => m[1])).toEqual(["auto", "full", "lite"]);
+    expect(auto).toMatch(/class="seg-b on" data-detail="auto"/);
+    expect(html({ pref: "lite", now: "lite" })).toMatch(/class="seg-b on" data-detail="lite"/);
+    expect(html({ pref: "auto", now: "lite" })).toContain("Auto · lite");
+    expect(auto).not.toContain("Auto · lite");
+  });
+});
+

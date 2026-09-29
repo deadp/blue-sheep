@@ -23,6 +23,12 @@ a fresh port, and kills the server and browser on exit, Ctrl+C or crash.
 Don't point a probe at a long-lived dev server. Stale builds give you
 screenshots of old code.
 
+The game's world detail defaults to "auto" (it measures frame times and may drop
+to lite on a slow machine, which headless software GL always is). `GamePage.boot`
+therefore adds `detail=full` to every query that doesn't already say `detail=` or
+`lite=`, so screenshots are stable. Pass `detail=lite` / `lite=1` / `detail=auto`
+explicitly to test the other modes.
+
 ## Steps
 
 - **smoke.mjs**: boots `?seed=7&fresh=1&nomotion=1` (`01-boot.png`). Opens the
@@ -55,6 +61,12 @@ screenshots of old code.
   and its ring goes away; a full hold (~1.2 s) raises fondness by 6 once a season ("Brushed this season"),
   with a filling ring, tufts and hearts (`brush-hold-1`, `brush-ring`, `brush-fluff.png` read back from the
   canvas mid-hold); holding the collie's picture pats her, a short press does not.
+- **dressing.mjs**: the world dressing pass (DESIGN-v3 §15 item 27). Six fixed views at 1280×800 (boot walk
+  view, home paddock with the flock, woolshed, creek/bush edge, winter, pan overview), full and lite, into
+  `out/dressing/` with `perf.json` (draw calls, triangles, the world's `__game.debug.breakdown()`). Asserts lite
+  drops shadows, ambient life and triangles; auto detail with every frame slowed to ~55 ms goes lite and toasts
+  once (not again after a reload); `detail=full` never switches. Before/after sheets:
+  `node probe/dressing-sheet.mjs <beforeDir>`.
 - **voices.mjs**: we can't listen headless, so it renders lamb/ewe/ram × shy/calm/curious/bold bleats
   offline (`__game.debug.renderVoice`), measures length, peak/RMS and pitch (YIN), asserts the ordering,
   and writes `out/voices/*.wav` (plus `series-*.wav`, the 1–3 bleat series as played) and `stats.txt`.

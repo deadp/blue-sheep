@@ -100,13 +100,20 @@ export interface WorldHandlers {
   onArea?(id: AreaId): void;
   /** The walk / pan switch was flipped in the world (Tab or the felt switch); the controller persists it. */
   onMoveMode?(mode: MoveMode): void;
+  /** Auto detail measured slow frames and switched the world to lite (at most once per WorldView). */
+  onAutoLite?(info: { median: number; samples: number }): void;
 }
+
+/** How much the world draws: "auto" measures the first seconds (and after a resize) and drops to lite when slow. */
+export type Detail = "auto" | "full" | "lite";
 
 export interface WorldOptions {
   seed?: number;
   reducedMotion?: boolean;
   /** Walk (default) or pan. */
   move?: MoveMode;
-  /** Cheaper fallback (`?lite=1`): no shadows, fewer grass tufts and wool locks, pixel ratio 1. */
+  /** Cheaper fallback (`?lite=1`): no shadows, fewer grass tufts and wool locks, pixel ratio 1. Same as detail "lite". */
   lite?: boolean;
+  /** Detail level (default "full"); "auto" starts full and may switch itself to lite (see onAutoLite). */
+  detail?: Detail;
 }

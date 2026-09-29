@@ -378,13 +378,16 @@ export interface WorldHandlers {
   onBrush?(id: string, phase: "stroke" | "done"): void; // the live portrait's hold, or F held beside a sheep
   onArea?(id: AreaId): void;          // a price tag's "Open this land"
   onMoveMode?(mode: MoveMode): void;  // the felt walk/pan switch or Tab; the controller persists it
+  onAutoLite?(info: { median: number; samples: number }): void; // auto detail went lite (at most once per view)
 }
-export interface WorldOptions { seed?: number; reducedMotion?: boolean; move?: MoveMode; lite?: boolean }
+export type Detail = "auto" | "full" | "lite";
+export interface WorldOptions { seed?: number; reducedMotion?: boolean; move?: MoveMode; lite?: boolean; detail?: Detail }
 export class WorldView {
   constructor(container: HTMLElement, handlers: WorldHandlers, opts?: WorldOptions);
   setSnapshot(s: WorldSnapshot): void;
   setMoveMode(m: MoveMode): void;      // walk (the farmer) or pan (drag, signposts, minimap)
   setKeys(on: boolean): void;          // WASD / E / F / Tab on (the controller turns them off while a panel is open)
+  setDetail(d: Detail): void;          // at run time: lite = no shadows, pixel ratio 1, fewer tufts, no ambient life
   portrait(sheep: WorldSheep, px?: number): string;
   celebrate(id: string): void;
   focus(id: string | Hotspot): void;   // glide the camera there (in walk mode it returns to the farmer when he moves)
@@ -436,16 +439,45 @@ the minimap walk the farmer there in walk mode. Tab or the felt switch (top righ
 keeps the choice in `localStorage["blue-sheep-move-mode"]` and in Settings ("Getting about").
 Reduced motion: walking is instant (the farmer is simply there), the camera jumps, poses are static.
 
-**Look.** Soft pastoral light from round 3 (hemisphere + a warm sun, soft shadows, neutral tone mapping), no
-mist. Seasons tint the ground and foliage (golden summer, russet autumn), bring kōwhai bloom in spring,
-pōhutukawa red in summer, leaves in autumn, and snow on everything facing up in winter (a shader uniform) plus
-falling particles; night for the sleep transition (sky, stars, lit windows). Static scenery is cut into 24-unit
-tiles so the close camera culls most of the valley. `?lite=1` (controller → `opts.lite`): no shadows, no
-antialias, pixel ratio 1, fewer grass tufts and wool locks, a coarser terrain.
+**Look.** Soft pastoral light from round 3 (hemisphere + a warm late-morning sun, soft shadows, neutral tone
+mapping), no mist. Seasons tint the ground and foliage (golden summer, russet autumn), bring kōwhai bloom in
+spring, pōhutukawa red in summer, leaves in autumn, and snow on everything facing up in winter (a shader
+uniform) plus falling particles; night for the sleep transition (sky, stars, lit windows). Static scenery is cut
+into tiles (24 units; 72 for the thin layers; the terrain shares one vertex set across ~65-unit tiles) so the
+close camera culls most of the valley.
+
+**Dressing (DESIGN-v3 §15 item 27; `world3d/dress.ts` builders, places in `valley.ts`).** The farm floor rolls
+gently (`swell`, under ~0.6, flat under buildings, pens, yards and the showground: `FLAT_RECTS`); `groundY(u, v)`
+(= `height`) is the one ground sampler, and sheep, the farmer, dogs, dust puffs, hearts, bubbles, the tap ring and
+every prop stand on it (`groundAt` steps the pick ray onto it). Worn tracks (gate → woolshed verandah, gate →
+mailbox → road, homestead → barn → road, woolshed → road, the drive) and hoof-churned mud at the gate, the trough
+and the shade tree are baked into the terrain colours, with soft multiply-blended wheel ruts and sheep tracks on
+top (hidden under snow); clover drifts and sunny/lush mottling vary the pasture. The home paddock has a big old
+kōwhai shade tree, cabbage trees, rocks, the trough (with a ball-cock box), a bale with hay fed out, a latched
+gate with a puddle, and thistles and long grass along the fence lines; the flock walks round them (`OBSTACLES`,
+also in the walk grid). Round about: toetoe, harakeke, ponga and river stones along the creek, a pōhutukawa on
+the rise, dry-stone walls by the road and clipped hedgerows across it, a rotary clothesline with the washing out,
+a woodpile and the kids' tyre swing at the homestead, a little grey tractor by the barn, a red quad bike and
+woolpacks at the woolshed, the letterbox with its flag up, a tidier vet's ute. Flower drifts (daisies,
+buttercups, clover heads, self-heal) gather in patches in spring and summer. Soft contact shadows (a multiply
+batch) sit under trees, props, walls and hedges, and an instanced blob under every sheep, dog and the farmer.
+Ambient life (`world3d/ambient.ts`, cosmetic, seeded): birds flit between tree crowns near the view (tūī,
+pīwakawaka, tauhou colours), butterflies over the paddocks in spring and summer, sparkle on the creek, a few
+chickens pecking by the homestead, softer chimney smoke; autumn leaves and snow are the season particles.
+
+**Detail: auto / full / lite.** `opts.detail` (default "full"; the controller passes the player's setting, default
+"auto"). "auto" starts full and measures frame times for 5 s after boot (skipping the first 0.6 s) and again for
+5 s after a window resize; if the median frame is over 40 ms it switches itself to lite once (`onAutoLite`).
+Lite at run time (`setDetail("lite")`, auto-lite): shadows off, pixel ratio 1, the dense third of the grass tufts
+and the ambient life dropped (flowers stay). Lite built from the start (`?lite=1`, `detail: "lite"`): also no
+antialias, fewer tufts and wool locks, fewer flowers, a single coarser terrain mesh and coarser tiles. Reduced
+motion also turns the ambient life off.
 
 `debugStats()` (not contract) adds `mode`, `farmer {x,z,moving,path,visible}`, `camera {x,z,halfW,gliding,held}`,
-`land`, `reveal {area,t,done}`, `prompt`, `keys`, `lite`, `shadows` and `sheepAt` (id → x, z, zone).
-`debugCamera(x, z, halfW)` (not contract) points the camera for probe sheets.
+`land`, `reveal {area,t,done}`, `prompt`, `keys`, `lite`, `shadows`, `detail`, `autoLite {median,samples,done,
+switched}`, `ambient {on,birds,butterflies,sparkles,chickens}` and `sheepAt` (id → x, z, zone).
+`debugCamera(x, z, halfW)` (not contract) points the camera for probe sheets; `debugBreakdown()` (not contract)
+lists what the camera and the shadow camera would draw, by `userData.kind` (meshes, triangles, shadow meshes).
 
 Personality greetings (`BLEATS`, first line is the greeting): shy "…", calm "Mehh.", curious "Baa!",
 bold "BAA!". In the field shy sheep keep to the fence and hop back from a fuss, bold ones roam wide and
@@ -618,8 +650,15 @@ discovery/concept cards.
   acts; `?tutorial=0` or no param keeps the normal start), `?panel=<name>` open a panel on boot, `?act=N` new game
   fast-forwarded to act N with a fixture flock (debug), `?nomotion=1` disable
   animation, `?fresh=1` clear save, `?lite=1` the cheaper world (no shadows, fewer tufts and wool locks, pixel
-  ratio 1), `?move=walk|pan` override the saved walk/pan setting (`localStorage["blue-sheep-move-mode"]`).
-  `__game.debug.camera(x, z, halfW)` (not contract) points the world camera for probe sheets.
+  ratio 1; same as `?detail=lite`), `?detail=auto|full|lite` pin the world's detail for this page (overrides the
+  setting), `?move=walk|pan` override the saved walk/pan setting (`localStorage["blue-sheep-move-mode"]`).
+  `__game.debug.camera(x, z, halfW)` (not contract) points the world camera for probe sheets;
+  `__game.debug.breakdown()` (not contract) is the world's draw breakdown.
+- **Detail setting** (DESIGN-v3 §15 item 27): Settings → "Detail: Auto / Full / Lite" (`data-detail`, saved in
+  `localStorage["blue-sheep-detail"]`, default auto; not game state). Changing it builds a fresh world with that
+  detail (like Calm motion). On auto, when the world reports `onAutoLite`, the Auto button reads "Auto · lite" and
+  the player is told once, ever: toast "Switched to a lighter look for smoother play — change in Settings"
+  (`localStorage["blue-sheep-autolite-told"]`); later boots may switch again, silently.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
   `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"brush", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?} | {type:"lesson", op:"ack"|"skip"}`.
@@ -709,6 +748,15 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    Notes frame rate, draw calls and triangles for `?act=3` normal and `&lite=1` and asserts lite has no
    shadows and fewer triangles. Screenshots `world-walk-*`, `world-pan-*`, `world-reveal-0…6`, `world-lite`,
    `world-1024`.
+6a3. Dressing (`dressing.mjs`, DESIGN-v3 §15 item 27): six fixed 1280×800 views (boot walk view, home paddock
+   with the flock, woolshed, creek/bush edge, winter, pan overview at half-width 30), each at `detail=full` and
+   `detail=lite`, into `out/dressing/` with `perf.json` (draw calls, triangles and the world's breakdown). Asserts
+   lite has no shadows, no ambient life and fewer triangles in every view, and full never flips to lite. Auto-lite:
+   with every animation frame slowed to ~55 ms (an init script), `detail=auto` measures the first seconds, goes
+   lite (no shadows, no ambient life) and toasts "lighter look" exactly once; the Detail setting still says Auto
+   (`dressing-settings-detail.png`); a reload goes lite again without a second toast; `detail=full` never
+   switches or toasts. **Every probe pins the detail**: `GamePage.boot` (and `shot.mjs`) add `detail=full` unless
+   the query already has `detail=` or `lite=`, so software GL never flips a screenshot to lite mid-run.
 6b. Voices (`voices.mjs`): renders lamb/ewe/ram × shy/calm/curious/bold offline in the real build,
    measures length, peak/RMS level and pitch (YIN), asserts measured pitch lamb > ewe > ram per temperament
    and near the designed pitch, lambs shorter than rams, shy ≥ 3 dB quieter than bold, and writes

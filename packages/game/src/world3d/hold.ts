@@ -26,8 +26,9 @@ export class Hold {
   private x = 0;
   private y = 0;
   private done = false;
-  /** Progress of the current (or last) hold, 0–1. */
-  progress = 0;
+  private last = 0;
+  /** Progress of the current (or last) hold, 0–1 — live while held, so a slow frame can't leave it behind. */
+  get progress(): number { return this.active && !this.done ? Math.min(1, (performance.now() - this.t0) / this.ms) : this.last; }
   /** Milliseconds held in the current (or last) hold. */
   heldMs = 0;
 
@@ -42,7 +43,7 @@ export class Hold {
     this.t0 = performance.now();
     this.x = x; this.y = y;
     this.done = false;
-    this.progress = 0;
+    this.last = 0;
     this.heldMs = 0;
     const r = document.createElement("div");
     r.className = "hold-ring";
@@ -66,7 +67,7 @@ export class Hold {
     if (!this.active) return false;
     this.tick();
     if (this.done) return true;
-    const p = this.progress;
+    const p = this.last;
     this.stop();
     this.fade("cancel");
     this.h.onCancel?.(p);
@@ -89,10 +90,10 @@ export class Hold {
   private tick(): void {
     if (!this.active) return;
     this.heldMs = performance.now() - this.t0;
-    this.progress = Math.min(1, this.heldMs / this.ms);
-    this.ring?.style.setProperty("--p", this.progress.toFixed(3));
-    this.h.onTick?.(this.progress, this.x, this.y);
-    if (this.progress >= 1 && !this.done) {
+    this.last = Math.min(1, this.heldMs / this.ms);
+    this.ring?.style.setProperty("--p", this.last.toFixed(3));
+    this.h.onTick?.(this.last, this.x, this.y);
+    if (this.last >= 1 && !this.done) {
       this.done = true;
       this.stop();
       this.fade("done");
@@ -104,7 +105,7 @@ export class Hold {
     const r = this.ring;
     this.ring = null;
     if (!r) return;
-    r.style.setProperty("--p", cls === "done" ? "1" : this.progress.toFixed(3));
+    r.style.setProperty("--p", cls === "done" ? "1" : this.last.toFixed(3));
     r.classList.add(cls);
     window.setTimeout(() => r.remove(), cls === "done" ? 700 : 250);
   }

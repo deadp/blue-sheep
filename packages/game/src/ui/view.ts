@@ -28,6 +28,8 @@ export interface View {
   petArt?: (id: string) => string;
   /** Settings: walk the farmer (default) or pan the camera (optional; saved in localStorage by the controller). */
   move?: "walk" | "pan";
+  /** Settings: world detail — the saved choice (auto by default) and what the world draws now (auto may have gone lite). */
+  detail?: { pref: "auto" | "full" | "lite"; now: "full" | "lite" };
   /** Settings: current reduced-motion flag (optional). */
   reducedMotion?: boolean;
   /** Settings: sound on/off and volume 0–1 (optional; saved in localStorage by the controller). */

@@ -8,10 +8,20 @@ subagent at a time. Items move to "Done" with the commit hash.
 Next: the v3 gameplay phases on the new look (DESIGN-v3 §13 and §15 item 25), starting with Phase 2: the game
 switches to pigment colour (the world still uses the v2 `WOOL_HEX` mapping and says so in CONTRACTS §4).
 
+Follow-ups from the world dressing pass (not started):
+- The flock is now the biggest cost at play zoom (wool locks: ~75k triangles and ~40 draws for 13 sheep in
+  the home-paddock view, plus their shadow pass). Candidates: a cheaper shadow proxy per sheep,
+  distance-based lock detail, merging each sheep's head into its body mesh.
+- Runtime auto-lite keeps what was built (terrain resolution, tuft count, wool-lock detail, antialias); only a
+  fresh world (the Detail setting, `?lite=1`) gets the full lite build. Rebuilding the flock's wool at lite
+  detail on the switch would help slow machines further.
+- The locked lands draw as whole-area instanced meshes (their bounding spheres span the land), so rank grass
+  and scrub on the flats and far bank are often drawn off screen; tile them like the pasture tufts.
+- Ambient life is cosmetic only: birds don't land on the woolshed benches or react to the farmer; the bird
+  helpers phase (§8/§15 item 7) can reuse the perches (`FarmBuild.perches`).
+
 Follow-ups from the world pass (not started):
-- Performance in software GL: the valley at act 3 renders at ~2–2.5 fps in headless swiftshader (about 400k
-  triangles with the shadow pass, most of it the flock's wool locks and the bush); `?lite=1` roughly doubles
-  it. Candidates: a cheaper shadow proxy for sheep, terrain tiles, distance-based lock detail.
+- Performance in software GL: see the dressing follow-ups above (terrain tiles done in the dressing pass).
 - Birds at the woolshed stations (the three benches stand empty), the bush-edge perches and the rushy corner /
   terraces as real expansions arrive with their phases (§9, §15 item 7).
 - The farmer stays put at night; he could walk home to the homestead for the sleep transition.
@@ -108,6 +118,20 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- v3 world dressing pass (DESIGN-v3 §15 item 27): the valley reads as a lived-in Kiwi farm at play zoom
+  without mist — a gently rolling farm floor that everything stands on, worn tracks with wheel ruts, gateway
+  mud and a puddle, clover and sunny/lush mottling, flower drifts, a kōwhai shade tree, cabbage trees, rocks,
+  thistles and long grass along the fences in the home paddock (the flock walks round them); toetoe, ponga,
+  harakeke and river stones along the creek; dry-stone walls and clipped hedgerows by the road; a rotary
+  clothesline, woodpile and tyre swing at the homestead, a grey tractor by the barn, a quad bike and woolpacks
+  at the woolshed, the letterbox flag, a tidier vet's ute; soft contact shadows under everything; warmer spring
+  light. Ambient life: birds between the trees, butterflies, creek sparkle, chickens, softer smoke. Detail:
+  Auto / Full / Lite in Settings (auto measures the first 5 s and after a resize, goes lite over a 40 ms median
+  and says so once); `?detail=` pins it and every probe pins `detail=full`. Perf at 1280×800 is at or below the
+  world pass (terrain tiles, tiled seasonal layers, fewer shadow casters). New `probe/dressing.mjs`,
+  `probe/dressing-sheet.mjs`; fixed bush kōwhai blossom being built at the world origin and paddock daisies
+  showing in winter.
 
 - v3 world pass (f0f1f73): the square diorama is replaced by the close-iso Kōwhai Creek valley at play scale
   (`world3d/valley.ts`, `farm.ts`): homestead, barn, home paddock, trader's stall and pen, mailbox, woolshed with

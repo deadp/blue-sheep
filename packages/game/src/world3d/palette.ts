@@ -20,9 +20,10 @@ export interface SeasonLook {
 /** Soft pastoral light (round 3 "Misty Pastoral", without the mist), one look per season. */
 export const SEASONS: readonly SeasonLook[] = [
   {
-    name: "spring", groundTint: "#ffffff", foliageTint: "#ffffff", snow: 0,
-    skyTop: "#a9d3ec", skyBottom: "#f7efe2",
-    sun: "#fff4e6", sunI: 2.1, hemiSky: "#eaf3ff", hemiGround: "#c9d6b8", hemiI: 1.5,
+    name: "spring", groundTint: "#fffcf2", foliageTint: "#fffaf0", snow: 0,
+    skyTop: "#a9d3ec", skyBottom: "#fbf0de",
+    // warm late-morning sun, a soft sky and a warm bounce off the pasture
+    sun: "#ffecd2", sunI: 2.15, hemiSky: "#edf3fb", hemiGround: "#d6d3ae", hemiI: 1.5,
     particles: ["#f8c3d8", "#fbe0ea", "#ffffff"],
   },
   {

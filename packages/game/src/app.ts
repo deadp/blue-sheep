@@ -24,6 +24,11 @@ export const SAVE_KEY = "blue-sheep-save-v2";
 const MOTION_KEY = "blue-sheep-reduced-motion";
 /** Walk (default) or pan: how the player gets about the farm (a setting, not game state). */
 const MOVE_KEY = "blue-sheep-move-mode";
+/** World detail: auto (default; drops to lite by itself on a slow device), full or lite — a setting, not game state. */
+const DETAIL_KEY = "blue-sheep-detail";
+/** Set once the "lighter look" toast has been shown, so auto-lite only ever tells the player once. */
+const AUTOLITE_TOLD_KEY = "blue-sheep-autolite-told";
+type DetailPref = "auto" | "full" | "lite";
 export const VERSION = "1.0.0";
 /** Sheep that fit in the home paddock before the rest move to the creek flats (and the flats before the far bank). */
 const PADDOCK_ROOM = 10;
@@ -75,7 +80,9 @@ export class App {
   private readonly overlay: Overlay;
   private reduced: boolean;
   private move: MoveMode;
-  private readonly lite: boolean;
+  /** The Detail setting (or `?detail=` / `?lite=1` for this page), and whether auto has gone lite. */
+  private detail: DetailPref;
+  private autoWentLite = false;
   /** False while a `?seed=` / `?act=` preview runs: the old save is kept until the player acts. */
   private persist: boolean;
   private sleeping = false;
@@ -103,13 +110,16 @@ export class App {
     const q = new URLSearchParams(location.search);
     if (q.get("fresh") === "1") { try { localStorage.removeItem(SAVE_KEY); } catch { /* private mode */ } }
     this.reduced = q.get("nomotion") === "1" || this.loadMotionPref();
-    this.lite = q.get("lite") === "1";
+    // ?lite=1 and ?detail=… pin the detail for this page (probes pin it so software GL never flips a screenshot)
+    const qd = q.get("detail");
+    this.detail = q.get("lite") === "1" ? "lite" : qd === "auto" || qd === "full" || qd === "lite" ? qd : this.loadDetailPref();
     this.move = q.get("move") === "pan" || q.get("move") === "walk" ? (q.get("move") as MoveMode) : this.loadMovePref();
     document.body.classList.toggle("reduced-motion", this.reduced);
 
     this.view = defaultView((id) => this.portraitOf(id));
     this.view.reducedMotion = this.reduced;
     this.view.move = this.move;
+    this.view.detail = { pref: this.detail, now: this.detail === "lite" ? "lite" : "full" };
     this.view.lambArt = (l) => this.lambArt(l);
     this.view.petArt = (id) => { try { return isPetId(id) ? this.world.petPortrait(id as PetKind, 180) : ""; } catch { return ""; } };
     this.view.sound = { on: this.voices.on, volume: this.voices.volume };
@@ -186,7 +196,18 @@ export class App {
       // a felt price tag's "Open this land": the market's improvements, with that one's forecast
       onArea: (id) => this.guard(() => this.onArea(id)),
       onMoveMode: (m) => this.setMove(m),
-    }, { seed: this.state.seed, reducedMotion: this.reduced, move: this.move, lite: this.lite });
+      // auto detail found the frames slow and went lite: say so once, ever (the setting stays Auto)
+      onAutoLite: () => {
+        this.autoWentLite = true;
+        this.view.detail = { pref: this.detail, now: "lite" };
+        if (this.view.panel === "settings") this.render();
+        let told = false;
+        try { told = localStorage.getItem(AUTOLITE_TOLD_KEY) === "1"; localStorage.setItem(AUTOLITE_TOLD_KEY, "1"); } catch { /* private mode */ }
+        if (!told) toast("Switched to a lighter look for smoother play — change in Settings", 5200);
+      },
+    }, { seed: this.state.seed, reducedMotion: this.reduced, move: this.move, detail: this.detail });
+    this.autoWentLite = false;
+    this.view.detail = { pref: this.detail, now: this.detail === "lite" ? "lite" : "full" };
     this.world.setSnapshot(this.snapshot());
   }
 
@@ -268,6 +289,20 @@ export class App {
     this.world.setMoveMode(m);
     this.view.move = m;
     if (this.view.panel === "settings") this.render();
+  }
+
+  /** Detail: Auto / Full / Lite, remembered in this browser; a fresh world is built with it. */
+  private setDetail(d: DetailPref): void {
+    if (d === this.detail) return;
+    this.detail = d;
+    try { localStorage.setItem(DETAIL_KEY, d); } catch { /* ignore */ }
+    this.world.dispose();
+    this.makeWorld();
+    this.render();
+  }
+
+  private loadDetailPref(): DetailPref {
+    try { const v = localStorage.getItem(DETAIL_KEY); return v === "full" || v === "lite" ? v : "auto"; } catch { return "auto"; }
   }
 
   private loadMovePref(): MoveMode {
@@ -767,6 +802,7 @@ export class App {
         if (name !== null) this.mutate(() => renameSheep(this.state, d["rename"]!, name));
       }
       else if (d["toggle"] === "motion") this.setReducedMotion(!this.reduced);
+      else if (d["detail"] === "auto" || d["detail"] === "full" || d["detail"] === "lite") this.setDetail(d["detail"]);
       else if (d["toggle"] === "move") this.setMove(this.move === "walk" ? "pan" : "walk");
       else if (d["toggle"] === "sound") { this.voices.setOn(!this.voices.on); this.view.sound = { on: this.voices.on, volume: this.voices.volume }; this.previewSound(); }
       else if (d["export"]) this.exportSave();
@@ -979,6 +1015,8 @@ export class App {
         world: () => this.world.debugStats(),
         /** Point the world camera at (x, z) with half-width halfW (probe sheets only). */
         camera: (x: number, z: number, halfW: number) => this.world.debugCamera(x, z, halfW),
+        /** What the world would draw now, by kind (meshes, triangles, shadow-pass meshes), for the perf budget. */
+        breakdown: () => this.world.debugBreakdown(),
         /** The voice params of the last bleat (played or not: `played`/`reason` say which). */
         lastSound: () => this.voices.lastSound(),
         /** The stable voice of a sheep (or a dog/cat by PetId), without playing it. */

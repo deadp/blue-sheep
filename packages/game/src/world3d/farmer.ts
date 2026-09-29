@@ -40,7 +40,6 @@ export interface Walker {
 
 export function buildWalker(shadows: boolean): Walker {
   const skinMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
-  const unlit = new THREE.MeshBasicMaterial({ vertexColors: true });
   const mesh = (g: THREE.BufferGeometry) => new THREE.Mesh(smoothGeo(g), skinMat);
   const root = new THREE.Group();
   const body = new THREE.Group(); // bobs
@@ -77,17 +76,13 @@ export function buildWalker(shadows: boolean): Walker {
     const a = new GeoBatch(0);
     a.cyl(skin, 0.07, 0.08, 0.42, 8, [0.02, 1.2 - SH, z * 0.04], [tilt, 0, 0]);
     a.ico(skin, 0.08, 1, [0.04, 0.98 - SH, z * 0.08]);
-    g.add(mesh(a.build()!));
-    const sl = new GeoBatch(0);
-    sl.cyl("#ffffff", 0.1, 0.1, 0.28, 8, [0, -0.06, 0], [z > 0 ? -0.2 : 0.2, 0, 0]);
-    g.add(checked(sl.build()!, shirtMat));
+    // the rolled check sleeve (plain red at this size) and, in the right hand, the crook: one mesh per arm
+    a.cyl("#a83c36", 0.1, 0.1, 0.28, 8, [0, -0.06, 0], [z > 0 ? -0.2 : 0.2, 0, 0]);
     if (z < 0) {
-      // the crook rides in the right hand
-      const c = new GeoBatch(0);
-      c.cyl("#9a7b5a", 0.03, 0.03, 2.0, 6, [0.14, 0.98 - SH + 0.05, -0.06]);
-      c.add(new THREE.TorusGeometry(0.12, 0.03, 6, 12, Math.PI * 1.3), "#9a7b5a", new THREE.Matrix4().makeTranslation(0.26, 0.98 - SH + 1.05, -0.06));
-      g.add(mesh(c.build()!));
+      a.cyl("#9a7b5a", 0.03, 0.03, 2.0, 6, [0.14, 0.98 - SH + 0.05, -0.06]);
+      a.add(new THREE.TorusGeometry(0.12, 0.03, 6, 12, Math.PI * 1.3), "#9a7b5a", new THREE.Matrix4().makeTranslation(0.26, 0.98 - SH + 1.05, -0.06));
     }
+    g.add(mesh(a.build()!));
     body.add(g);
     arms.push(g);
   }
@@ -103,12 +98,14 @@ export function buildWalker(shadows: boolean): Walker {
   hb.cyl(hat, 0.5, 0.5, 0.04, 20, [-0.02, 2.15 - H0, 0]);
   hb.cyl(hat, 0.2, 0.25, 0.26, 14, [-0.02, 2.3 - H0, 0]);
   hb.cyl(band, 0.255, 0.255, 0.06, 14, [-0.02, 2.2 - H0, 0]);
+  for (const z of [0.09, -0.09]) { hb.ico("#2b1e19", 0.035, 1, [0.2, 2.02 - H0, z]); hb.ico("#ffffff", 0.012, 1, [0.225, 2.035 - H0, z + 0.01]); }
   head.add(mesh(hb.build()!));
-  const e = new GeoBatch(0);
-  for (const z of [0.09, -0.09]) { e.ico("#2b1e19", 0.035, 1, [0.2, 2.02 - H0, z]); e.ico("#ffffff", 0.012, 1, [0.225, 2.035 - H0, z + 0.01]); }
-  head.add(new THREE.Mesh(e.build()!, unlit));
   body.add(head);
-  root.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = shadows; });
+  // only the big pieces cast (legs, shirt, head and hat): limbs, crook and eyes add draw calls, not shadow
+  root.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false; });
+  for (const g of legs) g.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = shadows; });
+  body.children.forEach((c) => { if ((c as THREE.Mesh).isMesh && (c as THREE.Mesh).material === shirtMat) c.castShadow = shadows; });
+  (head.children[0] as THREE.Mesh).castShadow = shadows;
 
   let phase = 0, amp = 0, lookTarget = 0, lastSin = 0;
   return {
@@ -116,7 +113,7 @@ export function buildWalker(shadows: boolean): Walker {
     look(yaw) { lookTarget = yaw; },
     dispose() {
       root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); });
-      skinMat.dispose(); unlit.dispose(); shirtMat.map?.dispose(); shirtMat.dispose();
+      skinMat.dispose(); shirtMat.map?.dispose(); shirtMat.dispose();
     },
     pose(speed, dt, t) {
       const moving = speed > 0.2;

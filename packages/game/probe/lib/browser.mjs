@@ -32,6 +32,19 @@ export async function launchBrowser() {
 export class ProbeError extends Error {}
 
 /**
+ * Probes pin the world's detail through the URL (`detail=full` unless the query already says `detail=` or
+ * `lite=`): the game's default is "auto", which measures frame times and would flip slow software GL to lite
+ * mid-run, making screenshots unstable.
+ * @param {string} query
+ */
+export function pinDetail(query) {
+  if (/[?&](detail|lite)=/.test(query)) return query;
+  const [path, hash = ""] = query.split("#");
+  const q = path.includes("?") ? `${path}&detail=full` : `${path}?detail=full`;
+  return hash ? `${q}#${hash}` : q;
+}
+
+/**
  * One page (in its own context, so no localStorage leaks between probes) pointed at the served build.
  * Collects console errors and page errors; every console line also goes to log.txt.
  */
@@ -75,7 +88,7 @@ export class GamePage {
    * @param {string} query
    */
   async boot(query) {
-    const url = this.baseUrl + "/" + query;
+    const url = this.baseUrl + "/" + pinDetail(query);
     log("boot", url);
     await this.page.goto(url, { waitUntil: "load" });
     try {

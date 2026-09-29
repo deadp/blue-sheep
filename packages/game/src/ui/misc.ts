@@ -52,6 +52,14 @@ export function helpHtml(_state: GameState, _view: View): string {
   <div class="row">${btn("Got it", { kind: "primary", icon: "check", data: { close: "" } })}</div>`;
 }
 
+/** Detail: Auto / Full / Lite (the world's look; auto drops to lite by itself on a slow device). */
+function detailSeg(view: View): string {
+  const d = view.detail ?? { pref: "auto", now: "full" };
+  const b = (id: "auto" | "full" | "lite", label: string) =>
+    `<button class="seg-b ${d.pref === id ? "on" : ""}" data-detail="${id}" aria-pressed="${d.pref === id ? "true" : "false"}">${label}</button>`;
+  return `<div class="seg" role="group" aria-label="Detail">${b("auto", d.pref === "auto" && d.now === "lite" ? "Auto · lite" : "Auto")}${b("full", "Full")}${b("lite", "Lite")}</div>`;
+}
+
 export function settingsHtml(_state: GameState, view: View): string {
   const confirm = view.tab === "confirm-new";
   const toggle = (what: string, on: boolean) => `<button class="toggle ${on ? "on" : ""}" data-toggle="${what}" role="switch" aria-checked="${on ? "true" : "false"}"><span class="knob"></span><span class="b-t">${on ? "On" : "Off"}</span></button>`;
@@ -60,6 +68,7 @@ export function settingsHtml(_state: GameState, view: View): string {
   const vol = Math.round((view.sound?.volume ?? 0.7) * 100);
   return `${head("gear", "Settings", 2)}
     ${row("paw", "Getting about", `<button class="toggle move ${view.move === "pan" ? "on" : ""}" data-toggle="move" role="switch" aria-checked="${view.move === "pan" ? "true" : "false"}"><span class="knob"></span><span class="b-t">${view.move === "pan" ? "Pan" : "Walk"}</span></button>`)}
+    ${row("sparkle", "Detail", detailSeg(view))}
     ${row("wave", "Calm motion", toggle("motion", !!view.reducedMotion))}
     ${row("sound", "Sheep voices", `${toggle("sound", on)}<label class="volume ${on ? "" : "off"}"><span class="sr">Volume</span><input type="range" min="0" max="100" step="5" value="${vol}" data-volume aria-label="Volume" ${on ? "" : "disabled"}></label>`)}
     ${row("box", "Save file", `${btn("Export", { data: { export: "1" } })}${btn("Import", { data: { import: "1" } })}`)}

@@ -1,5 +1,6 @@
 // Small world effects: dust puffs on hops and landings, and the speech bubble.
 import * as THREE from "three";
+import { groundY } from "./valley.js";
 
 const N = 48;
 
@@ -33,7 +34,7 @@ export class Puffs {
       const sp = 0.6 + Math.random() * 0.5;
       const o = i * 6;
       this.data[o] = x + Math.cos(a) * 0.25 * size;
-      this.data[o + 1] = 0.08;
+      this.data[o + 1] = groundY(x, -z) + 0.08;
       this.data[o + 2] = z + Math.sin(a) * 0.25 * size;
       this.data[o + 3] = Math.cos(a) * sp * size;
       this.data[o + 4] = Math.sin(a) * sp * size;

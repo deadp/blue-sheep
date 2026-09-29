@@ -17,10 +17,11 @@ import { hashString, mulberry32 } from "./rng.js";
 import { Grid } from "./grid.js";
 import { buildWalker, type Walker } from "./farmer.js";
 import { WorldChrome, type PromptSpec } from "./chrome.js";
-import { AREAS, AREA_IDS, HOTSPOT_STAND, SPOTS, smoothstep as ss, type UV } from "./valley.js";
-import type { AreaId, Hotspot, HoverTarget, LandInfo, MoveMode, Personality, PetKind, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
+import { AREAS, AREA_IDS, HOTSPOT_STAND, OBSTACLES, SPOTS, groundY, smoothstep as ss, type UV } from "./valley.js";
+import { Ambient, type AmbientStats } from "./ambient.js";
+import type { AreaId, Detail, Hotspot, HoverTarget, LandInfo, MoveMode, Personality, PetKind, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, Zone } from "./types.js";
 
-export type { AreaId, Hotspot, HoverTarget, LandInfo, MoveMode, Personality, PetKind, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, WorldUpgrade, Zone } from "./types.js";
+export type { AreaId, Detail, Hotspot, HoverTarget, LandInfo, MoveMode, Personality, PetKind, WorldHandlers, WorldOptions, WorldSheep, WorldSnapshot, WorldUpgrade, Zone } from "./types.js";
 
 const DOG_KINDS: readonly DogKind[] = ["terrier", "collie", "maremma"];
 const PET_KINDS: readonly PetKind[] = ["terrier", "collie", "maremma", "cat"];
@@ -51,6 +52,10 @@ const NEAR_PLACE = 5;
 /** Reach for walk-up prompts. */
 const PROMPT_SHEEP = 2.8, PROMPT_PLACE = 3.2;
 const PERSONALITIES = new Set<Personality>(["shy", "calm", "curious", "bold"]);
+/** Auto detail (DESIGN-v3 §15 item 27): measure frame times for this long after boot (and after a resize) … */
+const AUTO_MEASURE_MS = 5000;
+/** … skipping the first moments (shader compiles), and switch to lite when the median frame is slower than this. */
+const AUTO_WARMUP_MS = 600, AUTO_SLOW_MS = 40;
 const PLACE_VERB: Record<Hotspot, string> = { house: "Go inside", shed: "Notice board", market: "Trade", vet: "See the vet", fairground: "The show", mailbox: "Check the mail" };
 
 /** Options for attend(): where the card covers the screen, so the sheep can sit beside it. */
@@ -89,8 +94,15 @@ export class WorldView {
   private readonly container: HTMLElement;
   private readonly handlers: WorldHandlers;
   private readonly reduced: boolean;
-  private readonly lite: boolean;
-  private readonly shadows: boolean;
+  /** Lite detail: built lite (`?lite=1`, the Lite setting) or switched at run time (auto-lite). */
+  private lite: boolean;
+  /** Shadows are on (full detail). */
+  private shadows: boolean;
+  /** "auto" measures frame times and may switch to lite once; "full"/"lite" are pinned. */
+  private detail: Detail;
+  private autoLite: { t0: number; samples: number[]; done: boolean; switched: boolean; median: number } = { t0: -1, samples: [], done: false, switched: false, median: 0 };
+  private readonly ambient: Ambient;
+  private readonly blobs: THREE.InstancedMesh;
   private readonly seed: number;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -172,7 +184,9 @@ export class WorldView {
     this.container = container;
     this.handlers = handlers;
     this.reduced = !!opts.reducedMotion;
-    this.lite = !!opts.lite;
+    this.detail = opts.detail ?? (opts.lite ? "lite" : "full");
+    if (opts.lite) this.detail = "lite";
+    this.lite = this.detail === "lite";
     this.shadows = !this.lite;
     this.seed = opts.seed ?? 7;
     this.mode = opts.move === "pan" ? "pan" : "walk";
@@ -234,6 +248,27 @@ export class WorldView {
     // the valley
     this.farm = buildFarm(this.seed, { shadows: this.shadows, lite: this.lite });
     this.scene.add(this.farm.group);
+    // ambient life (birds, butterflies, creek sparkle, chickens) — off in lite and with calm motion
+    this.ambient = new Ambient(this.seed, this.farm.perches);
+    this.ambient.group.userData.kind = "ambient";
+    this.scene.add(this.ambient.group);
+    this.ambient.setOn(!this.lite && !this.reduced);
+    if (this.lite) { this.farm.dense.layer.visible = false; for (const g of this.farm.dense.grass) g.mesh.count = g.base; }
+    // soft contact shadows under the sheep, dogs and the farmer (one instanced draw; they ground everyone in lite too)
+    {
+      const g = new THREE.CircleGeometry(1, 16).rotateX(-Math.PI / 2);
+      const n = g.getAttribute("position").count;
+      const col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { const r = Math.hypot(g.getAttribute("position").getX(i), g.getAttribute("position").getZ(i)); const k = 1 - 0.3 * (1 - r) ** 0.8; col[i * 3] = k; col[i * 3 + 1] = k * 1.005; col[i * 3 + 2] = Math.min(1, k * 1.03); }
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      const m = new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+      this.blobs = new THREE.InstancedMesh(g, m, 96);
+      this.blobs.count = 0;
+      this.blobs.frustumCulled = false;
+      this.blobs.renderOrder = 1;
+      this.blobs.userData.kind = "blobs";
+      this.scene.add(this.blobs);
+    }
 
     // portrait scene
     this.pScene.add(new THREE.HemisphereLight("#fffaf0", "#b8a890", 1.6));
@@ -254,6 +289,7 @@ export class WorldView {
     // the farmer, standing in the home paddock by the gate
     this.walker = buildWalker(this.shadows);
     this.walker.root.scale.setScalar(FARMER_SCALE);
+    this.walker.root.userData.kind = "farmer";
     this.scene.add(this.walker.root);
     this.farmer = { x: -14, z: 3.5, heading: 2.4, vx: 0, vz: 0, path: [], chase: null, arrive: 0.3, then: null, repath: 0, idle: 0, lookNext: 2 };
     this.target.set(this.farmer.x, 0, this.farmer.z).addScaledVector(SCREEN_UP, 1.2);
@@ -396,6 +432,31 @@ export class WorldView {
   get moveMode(): MoveMode { return this.mode; }
 
   /** Keyboard walking and prompts are on while no panel covers the farm (the controller says). */
+  /**
+   * Detail at run time: "lite" turns shadows off, drops the pixel ratio to 1, hides the dense dressing (thistles,
+   * hay scraps, a third of the grass tufts) and the ambient life; "full" turns them back on; "auto" (re)starts
+   * measuring. What was built lite (`?lite=1`, a coarser terrain, fewer tufts and wool locks) stays built lite —
+   * the controller makes a fresh world when the player changes the setting.
+   */
+  setDetail(d: Detail): void {
+    if (this.disposed) return;
+    this.detail = d;
+    if (d === "auto") { this.autoLite = { t0: -1, samples: [], done: false, switched: false, median: 0 }; return; }
+    this.applyLite(d === "lite");
+  }
+
+  private applyLite(on: boolean): void {
+    this.lite = on;
+    this.shadows = !on;
+    this.renderer.shadowMap.enabled = !on;
+    this.sun.castShadow = !on;
+    this.renderer.setPixelRatio(on ? 1 : Math.min(window.devicePixelRatio || 1, 2));
+    this.farm.dense.layer.visible = !on && this.season !== 3;
+    for (const g of this.farm.dense.grass) g.mesh.count = on ? g.base : g.full;
+    this.ambient.setOn(!on && !this.reduced);
+    this.resize();
+  }
+
   setKeys(on: boolean): void {
     if (this.keysOn === on) return;
     this.keysOn = on;
@@ -486,7 +547,7 @@ export class WorldView {
       vel[i * 3 + 1] = 2.5 + rng() * 2.5;
       vel[i * 3 + 2] = Math.sin(a) * sp;
     }
-    const origin = new THREE.Vector3(e.x, e.geos.dims.top * e.geos.dims.rootScale, e.z);
+    const origin = new THREE.Vector3(e.x, groundY(e.x, -e.z) + e.geos.dims.top * e.geos.dims.rootScale, e.z);
     const sp: Sparkle = { mesh, vel, origin, t: this.reduced ? 0.45 : 0 };
     this.updateSparkle(sp);
     this.scene.add(mesh);
@@ -503,7 +564,7 @@ export class WorldView {
   love(id: string, n = 3): void {
     if (this.disposed) return;
     const e = this.ents.get(id);
-    const p = e ? new THREE.Vector3(e.x, (e.geos.dims.top + 0.35) * e.geos.dims.rootScale, e.z) : this.petTop(id);
+    const p = e ? new THREE.Vector3(e.x, groundY(e.x, -e.z) + (e.geos.dims.top + 0.35) * e.geos.dims.rootScale, e.z) : this.petTop(id);
     if (!p) return;
     this.hearts.spawn(p.x, p.y + 0.2, p.z, n);
     if (e && !this.reduced && e.fold < 0.1) { flickEars(e); startHop(e, 0.18, 0.3); }
@@ -598,7 +659,7 @@ export class WorldView {
     const pt = e ? null : this.petTop(id);
     if (e) {
       const d = e.geos.dims;
-      v.set(e.x, (d.top + 0.1) * d.rootScale + e.pose.bob * d.rootScale, e.z);
+      v.set(e.x, groundY(e.x, -e.z) + (d.top + 0.1) * d.rootScale + e.pose.bob * d.rootScale, e.z);
     } else if (pt) {
       v.copy(pt);
     } else if ((HOTSPOTS as readonly string[]).includes(id)) {
@@ -742,7 +803,8 @@ export class WorldView {
     c.lookAt(this.target);
     c.updateMatrixWorld();
     // keep the sun's shadow box on the view, snapped to shadow texels so edges don't crawl while moving
-    const sh = Math.min(70, half * 1.7 + 6);
+    // the sun's shadow box just covers the view's footprint (tighter = fewer shadow draws, crisper texels)
+    const sh = Math.min(70, half * 1.45 + 3);
     const sc = this.sun.shadow.camera;
     if (sc.right !== sh) { sc.left = -sh; sc.right = sh; sc.top = sh; sc.bottom = -sh; sc.updateProjectionMatrix(); }
     const texel = (2 * sh) / 2048;
@@ -776,7 +838,11 @@ export class WorldView {
     const h = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(w, h, false);
     this.applyCamera();
+    // a new window size can make frames slower: measure again (auto detail, still full)
+    if (this.detail === "auto" && !this.lite && this.autoLite.done && (w !== this.lastSize[0] || h !== this.lastSize[1])) this.autoLite = { t0: -1, samples: [], done: false, switched: false, median: this.autoLite.median };
+    this.lastSize = [w, h];
   }
+  private lastSize: [number, number] = [0, 0];
 
   // ------------------------------------------------------------------ land and the reveal
 
@@ -950,7 +1016,7 @@ export class WorldView {
     if (!path) { F.chase = null; F.then = null; return false; }
     if (o.marker !== false) {
       const end = F.path[F.path.length - 1];
-      if (end) { this.tapMarker.position.set(end.x, 0.06, end.y); this.tapMarker.visible = true; this.tapT = 0; }
+      if (end) { this.tapMarker.position.set(end.x, groundY(end.x, -end.y) + 0.08, end.y); this.tapMarker.visible = true; this.tapT = 0; }
     }
     return true;
   }
@@ -1077,7 +1143,7 @@ export class WorldView {
     if (this.walker.pose(this.reduced ? 0 : sp, this.reduced ? 0 : dt, this.time) && !this.reduced) {
       this.puffs.spawn(F.x - Math.cos(F.heading) * 0.2, F.z + Math.sin(F.heading) * 0.2, 2, sp > 5.5 ? 0.75 : 0.5);
     }
-    this.walker.root.position.set(F.x, 0, F.z);
+    this.walker.root.position.set(F.x, groundY(F.x, -F.z), F.z);
     this.walker.root.rotation.y = F.heading;
   }
 
@@ -1184,6 +1250,9 @@ export class WorldView {
     for (const k of DOG_KINDS) this.dogs[k].dispose();
     this.cat.dispose();
     this.hearts.dispose();
+    this.ambient.dispose();
+    this.blobs.geometry.dispose();
+    (this.blobs.material as THREE.Material).dispose();
     this.walker.dispose();
     this.chrome.dispose();
     this.live?.dispose();
@@ -1214,10 +1283,51 @@ export class WorldView {
     this.applyCamera();
   }
 
+  /**
+   * Not part of the contract: what the camera (and the sun's shadow camera) would draw, by kind — meshes and
+   * triangles per `userData.kind` (or material/geometry type) for the perf budget.
+   */
+  debugBreakdown(): Record<string, { calls: number; tris: number; shadowCalls: number }> {
+    const out: Record<string, { calls: number; tris: number; shadowCalls: number }> = {};
+    const fr = new THREE.Frustum(), sfr = new THREE.Frustum();
+    this.camera.updateMatrixWorld();
+    fr.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    const sc = this.sun.shadow.camera;
+    sc.updateMatrixWorld();
+    sfr.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(sc.projectionMatrix, sc.matrixWorldInverse));
+    const seen = (o: THREE.Object3D): boolean => { for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return false; return true; };
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !seen(m)) return;
+      const mat = m.material as THREE.Material;
+      if (!mat.visible) return;
+      const g = m.geometry;
+      const tri = (g.index ? g.index.count : g.getAttribute("position").count) / 3;
+      const inst = (m as unknown as THREE.InstancedMesh).isInstancedMesh ? (m as unknown as THREE.InstancedMesh).count : 1;
+      if (!inst) return;
+      const im = m as unknown as THREE.InstancedMesh;
+      if (im.isInstancedMesh && !im.boundingSphere) im.computeBoundingSphere();
+      if (!g.boundingSphere) g.computeBoundingSphere();
+      const cull = m.frustumCulled;
+      const sph = (im.isInstancedMesh ? im.boundingSphere! : g.boundingSphere!).clone().applyMatrix4(m.matrixWorld);
+      const inMain = !cull || fr.intersectsSphere(sph);
+      const inShadow = this.shadows && m.castShadow && (!cull || sfr.intersectsSphere(sph));
+      if (!inMain && !inShadow) return;
+      let k = (m.userData.kind as string | undefined) ?? "";
+      for (let p: THREE.Object3D | null = m.parent; !k && p; p = p.parent) k = (p.userData.kind as string | undefined) ?? "";
+      if (!k) k = m.name || `${mat.type}`;
+      const r = (out[k] ??= { calls: 0, tris: 0, shadowCalls: 0 });
+      if (inMain) { r.calls++; r.tris += tri * inst; }
+      if (inShadow) r.shadowCalls++;
+    });
+    return out;
+  }
+
   /** Not part of the contract: render stats and the farmer/camera/land for the dev harness and probes. */
   debugStats(): {
     calls: number; triangles: number; sheep: number; geometries: number; dog: boolean; dogs: DogKind[]; cat: boolean; hearts: number;
     attended: string | null; bubble: string | null; portrait: PortraitStats; lite: boolean; shadows: boolean;
+    detail: Detail; autoLite: { median: number; samples: number; done: boolean; switched: boolean }; ambient: AmbientStats;
     mode: MoveMode; farmer: { x: number; z: number; moving: boolean; path: number; visible: boolean };
     camera: { x: number; z: number; halfW: number; gliding: boolean; held: boolean };
     land: Record<string, string>; reveal: { area: AreaId | null; t: number; done: AreaId[] }; prompt: string; keys: boolean;
@@ -1232,7 +1342,9 @@ export class WorldView {
       dog: DOG_KINDS.some((k) => this.dogs[k].visible), dogs: DOG_KINDS.filter((k) => this.dogs[k].visible), cat: this.cat.visible,
       hearts: this.hearts.active, attended: this.attended, bubble: this.bubble.id ? this.bubble.el.textContent : null,
       portrait: this.live?.stats() ?? { mounted: false, id: null, calls: 0, frames: 0, brush: 0, hold: 0, ring: false, holding: false, fluff: 0, hearts: 0, brushDone: false },
-      lite: this.lite, shadows: this.shadows, mode: this.mode,
+      lite: this.lite, shadows: this.shadows, mode: this.mode, detail: this.detail,
+      autoLite: { median: this.autoLite.median, samples: this.autoLite.samples.length, done: this.autoLite.done, switched: this.autoLite.switched },
+      ambient: this.ambient.stats(),
       farmer: { x: +F.x.toFixed(2), z: +F.z.toFixed(2), moving: Math.hypot(F.vx, F.vz) > 0.3, path: F.path.length, visible: this.walker.root.visible },
       camera: { x: +this.target.x.toFixed(2), z: +this.target.z.toFixed(2), halfW: +this.halfW.toFixed(2), gliding: !!this.focusAnim, held: this.camHold },
       land: Object.fromEntries([...this.land.values()].map((l) => [l.id, l.state])),
@@ -1260,6 +1372,9 @@ export class WorldView {
     lay.flowers.visible = s <= 1;
     lay.autumn.visible = s === 2;
     for (const g of this.farm.grass) g.visible = s !== 3;
+    lay.clover.visible = s !== 3;
+    this.farm.dense.layer.visible = s !== 3 && !this.lite;
+    this.ambient.setSeason(s);
     this.buildParticles(L.particles, s);
     this.updateLighting();
   }
@@ -1274,6 +1389,7 @@ export class WorldView {
     this.hemi.groundColor.copy(lerpC(L.hemiGround, NIGHT.hemiGround));
     this.hemi.intensity = L.hemiI + (NIGHT.hemiI - L.hemiI) * n;
     this.farm.windowMat.emissiveIntensity = n * 1.6;
+    this.ambient.setNight(n);
     this.drawSky(lerpC(L.skyTop, NIGHT.skyTop), lerpC(L.skyBottom, NIGHT.skyBottom), n);
   }
 
@@ -1397,6 +1513,7 @@ export class WorldView {
   private createEnt(ws: WorldSheep, zone: Zone, pop: boolean): Ent {
     const geos = buildSheepGeos(ws);
     const rig = buildRig(geos, ws, this.sheepMats, this.shadows);
+    rig.root.userData.kind = "sheep";
     const rng = mulberry32(hashString(ws.id) ^ this.seed);
     const e: Ent = {
       ws, key: geos.key, geos, rig, zone, personality: personalityOf(ws), x: 0, z: 0,
@@ -1421,6 +1538,7 @@ export class WorldView {
     e.geos = buildSheepGeos(ws);
     e.key = e.geos.key;
     e.rig = buildRig(e.geos, ws, this.sheepMats, this.shadows);
+    e.rig.root.userData.kind = "sheep";
     e.faceColor.set(e.geos.parts.face);
     e.radius = e.geos.dims.L * e.geos.dims.rootScale * 0.95 + 0.12;
     if (e.marker) { e.rig.markerAnchor.add(e.marker); }
@@ -1487,6 +1605,7 @@ export class WorldView {
       const z = r.z0 + (r.z1 - r.z0) * rng();
       let d = Infinity;
       for (const o of others) d = Math.min(d, Math.hypot(o.x - x, o.z - z) - o.radius - self.radius);
+      if (zone === "paddock") for (const [ou, ov, orad] of OBSTACLES) d = Math.min(d, Math.hypot(ou - x, -ov - z) - orad - self.radius);
       if (d > bestD) { bestD = d; best = [x, z]; }
     }
     return best;
@@ -1514,6 +1633,11 @@ export class WorldView {
         const dx = e.x - F.x, dz = e.z - F.z, d = Math.hypot(dx, dz), min = e.radius + 0.55;
         if (d < min && d > 1e-4) { e.x = F.x + (dx / d) * min; e.z = F.z + (dz / d) * min; }
       }
+      // the flock walks round the shade tree, the trough, the rocks and the bale in the home paddock
+      if (e.zone === "paddock") for (const [ou, ov, orad] of OBSTACLES) {
+        const dx = e.x - ou, dz = e.z + ov, d = Math.hypot(dx, dz), min = orad + e.radius * 0.8;
+        if (d < min) { const k = d > 1e-4 ? min / d : 0; e.x = d > 1e-4 ? ou + dx * k : ou + min; e.z = d > 1e-4 ? -ov + dz * k : -ov; }
+      }
       const r = this.insetRect(e.zone, e.radius);
       e.x = clamp(e.x, r.x0, r.x1);
       e.z = clamp(e.z, r.z0, r.z1);
@@ -1530,7 +1654,7 @@ export class WorldView {
   private poseEnt(e: Ent): void {
     const { rig, geos } = e;
     const d = geos.dims;
-    rig.root.position.set(e.x, 0, e.z);
+    rig.root.position.set(e.x, groundY(e.x, -e.z), e.z);
     rig.root.rotation.y = e.heading;
     let s = d.rootScale;
     if (e.spawn >= 0) s *= backOut(clamp(e.spawn / 0.45, 0, 1));
@@ -1709,7 +1833,15 @@ export class WorldView {
   private groundAt(ndc: THREE.Vector2): THREE.Vector3 | null {
     this.raycaster.setFromCamera(ndc, this.camera);
     const out = new THREE.Vector3();
-    return this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out);
+    // the farm floor rolls a little: step the ray onto the ground a few times
+    let hit: THREE.Vector3 | null = null;
+    let y = 0;
+    for (let k = 0; k < 3; k++) {
+      hit = this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), out);
+      if (!hit) return null;
+      y = groundY(hit.x, -hit.z);
+    }
+    return hit;
   }
 
   private readonly onKeyDown = (ev: KeyboardEvent): void => {
@@ -1760,6 +1892,7 @@ export class WorldView {
     const now = performance.now();
     const dt = this.lastT < 0 ? 0 : Math.min(0.05, (now - this.lastT) / 1000);
     this.lastT = now;
+    if (this.detail === "auto" && !this.lite && !this.autoLite.done) this.measure(now, this.lastRaw < 0 ? -1 : now - this.lastRaw);
 
     if (this.nightAnim) {
       const a = this.nightAnim;
@@ -1821,13 +1954,15 @@ export class WorldView {
         if (e.removing > 0.35) { this.destroyEnt(e); this.dying.splice(i, 1); }
       }
       this.stepParticles(dt);
+      // chimney smoke: soft puffs that swell, drift downwind and thin out
       const S = this.farm.smoke, at = this.farm.smokeAt;
       for (let i = 0; i < S.length; i++) {
         const m = S[i]!;
-        const p = (this.time * 0.25 + i / S.length) % 1;
-        m.position.set(at.x + p * 1.4 + Math.sin(this.time + i) * 0.15, at.y + p * 4.5, at.z - p * 0.6);
-        m.scale.setScalar(0.6 + p * 1.3 - (p > 0.75 ? (p - 0.75) * 5.6 : 0));
+        const p = (this.time * 0.16 + i / S.length) % 1;
+        m.position.set(at.x + p * 2.4 + Math.sin(this.time * 0.7 + i) * 0.2 * p, at.y + p * 4.2 - p * p * 0.8, at.z - p * 0.9);
+        m.scale.setScalar(Math.max(0.001, (0.45 + p * 1.9) * (p > 0.7 ? 1 - (p - 0.7) / 0.3 : 1)));
       }
+      this.ambient.step(dt, this.time, this.target.x, this.target.z, this.halfW);
       for (const sp of [...this.sparkles]) {
         sp.t += dt;
         if (sp.t >= 1.2) this.removeSparkle(sp);
@@ -1836,6 +1971,7 @@ export class WorldView {
     } else if (this.walkerOn()) this.separate([...this.ents.values()]);
     this.syncTransforms();
     this.stepDog(dt);
+    this.stepBlobs();
     this.hearts.step(dt);
     this.placeBubble();
     if (this.tapMarker.visible) {
@@ -1868,6 +2004,43 @@ export class WorldView {
     }
     this.render();
   };
+  /** Auto detail: collect frame times after the warm-up; after AUTO_MEASURE_MS decide once. */
+  private measure(now: number, frameMs: number): void {
+    const a = this.autoLite;
+    if (a.t0 < 0) a.t0 = now;
+    const el = now - a.t0;
+    if (el > AUTO_WARMUP_MS && frameMs > 0 && frameMs < 1000 && !document.hidden) a.samples.push(frameMs);
+    if (el < AUTO_MEASURE_MS) return;
+    a.done = true;
+    const sorted = [...a.samples].sort((x, y) => x - y);
+    a.median = sorted.length ? +sorted[Math.floor(sorted.length / 2)]!.toFixed(1) : 0;
+    if (sorted.length >= 5 && a.median > AUTO_SLOW_MS) {
+      a.switched = true;
+      this.applyLite(true);
+      this.handlers.onAutoLite?.({ median: a.median, samples: sorted.length });
+    }
+  }
+
+  /** Soft contact shadows under the sheep, the dogs and the farmer (one instanced draw). */
+  private readonly _bm = new THREE.Matrix4();
+  private stepBlobs(): void {
+    let n = 0;
+    const put = (x: number, z: number, r: number, sx = 1) => {
+      if (n >= this.blobs.instanceMatrix.count) return;
+      this._bm.makeScale(r * sx, 1, r);
+      this._bm.setPosition(x, groundY(x, -z) + 0.05, z);
+      this.blobs.setMatrixAt(n++, this._bm);
+    };
+    for (const e of this.ents.values()) {
+      const r = e.geos.dims.L * e.geos.dims.rootScale * 0.62;
+      put(e.x, e.z, r);
+    }
+    if (this.walker.root.visible) put(this.farmer.x, this.farmer.z, 0.62);
+    for (const k of DOG_KINDS) { const d = this.dogs[k]; if (d.visible) put(d.x, d.z, d.kind === "maremma" ? 0.8 : d.kind === "terrier" ? 0.4 : 0.55); }
+    this.blobs.count = n;
+    this.blobs.instanceMatrix.needsUpdate = true;
+  }
+
   private stepDog(dt: number): void {
     this.cat.update(this.reduced ? 0 : dt, this.time, this.night, this.reduced);
     const live = DOG_KINDS.map((k) => this.dogs[k]).filter((d) => d.visible);
@@ -1889,7 +2062,7 @@ export class WorldView {
     const d = (this.dogs as Record<string, Dog>)[id];
     if (!d?.visible) return null;
     const s = d.kind === "maremma" ? 1.6 : d.kind === "terrier" ? 1.05 : 1.35;
-    return new THREE.Vector3(d.x, 1.15 * s, d.z);
+    return new THREE.Vector3(d.x, groundY(d.x, -d.z) + 1.15 * s, d.z);
   }
 
   private placeBubble(): void {
@@ -1899,7 +2072,7 @@ export class WorldView {
     const pt = e ? null : this.petTop(id);
     if (!e && !pt) { this.bubble.hide(); return; }
     const v = e
-      ? new THREE.Vector3(e.x, (e.geos.dims.top - 0.25) * e.geos.dims.rootScale + e.pose.bob * e.geos.dims.rootScale, e.z).project(this.camera)
+      ? new THREE.Vector3(e.x, groundY(e.x, -e.z) + (e.geos.dims.top - 0.25) * e.geos.dims.rootScale + e.pose.bob * e.geos.dims.rootScale, e.z).project(this.camera)
       : pt!.project(this.camera);
     this.bubble.place(((v.x + 1) / 2) * this.container.clientWidth, ((1 - v.y) / 2) * this.container.clientHeight);
   }

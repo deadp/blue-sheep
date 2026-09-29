@@ -5,6 +5,7 @@
 // the sheep, getting up now and then for a slow patrol. All keep an eye on the
 // sheep you are visiting and curl up at night.
 import * as THREE from "three";
+import { groundY } from "./valley.js";
 import { GeoBatch } from "./builder.js";
 import type { Rect } from "./farm.js";
 
@@ -206,7 +207,7 @@ export class Dog {
   }
 
   private pose(time: number, look: [number, number]): void {
-    this.group.position.set(this.x, 0, this.z);
+    this.group.position.set(this.x, groundY(this.x, -this.z), this.z);
     this.group.rotation.y = this.heading;
     const walk = clamp(this.speed / 1.5, 0, 1);
     const s = Math.sin(this.stride);

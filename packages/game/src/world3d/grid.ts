@@ -1,7 +1,7 @@
 // A coarse walkability grid over the valley plus A* with string-pulling (ported from the movement prototype).
 // Fences, buildings, trees, the creek and locked land block; gates are gaps; the bridge crosses the creek once
 // the far bank is open. Cells are 0.5 units. Cosmetic (the farmer's walk), so nothing here touches game state.
-import { AREAS, AREA_IDS, BRIDGE, BUSH_AT, FENCES, SOLIDS, TREES, areaFence, bushScore, creekV, treeRadius, type AreaId, type UV } from "./valley.js";
+import { AREAS, AREA_IDS, BRIDGE, BUSH_AT, FENCES, HEDGES, OBSTACLES, SOLIDS, STONE_WALLS, TREES, areaFence, bushScore, creekV, treeRadius, type AreaId, type UV } from "./valley.js";
 
 export const CELL = 0.5;
 const U0 = -70, U1 = 96, V0 = -31, V1 = 36;
@@ -47,19 +47,21 @@ export class Grid {
         const r = AREAS[id].rect;
         if (u > r[0] - 0.4 && u < r[1] + 0.4 && v > r[2] - 0.4 && v < r[3] + 0.4) b = true;
       }
-      if (!b) for (const [, tu, tv, s] of TREES) if (Math.abs(u - tu) < 3 && Math.abs(v - tv) < 3 && Math.hypot(u - tu, v - tv) < treeRadius("", s) * 0.8) { b = true; break; }
+      if (!b) for (const [k, tu, tv, s] of TREES) if (Math.abs(u - tu) < 3 && Math.abs(v - tv) < 3 && Math.hypot(u - tu, v - tv) < treeRadius(k, s) * 0.8) { b = true; break; }
+      if (!b) for (const [ou, ov, r] of OBSTACLES) if (Math.hypot(u - ou, v - ov) < r * 0.85) { b = true; break; }
       if (b) c[j * NU + i] = 1;
     }
     for (const id of AREA_IDS) if (this.open.has(id)) for (const [a, b] of areaFence(AREAS[id])) this.line(a, b);
     for (const [a, b] of FENCES) this.line(a, b);
+    for (const w of [...STONE_WALLS, ...HEDGES]) for (let i = 0; i < w.length - 1; i++) this.line(w[i]!, w[i + 1]!, 0.5);
     // the woolshed yards' fence and the verandah edge are inside SOLIDS already
   }
 
-  private line(a: UV, b: UV): void {
+  private line(a: UV, b: UV, half = 0.3): void {
     const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (CELL * 0.4));
     for (let k = 0; k <= n; k++) {
       const u = a[0] + ((b[0] - a[0]) * k) / n, v = a[1] + ((b[1] - a[1]) * k) / n;
-      for (const du of [-0.3, 0, 0.3]) for (const dv of [-0.3, 0, 0.3]) {
+      for (const du of [-half, 0, half]) for (const dv of [-half, 0, half]) {
         const [i, j] = this.cell(u + du, v + dv);
         if (this.inside(i, j)) this.cells[j * NU + i] = 1;
       }
