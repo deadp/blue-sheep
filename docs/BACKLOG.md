@@ -119,7 +119,7 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Done
 
-- v3 world dressing pass (DESIGN-v3 §15 item 27): the valley reads as a lived-in Kiwi farm at play zoom
+- v3 world dressing pass (d6f249d, DESIGN-v3 §15 item 27): the valley reads as a lived-in Kiwi farm at play zoom
   without mist — a gently rolling farm floor that everything stands on, worn tracks with wheel ruts, gateway
   mud and a puddle, clover and sunny/lush mottling, flower drifts, a kōwhai shade tree, cabbage trees, rocks,
   thistles and long grass along the fences in the home paddock (the flock walks round them); toetoe, ponga,
