@@ -1087,3 +1087,9 @@ and tuning is a separate commit only if a target is badly missed.
     know" (confidence dots) on the sheep card without opening "more"; forecast
     shows ten lambs as a 5 × 2 grid with bigger lambs (update the probe that
     required one row).
+27. **World pass feedback (user, 2026-09-29):** the valley needs a **dressing
+    pass** to match the style lab — it reads as a big flat field. Keep the
+    click behaviour (near sheep open at once, far sheep walk first), keep
+    "Rent the long meadow" → far bank over a bridge (rushy corner and terraces
+    open in later phases), and **auto-switch to lite** when the measured frame
+    rate is low (with a settings toggle).
