@@ -1097,3 +1097,9 @@ and tuning is a separate commit only if a target is badly missed.
     to the gameplay phases. Auto-lite should **remember** a lite decision
     between visits and re-check occasionally. Ponga fixes wait for the Blender
     model pass.
+29. **Pigment phase feedback (user, 2026-09-30):** keep the red tutorial lamb;
+    leave the registry goal as is until the Golden Fleece chapter replaces it;
+    coloured sheep cards show colour strength as a word plus the bar
+    ("strong colour"). Coordinator-found bug to fix next: the forecast hint can
+    say "about one in ten bright orange, about one in ten soft yellow" while all
+    ten lamb swatches are white — swatch allocation must reflect the stated odds.
