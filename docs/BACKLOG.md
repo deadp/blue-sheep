@@ -114,6 +114,7 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Later
 
+- **Ponga (tree ferns)** read palm-like from above: fix in the Blender model pass.
 - **Pet model polish** (coordinator, 2026-09-27): collie overlaps sheep and its bubble picks up the nearby sheep's name label; lying Maremma reads as a tan lump; market dog/cat cards use emoji instead of portraits. Fold into the model refresh.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 

@@ -1093,3 +1093,7 @@ and tuning is a separate commit only if a target is badly missed.
     "Rent the long meadow" → far bank over a bridge (rushy corner and terraces
     open in later phases), and **auto-switch to lite** when the measured frame
     rate is low (with a settings toggle).
+28. **Dressing feedback (user, 2026-09-30):** density is about right; move on
+    to the gameplay phases. Auto-lite should **remember** a lite decision
+    between visits and re-check occasionally. Ponga fixes wait for the Blender
+    model pass.
