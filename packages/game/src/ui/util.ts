@@ -1,6 +1,6 @@
 /** Small shared bits for panel HTML: escaping, swatches, dots, pips, words. No DOM. */
 import {
-  ageOf, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, type GameState, type Sheep, type Unlock,
+  FINE_REF, ageOf, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, woolOf, type GameState, type Sheep, type Unlock,
 } from "../core/index.js";
 import { icon, type IconName } from "./felt/icons.js";
 
@@ -8,12 +8,22 @@ export function esc(s: unknown): string {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+/** Fallback shades for a few colour names (swatches normally carry the sheep's own wool hex). */
 export const COLOUR_HEX: Record<string, string> = {
-  white: "#f3eee2", black: "#3c3436", brown: "#8a5a36", blue: "#7f9fe4", fawn: "#d9b98c",
+  white: "#FAFAF7", "snow-white": "#FAFAF7", oatmeal: "#EDE3CF", taupe: "#8F7B69", charcoal: "#2B2724", brown: "#8A5A36",
+  red: "#C8322F", orange: "#E07A2A", yellow: "#F2C230", green: "#3E8E4A", blue: "#2F5DA8", purple: "#6E3A8E",
+  pink: "#E59A98", peach: "#EEB88E", lemon: "#F6DD8F", mint: "#9CC6A2", sky: "#93ACD2", lilac: "#B39BC2",
+  slate: "#5F6F8C", olive: "#7C7F4A", silver: "#A9A6A3", fawn: "#C9A98C", gold: "#E3B53A", "true blue": "#2F5DA8",
 };
 
+/** A colour's shade: a hex passes through; a colour name uses COLOUR_HEX. */
 export function hex(colour: string): string {
-  return COLOUR_HEX[colour] ?? "#cccccc";
+  return colour.startsWith("#") ? colour : COLOUR_HEX[colour] ?? "#cccccc";
+}
+
+/** A sheep's wool swatch (its own shade). */
+export function woolSwatch(s: Sheep, extra = ""): string {
+  return swatch(woolOf(s).hex, extra);
 }
 
 export function numbersOn(state: GameState): boolean {
@@ -113,14 +123,14 @@ export function pips(state: GameState, p: number, label = "", compact = false): 
 export function portrait(view: { portraits: (id: string) => string }, s: Sheep, size = "md"): string {
   let src = "";
   try { src = view.portraits(s.id) || ""; } catch { src = ""; }
-  if (!src) return `<span class="portrait ${size} blank" style="--wool:${hex(String(s.phenotype["colour"]))}" aria-hidden="true"></span>`;
+  if (!src) return `<span class="portrait ${size} blank" style="--wool:${woolOf(s).hex}" aria-hidden="true"></span>`;
   return `<img class="portrait ${size}" src="${esc(src)}" alt="" loading="lazy">`;
 }
 
 /** Clickable sheep chip (opens the sheep card). */
 export function chip(state: GameState, s: Sheep, extra = ""): string {
   const gone = !state.flock.includes(s.id);
-  return `<button class="chip ${gone ? "gone" : ""}" data-sheep="${esc(s.id)}">${swatch(String(s.phenotype["colour"]))}<span class="nm">${esc(s.name)}</span>${extra}</button>`;
+  return `<button class="chip ${gone ? "gone" : ""}" data-sheep="${esc(s.id)}">${woolSwatch(s)}<span class="nm">${esc(s.name)}</span>${extra}</button>`;
 }
 
 export function ageWords(state: GameState, s: Sheep): string {
@@ -159,15 +169,37 @@ export const UNLOCK_ICON: Record<Unlock, IconName> = {
 };
 
 export const LOCUS_FRIENDLY: Record<string, string> = {
-  A: "hidden colour", B: "brown", D: "dilute", S: "spotting", P: "horns",
+  W: "hidden colour", red: "red paint", yellow: "yellow paint", blue: "blue paint", Dl: "pale", S: "spots", P: "horns",
 };
+
+/**
+ * Pigment dots (DESIGN-v3 §12): three rows of four felt dots for red, yellow and blue doses, a pale/full chip
+ * and the colour-strength bar. A white sheep's pigment is hidden: the rows show a "?" instead. Doses are
+ * dots, not numbers.
+ */
+export function pigmentDots(s: Sheep): string {
+  const w = woolOf(s);
+  if (s.phenotype["white"] === "white") {
+    return `<div class="pig hidden" title="White on top: the colour underneath is hidden">${["red", "yellow", "blue"].map((c) => `<span class="pig-row ${c}"><span class="v-pig ${c}"></span><span class="pig-q">?</span></span>`).join("")}<span class="pig-h">hidden</span></div>`;
+  }
+  const row = (c: "red" | "yellow" | "blue") => {
+    const d = Number(s.phenotype[c] ?? 0);
+    let dots = "";
+    for (let i = 0; i < 4; i++) dots += `<i class="${i < d ? "on" : ""}"></i>`;
+    return `<span class="pig-row ${c}" title="${d === 0 ? `no ${c}` : `${d === 1 ? "one" : d === 2 ? "two" : d === 3 ? "three" : "four"} ${c} dose${d === 1 ? "" : "s"}`}"><span class="pig-l">${c}</span><span class="pig-d">${dots}</span></span>`;
+  };
+  const depth = Number(s.phenotype["depth"] ?? 1);
+  const strength = Math.max(0, Math.min(1, (depth - 0.6) / 0.8));
+  return `<div class="pig" style="--wool:${w.hex}">${row("red")}${row("yellow")}${row("blue")}
+    <span class="pig-row extra"><span class="pig-chip ${w.dilute ? "pale" : "full"}">${w.dilute ? "pale" : "full"}</span><span class="pig-str" title="Colour strength: ${depth < 0.9 ? "dull" : depth > 1.1 ? "strong" : "average"}"><span style="${prop("s", strength)}"></span></span></span></div>`;
+}
 
 /** Plain words for measured traits; numbers appended only when unlocked. */
 export function traitWords(state: GameState, s: Sheep): { label: string; text: string }[] {
   const ph = s.phenotype;
   const nums = numbersOn(state);
   const fin = Number(ph["fineness"]), fw = Number(ph["fleeceWeight"]), size = Number(ph["size"]), bold = Number(ph["boldness"]);
-  const finW = fin < 20 ? "very fine" : fin < 23.5 ? "fine" : fin < 27.5 ? "medium" : "coarse";
+  const finW = fin < FINE_REF - 6 ? "very fine" : fin < FINE_REF - 2.5 ? "fine" : fin < FINE_REF + 1.5 ? "medium" : "coarse";
   const fwW = fw < 3.2 ? "light" : fw < 4.8 ? "average" : "heavy";
   const sizeW = size < 50 ? "small" : size < 68 ? "medium-sized" : "big";
   const pers = personalityOf(s);
@@ -199,7 +231,7 @@ export function discoveryText(state: GameState, d: { sheep: string; text: string
   const name = state.sheep[d.sheep]?.name;
   if (!name || !d.text.startsWith(`${name} `)) return d.text;
   const rest = d.text.slice(name.length + 1);
-  const fixed = /^(no |two )/.test(rest) ? `has ${rest}` : /^(pure |horned|spotted|brown-based)/.test(rest) ? `is ${rest}` : /^shows /.test(rest) ? rest : rest;
+  const fixed = /^(no |two |one )/.test(rest) ? `has ${rest}` : /^(pure |horned|spotted|pale)/.test(rest) ? `is ${rest}` : rest;
   return `${name} ${fixed}`;
 }
 

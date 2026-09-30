@@ -69,8 +69,8 @@ describe("winter events", () => {
 
   it("wool boom doubles that colour's wool", () => {
     const g = atWinter(74, "woolBoom", "white");
-    const whites = flockSheep(g).filter((s) => s.phenotype["colour"] === "white" && isAdult(s, 3));
-    const others = flockSheep(g).filter((s) => s.phenotype["colour"] !== "white" && isAdult(s, 3));
+    const whites = flockSheep(g).filter((s) => s.phenotype["family"] === "white" && isAdult(s, 3));
+    const others = flockSheep(g).filter((s) => s.phenotype["family"] !== "white" && isAdult(s, 3));
     const expected = whites.reduce((t, s) => t + woolIncome(s, "white"), 0) + others.reduce((t, s) => t + woolIncome(s), 0);
     const r = advanceSeason(g);
     expect(r.income).toBe(expected);

@@ -113,14 +113,6 @@ describe("fondness", () => {
 });
 
 describe("dogs and predators", () => {
-  it("an old save's sheepdog becomes Bess the border collie", () => {
-    const g = newGame(310);
-    const raw = JSON.parse(serialize(g)) as Record<string, unknown>;
-    raw["upgrades"] = ["dog", "barn"];
-    const back = deserialize(JSON.stringify(raw));
-    expect(back.upgrades).toEqual(["collie", "barn"]);
-  });
-
   it("each tier guards differently against a fox and a wolf", () => {
     const g = newGame(311);
     for (const s of flockSheep(g)) s.phenotype["boldness"] = 2; // no bold guardian

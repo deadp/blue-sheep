@@ -24,19 +24,24 @@ function punnetFigure(s: GameState): string {
 export const CONCEPTS: Concept[] = [
   {
     id: "punnet", title: "Punnet square", icon: "dice",
-    text: "Every sheep has two copies of each gene and gives a lamb one, at random. Put one parent's copies along the top, the other's down the side: the four boxes are four equally likely lambs. Two polled parents that each carry a horns copy: three polled lambs for one horned. It works for hidden colour and dilute too.",
+    text: "Every sheep has two copies of each gene and gives a lamb one, at random. Put one parent's copies along the top, the other's down the side: the four boxes are four equally likely lambs. Two polled parents that each carry a horns copy: three polled lambs for one horned. It works for hidden colour and pale too.",
     unlocked: (s) => s.unlocks.includes("cards") || (s.tutorial?.step ?? 0) > TUTORIAL_STEPS.findIndex((t) => t.id === "punnet") + 1, hint: "Old Tom will draw one for you.",
     figure: punnetFigure,
   },
   {
     id: "hidden", title: "Hidden traits", icon: "eye",
-    text: "Two white sheep can have a black lamb. Each parent passes on one of two copies of every trait, and a white copy can cover up a coloured one. What you see is only half the story — the rest is hiding.",
+    text: "Two white sheep can have a coloured lamb. Each parent passes on one of two copies of every gene, and a white copy covers up the colour underneath. What you see is only half the story — the rest is hiding.",
     unlocked: (s) => s.act >= 1, hint: "Keep breeding and watch for a surprise.",
   },
   {
     id: "carriers", title: "Carriers", icon: "box",
-    text: "A carrier holds one hidden copy and shows nothing. Pair two carriers and about one lamb in four shows the hidden trait. Blue needs a dark coat plus two dilute copies — so find your carriers.",
+    text: "A carrier holds one hidden copy and shows nothing. Pair two carriers and about one lamb in four shows the hidden trait. True blue needs lots of blue paint and no white on top — so find the sheep hiding blue doses.",
     unlocked: (s) => s.act >= 2 || (s.act >= 1 && s.discoveries.length > 0), hint: "A discovery card will reveal this one.",
+  },
+  {
+    id: "pigment", title: "Paint in the wool", icon: "spots",
+    text: "Wool colour is paint. Two genes each for red, yellow and blue add up to 0–4 doses of each: red and yellow make orange, yellow and blue green, red and blue purple, all three brown or charcoal. A pale pair of copies makes pastels, and colour strength slides like fineness. True blue: lots of blue, little else, full strength.",
+    unlocked: (s) => s.act >= 1, hint: "Look closely at a coloured lamb.",
   },
   {
     id: "continuous", title: "Continuous traits", icon: "ruler",

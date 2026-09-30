@@ -3,6 +3,7 @@ import {
   ACTS, ORDERS_CARRIED, ORDERS_FOR_ACT2, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
 } from "./config.js";
 import { addLog, flockSheep } from "./state.js";
+import { woolOf } from "./colour.js";
 import { grantUnlock } from "./pacing.js";
 import { TUTORIAL_LAMBS, tutorialActive, tutorialLambs } from "./tutorial.js";
 import { upgradeCapBonus } from "./upgrades.js";
@@ -20,7 +21,8 @@ export interface RegistryStatus {
 
 export function registryStatus(state: GameState): RegistryStatus {
   const flock = flockSheep(state);
-  const blues = flock.filter((s) => s.phenotype["colour"] === "blue");
+  // Blue for the registry: full (not pale) blue wool of any strength; slate and sky don't count.
+  const blues = flock.filter((s) => woolOf(s).name === "blue");
   const best = [...blues].sort((a, b) => a.inbreeding - b.inbreeding || Number(a.id.slice(1)) - Number(b.id.slice(1))).slice(0, REGISTRY_BLUES);
   const meanFineness = flock.length ? flock.reduce((t, s) => t + Number(s.phenotype["fineness"]), 0) / flock.length : 99;
   const meanInbreeding = best.length ? best.reduce((t, s) => t + s.inbreeding, 0) / best.length : 0;
@@ -39,7 +41,7 @@ export function act2Orders(state: GameState): number {
 
 function goalMet(state: GameState, act: ActNumber): boolean {
   switch (act) {
-    // In the tutorial the story's first act waits for the black lamb (hidden colours!), the third lambing.
+    // In the tutorial the story's first act waits for the coloured lamb (hidden colours!), the third lambing.
     case 0: return state.stats.lambsBorn >= 1 && !(tutorialActive(state) && tutorialLambs(state).length < TUTORIAL_LAMBS.length);
     case 1: return state.stats.bluesBorn >= 1;
     case 2: return act2Orders(state) >= ORDERS_FOR_ACT2;
@@ -51,7 +53,7 @@ function goalMet(state: GameState, act: ActNumber): boolean {
 function progressOf(state: GameState, act: ActNumber): { text: string; progress: number } {
   switch (act) {
     case 0: return state.stats.lambsBorn ? { text: "Lambs born!", progress: 1 } : { text: "No lambs yet.", progress: 0 };
-    case 1: return state.stats.bluesBorn ? { text: "A blue lamb!", progress: 1 } : { text: "No blue lamb yet.", progress: 0 };
+    case 1: return state.stats.bluesBorn ? { text: "A true blue lamb!", progress: 1 } : { text: "No true blue lamb yet.", progress: 0 };
     case 2: {
       const n = Math.min(ORDERS_FOR_ACT2, act2Orders(state));
       return { text: `${numberWord(n)} of ${numberWord(ORDERS_FOR_ACT2)} orders filled.`.replace(/^./, (c) => c.toUpperCase()), progress: n / ORDERS_FOR_ACT2 };
@@ -63,7 +65,7 @@ function progressOf(state: GameState, act: ActNumber): { text: string; progress:
     case 4: {
       const r = registryStatus(state);
       const pBlue = Math.min(1, r.best.length / REGISTRY_BLUES);
-      const pFine = Math.max(0, Math.min(1, (28 - r.meanFineness) / (28 - REGISTRY_MICRONS)));
+      const pFine = Math.max(0, Math.min(1, (REGISTRY_MICRONS + 4 - r.meanFineness) / 4));
       const pInb = r.best.length === 0 ? 0 : r.meanInbreeding < REGISTRY_MAX_INBREEDING ? 1 : Math.max(0, 1 - (r.meanInbreeding - REGISTRY_MAX_INBREEDING) / 0.25);
       const kin = r.best.length === 0 ? "" : r.meanInbreeding < REGISTRY_MAX_INBREEDING ? " · bloodlines healthy" : " · bloodlines too close";
       const text = `${r.best.length} of ${REGISTRY_BLUES} blue sheep · flock wool ${r.meanFineness.toFixed(1)} µm (need ${REGISTRY_MICRONS})${kin}`;

@@ -5,8 +5,18 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-Next: the v3 gameplay phases on the new look (DESIGN-v3 §13 and §15 item 25), starting with Phase 2: the game
-switches to pigment colour (the world still uses the v2 `WOOL_HEX` mapping and says so in CONTRACTS §4).
+Next: v3 Phase 3 (breeds and wool types, DESIGN-v3 §13), on the pigment-colour game.
+
+Follow-ups from Phase 2, pigment colours (not started):
+- The act ladder is still v2 (true blue replaces blue in act 1; the registry wants six full-blue sheep at
+  ≤ 28 µm). Once blue is bred, act 4 comes quickly (blind median 4 seasons in act 4); chapters (Phase 7) replace it.
+- The fleece and fantasy traits (coat, hair, the six rare wools) are in the phenotype but not yet in knowledge,
+  forecasts or the UI (Phases 3 and 6). Mutations (`SPORTS`) are not switched on yet.
+- The forecast's paint triangle and the rainbow ring (DESIGN-v3 §12) aren't built; the swatch litter, colour
+  words and pigment dots are.
+- A white sheep's colour strength is recorded but can't be seen; forecasts use the flock's coloured mean for it.
+- Oracle money runs high late (median end 1088, p90 ~7800 when the ending is late); revisit with the wool store
+  and two clips a year (Phase 4, §15 item 3).
 
 Follow-ups from the world dressing pass (not started):
 - The flock is now the biggest cost at play zoom (wool locks: ~75k triangles and ~40 draws for 13 sheep in
@@ -119,6 +129,16 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- v3 Phase 2, pigment colours in the game (see git log): the game runs on `sheep3`; fresh v3 save key (old saves
+  ignored, "A new season at Kōwhai Creek" once); colour facts in words with confidence dots (hidden colour,
+  pigment classes "passes one red dose to every lamb", pale, spots, horns); forecast swatch litter (5 × 2
+  lambs tinted with forecast wool, white "?"), goal tabs True blue / Colour (chips: any vivid or a colour) /
+  Learn / Fine wool / Heavy fleece, colour hint line; card colour words + pigment dots; vet pigment tests per
+  colour; colour-aware orders (names incl. slate/olive, lowest band) and the "Most vivid colour" fair class;
+  tutorial lamb 3 is a clear red from the two white carriers; world wool hex + family (mesh, portraits,
+  minimap); auto-lite remembers (10 boots / 7 days). Balance (blind, 30 seeds): first true blue median season
+  14, ending 97 %, median end money 535; oracle: true blue 11, ending 100 %, money 1088. New `probe/colour.mjs`.
 
 - v3 world dressing pass (d6f249d, DESIGN-v3 §15 item 27): the valley reads as a lived-in Kiwi farm at play zoom
   without mist — a gently rolling farm floor that everything stands on, worn tracks with wheel ruts, gateway

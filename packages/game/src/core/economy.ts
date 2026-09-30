@@ -1,16 +1,14 @@
 /** Prices, wool income, buying and selling, and the money floor. */
-import { BUY_MARKUP, COLOUR_VALUE, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE, WOOL_PRICE } from "./config.js";
+import { BUY_MARKUP, FINE_REF, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE } from "./config.js";
+import { colourValue, woolOf, woolPricePerKg } from "./colour.js";
 import { addLog, flockSheep, isAdult } from "./state.js";
 import type { GameState, Sheep } from "./types.js";
 
-export { WOOL_PRICE };
-
 /** A grown sheep's worth on the market, before the trader's cut. */
 function marketWorth(s: Sheep): number {
-  const colour = String(s.phenotype["colour"]);
-  const fine = Math.max(0, 26 - Number(s.phenotype["fineness"])) * 2;
+  const fine = Math.max(0, FINE_REF - Number(s.phenotype["fineness"])) * 2;
   const heavy = Math.max(0, Number(s.phenotype["fleeceWeight"]) - 4) * 3;
-  return SHEEP_BASE_PRICE + (COLOUR_VALUE[colour] ?? 0) + fine + heavy + s.rosettes.length * 10;
+  return SHEEP_BASE_PRICE + colourValue(woolOf(s)) + fine + heavy + s.rosettes.length * 10;
 }
 
 /** Share of a sheep's worth the trader pays in a given season: sheep get cheaper as the valley fills up. */
@@ -36,17 +34,17 @@ export function buyPrice(s: Sheep): number {
 /** @deprecated v1 name; use buyPrice. */
 export const ramPrice = buyPrice;
 
-/** Fibre-diameter multiplier on wool price: 20 µm → 2×, 30 µm → 1×. */
+/** Fibre-diameter multiplier on wool price: 4 µm finer than the Farm average → 1.8×, 4 µm coarser → 1×. */
 export function finenessMultiplier(microns: number): number {
-  return Math.max(0.5, Math.min(2, (30 - microns) / 10 + 1));
+  return Math.max(0.5, Math.min(2, (FINE_REF + 4 - microns) / 10 + 1));
 }
 
-/** Coins from one adult's fleece this season. */
+/** Coins from one adult's fleece this season. `boomColour` is a colour family whose wool fetches double. */
 export function woolIncome(s: Sheep, boomColour: string | null = null, bonus = 1): number {
-  const colour = String(s.phenotype["colour"]);
+  const w = woolOf(s);
   const kg = Number(s.phenotype["fleeceWeight"]);
-  const boom = boomColour !== null && colour === boomColour ? 2 : 1;
-  return Math.round(kg * (WOOL_PRICE[colour] ?? 2) * finenessMultiplier(Number(s.phenotype["fineness"])) * boom * bonus);
+  const boom = boomColour !== null && w.family === boomColour ? 2 : 1;
+  return Math.round(kg * woolPricePerKg(w) * finenessMultiplier(Number(s.phenotype["fineness"])) * boom * bonus);
 }
 
 /** Remove a sheep from the flock and every plan / entry that mentions it. */

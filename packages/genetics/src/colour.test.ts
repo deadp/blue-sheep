@@ -73,6 +73,13 @@ describe("woolColour: rules", () => {
     expect(colourFamily(0.5, 1, 0.75)).toBe("green");
   });
 
+  it("muted cool hues are called slate and olive (family unchanged)", () => {
+    expect(col(2, 2, 4)).toMatchObject({ family: "blue", name: "slate" });
+    expect(col(2, 4, 4)).toMatchObject({ family: "green", name: "olive" });
+    expect(col(0, 0, 4).name).toBe("blue");
+    expect(col(2, 2, 4, 1, true).name).toBe("sky");
+  });
+
   it("dilution is lighter, halves intensity and uses pastel names", () => {
     const names: Record<string, string> = { red: "pink", orange: "peach", yellow: "lemon", green: "mint", blue: "sky", purple: "lilac" };
     const doses: Record<string, [number, number, number]> = { red: [4, 0, 0], orange: [4, 4, 0], yellow: [0, 4, 0], green: [0, 4, 4], blue: [0, 0, 4], purple: [4, 0, 4] };

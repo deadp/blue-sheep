@@ -11,7 +11,7 @@
  * concept arrives first, the unfinished one ends quietly (counted as done) so lessons never pile up.
  */
 import { TEST_LOCI, VET_FEE } from "./config.js";
-import { forecastVet } from "./vet.js";
+import { forecastVet, wasTested } from "./vet.js";
 import { addLog, canBreed } from "./state.js";
 import { MENTOR, tutorialActive } from "./tutorial.js";
 import type { GameState, Unlock, UpgradeId } from "./types.js";
@@ -66,7 +66,7 @@ const bestTest = (s: GameState, v: LessonView): string => {
   if (!chosen) return "#overlay .vet-rows [data-test]";
   let best: string | null = null, gain = -1;
   for (const l of TEST_LOCI) {
-    if (chosen.tested[l]) continue;
+    if (wasTested(chosen, l)) continue;
     let g = 0;
     try { g = forecastVet(s, chosen.id, l).gainBits; } catch { g = 0; }
     if (g > gain) { gain = g; best = l; }

@@ -9,7 +9,7 @@ import { GENOTYPE_RE, planAll } from "./testkit.js";
 
 function order(g: GameState, over: Partial<Order>): Order {
   const o: Order = {
-    id: `o${g.nextOrderId++}`, kind: "colour", villager: "Mrs Pike", text: "test", colour: null, horns: null, sex: null,
+    id: `o${g.nextOrderId++}`, kind: "colour", villager: "Mrs Pike", text: "test", colour: null, band: null, horns: null, sex: null,
     kg: null, microns: null, posted: g.season, expires: g.season + 2, deadline: g.season + 4, reward: 20, reputation: 1,
     status: "open", filledBy: [], resolvedSeason: null, ...over,
   };
@@ -60,8 +60,13 @@ describe("orders", () => {
     const g = newGame(30);
     enterAct(g, 1, undefined, { grant: true });
     const white = order(g, { colour: "white" });
-    const blue = order(g, { colour: "blue", deadline: g.season + 1 });
+    const red = order(g, { colour: "red" });
+    const blue = order(g, { colour: "true blue" });
+    const yellow = order(g, { colour: "yellow" });
     expect(forecastOrder(g, white.id).pFill).toBeGreaterThan(forecastOrder(g, blue.id).pFill);
+    // Nothing is known yet about the pair's hidden paint, so any colour is a long shot, true blue the longest.
+    expect(forecastOrder(g, red.id).pFill).toBeGreaterThan(forecastOrder(g, blue.id).pFill);
+    expect(forecastOrder(g, yellow.id).pFill).toBeGreaterThan(forecastOrder(g, blue.id).pFill);
     const none = order(g, { colour: "white", deadline: g.season });
     expect(forecastOrder(g, none.id).pFill).toBe(0);
   });
@@ -69,7 +74,7 @@ describe("orders", () => {
   it("accepting is limited to two; declining an open order removes it without penalty", () => {
     const g = newGame(31);
     enterAct(g, 1, undefined, { grant: true });
-    const a = order(g, { colour: "white" }), b = order(g, { colour: "black" }), c = order(g, { colour: "brown" });
+    const a = order(g, { colour: "white" }), b = order(g, { colour: "red" }), c = order(g, { colour: "pink" });
     acceptOrder(g, a.id);
     acceptOrder(g, b.id);
     expect(() => acceptOrder(g, c.id)).toThrow(/only take 2/);

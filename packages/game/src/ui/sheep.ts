@@ -1,15 +1,18 @@
 /** Sheep card and family tree. */
 import {
   FAIR_LABEL, PERSONALITY_WORD, TREAT_COST, ageOf, fondnessWord, type Personality, brushedThisSeason, forecastBrush, isPetId, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
-  forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason,
+  forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason, woolOf,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
-import { ageWords, chip, dot, esc, has, heartMeter, hex, numbersOn, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, chip, dot, esc, has, heartMeter, numbersOn, pigmentDots, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
 import { btn, fact, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 
-/** Pastel backdrop per wool colour for the live portrait (matches the world's portrait backgrounds). */
-const PORTRAIT_BG: Record<string, string> = { white: "#cfe3ee", black: "#f5e2cf", brown: "#dcecd0", blue: "#f7e7cc", fawn: "#d9e3f3" };
+/** Pastel backdrop per colour family for the live portrait (a soft complement, so the wool stands out). */
+const PORTRAIT_BG: Record<string, string> = {
+  white: "#cfe3ee", oatmeal: "#d9e3f3", taupe: "#dcecd0", charcoal: "#f5e2cf", brown: "#dcecd0",
+  red: "#d6ebe0", orange: "#d7e4f3", yellow: "#dcd9f0", green: "#f3dfe3", blue: "#f7e7cc", purple: "#e7f0d0",
+};
 const FLAVOUR_ICON: Record<string, IconName> = { fluffy: "cloud", stocky: "stone", dainty: "flower", curly: "curl", silky: "sparkle" };
 /** An embroidered icon per personality (the core's emoji stay in core). */
 export const PERSONA_ICON: Record<Personality, IconName> = { shy: "flower", calm: "leaf", curious: "eye", bold: "sun" };
@@ -84,7 +87,9 @@ function ageFact(state: GameState, s: Sheep): [string, string] {
 }
 
 /** One-word names for the compact "what you know" line on the card. */
-const KNOW_SHORT: Record<string, string> = { A: "colour", B: "brown", D: "dilute", S: "spots", P: "horns" };
+const KNOW_SHORT: Record<string, string> = { W: "colour", Dl: "pale", S: "spots", P: "horns" };
+/** The pigment genes on the compact line: a paint dot instead of a word, so the line fits. */
+const KNOW_PAINT = new Set(["red", "yellow", "blue"]);
 
 export function sheepCardHtml(state: GameState, view: View): string {
   const s = cardSubject(state, view);
@@ -97,7 +102,10 @@ export function sheepCardHtml(state: GameState, view: View): string {
     ? `${dam ? chip(state, dam) : "unknown"} × ${sire ? chip(state, sire) : "unknown"}`
     : `<span class="meta">${s.origin === "founder" ? "one of the old farm's flock — no records" : s.origin === "visitor" ? "from over the hills — no records" : "bought in — no pedigree"}</span>`;
   const kids = Object.values(state.sheep).filter((k) => k.dam === s.id || k.sire === s.id);
-  const facts = factsFor(state, s.id).filter((f) => !(f.locus === "A" && s.phenotype["colour"] !== "white"));
+  // A coloured sheep's own look settles its hidden colour; its doses show as dots, so only the "how it passes
+  // on" facts (and pale, spots, horns) are worth a line.
+  const coloured = s.phenotype["white"] !== "white";
+  const facts = factsFor(state, s.id).filter((f) => !(f.locus === "W" && coloured));
   const factList = facts.map((f) => `<li class="${f.certain ? "certain" : ""}">${dot(f.confidence, f.certain)} <span>${esc(f.text)}${s.tested[f.locus] ? ` ${icon("vet", "inl")}` : ""}</span></li>`).join("");
   const plannedWith = s.sex === "ewe"
     ? (state.plans[s.id] ? [state.plans[s.id]!] : [])
@@ -122,8 +130,9 @@ export function sheepCardHtml(state: GameState, view: View): string {
   ].join("");
   const pers = personalityOf(s);
   const flav = flavoursOf(s);
-  const colour = String(s.phenotype["colour"]);
-  const pattern = String(s.phenotype["pattern"]), horns = String(s.phenotype["horns"]);
+  const w = woolOf(s);
+  const colour = w.word;
+  const pattern = String(s.phenotype["pattern"] ?? "solid"), horns = String(s.phenotype["horns"]);
   const young = !isAdult(s, state.season);
   const wool = traitWords(state, s)[0]!.text.replace(/ \(.*\)$/, "");
   const [ageN, ageW] = ageFact(state, s);
@@ -142,7 +151,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
     </div>
     <div class="meta">${esc(s.sex)} · ${esc(ageWords(state, s))}${numbersOn(state) && s.inbreeding > 0 ? ` · inbreeding ${s.inbreeding.toFixed(3)}` : s.inbreeding >= 0.125 ? " · parents were close kin" : ""}</div>`;
   return `<div class="sheep-card">
-    <div class="sc-stage" style="--bg:${PORTRAIT_BG[colour] ?? "#dde8f0"}">
+    <div class="sc-stage" style="--bg:${PORTRAIT_BG[w.family] ?? "#dde8f0"}">
       <div class="sc-portrait" data-live-portrait-slot="${esc(s.id)}">${portrait(view, s, "lg")}</div>
       <div class="sc-hello" aria-hidden="true">click to say hello</div>
     </div>
@@ -152,11 +161,12 @@ export function sheepCardHtml(state: GameState, view: View): string {
     ${own ? careHtml(state, s.id) : ""}
     <p class="sc-line">“${esc(personalityLine(s))}”</p>
     <div class="facts-row">
-      ${fact(swatch(colour, "big"), esc(colour), esc(looks), { tone: "cream", title: `${colour}, ${pattern}, ${horns}` })}
+      ${fact(swatch(w.hex, "big"), esc(colour), esc(looks || (w.trueBlue ? "true blue!" : w.family === "white" ? "colour hidden" : "colour")), { tone: "cream", title: `${colour}${w.trueBlue ? " (true blue)" : ""}, ${pattern}, ${horns}` })}
       ${fact(icon(young ? "sprout" : "yarn"), esc(young ? "lamb" : wool.split(" ").slice(-1)[0] ?? wool), young ? "not shorn yet" : "wool", { tone: "sage", title: `Wool: ${wool}` })}
       ${fact(icon("cake"), esc(ageN), esc(ageW), { tone: "rose", title: ageWords(state, s) })}
     </div>
-    ${facts.length ? `<div class="sc-know" data-know title="What you know about the hidden genes (open “more” for the words)">${icon("lens", "inl")}${facts.map((f) => `<span class="k-item" title="${esc(f.text)}">${dot(f.confidence, f.certain)}<span>${esc(KNOW_SHORT[f.locus] ?? LOCUS_FRIENDLY[f.locus] ?? f.label)}</span></span>`).join("")}</div>` : ""}
+    ${coloured ? `<div class="sc-colour" data-colour="${esc(w.family)}" data-hex="${esc(w.hex)}">${pigmentDots(s)}</div>` : ""}
+    ${facts.length ? `<div class="sc-know" data-know title="What you know about the hidden genes (open “more” for the words)">${icon("lens", "inl")}${facts.map((f) => `<span class="k-item" title="${esc(`${f.label}: ${f.text}`)}">${dot(f.confidence, f.certain)}${KNOW_PAINT.has(f.locus) ? `<span class="v-pig ${f.locus}" aria-label="${esc(f.label)}"></span>` : `<span>${esc(KNOW_SHORT[f.locus] ?? LOCUS_FRIENDLY[f.locus] ?? f.label)}</span>`}</span>`).join("")}</div>` : ""}
     ${primary.length ? `<div class="card-acts">${primary.slice(0, 2).join("")}</div>` : ""}
     ${small.length ? `<div class="card-tools">${small.join("")}</div>` : ""}
     ${more("sheep-more", "What you know, family, wool", details)}
@@ -176,7 +186,7 @@ function nodeHtml(state: GameState, view: View, p: Placed): string {
   const s = state.sheep[n.id];
   let img = "";
   if (s) { try { img = view.portraits(s.id) || ""; } catch { img = ""; } }
-  const ring = hex(n.colour);
+  const ring = n.wool;
   return `<button class="tnode ${p.kind} ${n.inFlock ? "" : "gone"}" data-sheep="${esc(n.id)}" style="left:${left}px;top:${top}px;--ring:${ring}" title="${esc(`${n.name} — ${n.colour}${n.inFlock ? "" : ", no longer on the farm"}${n.inbreeding >= 0.125 ? ", lamb of close kin" : ""}`)}">
     <span class="t-face">${img ? `<img src="${esc(img)}" alt="">` : `<span class="t-blob"></span>`}</span>
     <span class="t-name"><span class="nm">${esc(n.name)}</span> ${n.sex === "ewe" ? "♀" : "♂"}</span>${n.rosettes ? `<span class="ros" title="rosettes">${icon("rosette", "inl")}${n.rosettes > 1 ? n.rosettes : ""}</span>` : ""}${n.inbreeding >= 0.125 ? `<span class="inb" title="lamb of close kin">${icon("warn", "inl")}</span>` : ""}</button>`;

@@ -27,7 +27,7 @@ export const PUNNET_GENES: Record<PunnetGene["id"], PunnetGene> = {
     dominantCopy: "no-horns copy", recessiveCopy: "horns copy", dominantLook: "polled", recessiveLook: "horned",
   },
   colour: {
-    id: "colour", locus: "A", dominant: "Aw", recessive: "a",
+    id: "colour", locus: "W", dominant: "W", recessive: "w",
     dominantCopy: "white copy", recessiveCopy: "colour copy", dominantLook: "white", recessiveLook: "coloured",
   },
 };

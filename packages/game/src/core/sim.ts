@@ -1,6 +1,7 @@
 /** The season turn: events, shearing, lambing, fair, feed, ageing, orders, discoveries, acts. */
 import { mate } from "@blue-sheep/genetics";
 import { checkActAdvance, checkEnding } from "./acts.js";
+import { isTrueBlue, woolOf } from "./colour.js";
 import { plannedPairings } from "./breeding.js";
 import { MAX_AGE, SHEARING_BONUS } from "./config.js";
 import { cheapestSheep, removeFromFlock, sheepValue, woolIncome } from "./economy.js";
@@ -95,17 +96,17 @@ export function advanceSeason(state: GameState): SeasonReport {
       born.push(lamb);
       if (tutIndex === 1) tutorialCards.push(lamb);
       state.stats.lambsBorn += 1;
-      if (lamb.phenotype["colour"] === "blue") {
+      if (isTrueBlue(lamb)) {
         state.stats.bluesBorn += 1;
         if (!state.achievements.includes("blue")) {
           state.achievements.push("blue");
-          say(`${lamb.name} is BLUE! The first blue lamb on the farm.`);
+          say(`${lamb.name} is TRUE BLUE! The first true blue lamb on the farm.`);
         }
       }
     }
     say(litter === 2
       ? `${ewe.name} had twins by ${ram.name}: ${born.map((b) => b.name).join(" and ")}.`
-      : `${ewe.name} had a ${String(born[0]!.phenotype["colour"])} ${born[0]!.sex} lamb by ${ram.name}: ${born[0]!.name}.`);
+      : `${ewe.name} had a ${woolOf(born[0]!).word} ${born[0]!.sex} lamb by ${ram.name}: ${born[0]!.name}.`);
     if (f >= 0.125) say(`${born.map((b) => b.name).join(" and ")} ${born.length > 1 ? "are" : "is"} a little small — the parents are close kin.`);
   }
 

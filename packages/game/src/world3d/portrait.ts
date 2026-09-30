@@ -4,7 +4,7 @@
 import * as THREE from "three";
 import { buildFullRig, buildSheepGeos, disposeGeos, EAR_REST, restPose, sheepKey, SheepMaterials, type FullRig, type SheepGeos, type SheepPose } from "./sheepMesh.js";
 import { Bubble } from "./fx.js";
-import { WOOL_HEX } from "./palette.js";
+import { woolHex } from "./palette.js";
 import { HOLD_CLICK_MS, HOLD_MS, Hold } from "./hold.js";
 import type { Personality, WorldSheep } from "./types.js";
 
@@ -172,7 +172,7 @@ export class LivePortrait {
     };
     // Tufts in the wool's colour, a shade warmer and darker so white fluff still reads against the pale stage.
     // Tufts in the wool's colour, a shade warmer and darker so white fluff still reads against the pale stage.
-    this.fluffMat.color.set(WOOL_HEX[ws.colour] ?? "#ffffff").lerp(new THREE.Color("#a8845a"), ws.colour === "white" ? 0.32 : 0.12);
+    this.fluffMat.color.set(woolHex(ws)).lerp(new THREE.Color("#a8845a"), ws.family === "white" ? 0.32 : 0.12);
     el.appendChild(r.domElement);
     el.classList.add("live");
     this.size();

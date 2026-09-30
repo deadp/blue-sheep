@@ -51,20 +51,16 @@ export const NIGHT = {
   sun: "#7d8cc9", sunI: 0.22, hemiSky: "#5d6fae", hemiGround: "#2a3050", hemiI: 0.45,
 };
 
-export const WOOL_HEX = {
-  white: "#f3eee2",
-  black: "#3c3436",
-  brown: "#8a5a36",
-  // contract says #8fa8d8; nudged more saturated so blue still reads under warm summer/autumn light
-  blue: "#7f9fe4",
-  fawn: "#d9b98c",
-} as const;
+/** Mask-white wool (a cool bright white, distinct from warm oatmeal). Other wool comes as a hex from the colour model. */
+export const WHITE_WOOL = "#FAFAF7";
 
-/** Pastel portrait backgrounds chosen to contrast with each wool colour. */
-export const PORTRAIT_BG = {
-  white: "#bfdcec",
-  black: "#f5dcc4",
-  brown: "#d4e9c6",
-  blue: "#f7e2c2",
-  fawn: "#cfdcf2",
-} as const;
+/** Pastel portrait backgrounds chosen to contrast with each colour family. */
+export const PORTRAIT_BG: Record<string, string> = {
+  white: "#bfdcec", oatmeal: "#cfdcf2", taupe: "#d4e9c6", charcoal: "#f5dcc4", brown: "#d4e9c6",
+  red: "#cfe8dc", orange: "#cddcf2", yellow: "#d8d4f0", green: "#f2d8de", blue: "#f7e2c2", purple: "#e3eecb",
+};
+
+/** A sheep's wool hex (falls back to mask-white for a malformed snapshot). */
+export function woolHex(w: { wool?: string }): string {
+  return typeof w.wool === "string" && /^#[0-9a-fA-F]{6}$/.test(w.wool) ? w.wool : WHITE_WOOL;
+}

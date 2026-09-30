@@ -5,7 +5,7 @@
 import {
   acceptOrder, advanceSeason, buySheep, buyUpgrade, hasUpgrade, upgradeDef, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
-  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf,
+  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf, woolOf,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
@@ -18,9 +18,14 @@ import {
   type ActionData, type PanelName, type TutorialTarget, type View,
 } from "./ui/index.js";
 import { fastForward } from "./debug.js";
+import { AUTOLITE_KEY, recallLite, rememberLite } from "./autolite.js";
 import { Voices, bleatSeries, happySeries, petVoiceFor, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
 
-export const SAVE_KEY = "blue-sheep-save-v2";
+/** v3 (pigment colours) starts fresh: older saves (v1, v2 keys) are left untouched and never loaded (DESIGN-v3 §15 item 5). */
+export const SAVE_KEY = "blue-sheep-save-v3";
+const OLD_SAVE_KEYS = ["blue-sheep-save-v2", "blue-sheep-save-v1"];
+/** Set once the title has said "A new season at Kōwhai Creek" to a returning player. */
+const NEW_SEASON_TOLD_KEY = "blue-sheep-v3-hello";
 const MOTION_KEY = "blue-sheep-reduced-motion";
 /** Walk (default) or pan: how the player gets about the farm (a setting, not game state). */
 const MOVE_KEY = "blue-sheep-move-mode";
@@ -65,7 +70,6 @@ export type Action =
   | { type: "lesson"; op: "ack" | "skip" };
 
 type Marker = NonNullable<WorldSheep["marker"]> | null;
-const COLOURS = new Set(["white", "black", "brown", "blue", "fawn"]);
 
 function randomSeed(): number {
   return (Date.now() % 1_000_000) + 1;
@@ -105,6 +109,8 @@ export class App {
   private readonly voices = new Voices();
   /** Hearts to float up in the world after the next render (a greeting or a treat): id → how many. */
   private loveQueue = new Map<string, number>();
+  /** Auto detail: a lite decision from an earlier visit is remembered (autolite.ts), so the world starts lite. */
+  private liteRemembered = false;
 
   constructor() {
     const q = new URLSearchParams(location.search);
@@ -114,6 +120,14 @@ export class App {
     const qd = q.get("detail");
     this.detail = q.get("lite") === "1" ? "lite" : qd === "auto" || qd === "full" || qd === "lite" ? qd : this.loadDetailPref();
     this.move = q.get("move") === "pan" || q.get("move") === "walk" ? (q.get("move") as MoveMode) : this.loadMovePref();
+    // Auto detail remembers a lite decision between visits and re-checks now and then (only when not pinned by URL).
+    if (this.detail === "auto" && qd === null && q.get("lite") === null) {
+      try {
+        const r = recallLite(localStorage.getItem(AUTOLITE_KEY), Date.now());
+        this.liteRemembered = r.lite;
+        if (r.store) localStorage.setItem(AUTOLITE_KEY, r.store); else localStorage.removeItem(AUTOLITE_KEY);
+      } catch { /* private mode */ }
+    }
     document.body.classList.toggle("reduced-motion", this.reduced);
 
     this.view = defaultView((id) => this.portraitOf(id));
@@ -142,6 +156,7 @@ export class App {
     } else {
       const saved = this.loadSave();
       this.view.hasSave = !!saved;
+      if (!saved) this.view.oldSave = this.oldSaveUntold();
       this.state = saved ?? newGame(randomSeed());
       this.persist = true;
       panel = "title";
@@ -199,15 +214,16 @@ export class App {
       // auto detail found the frames slow and went lite: say so once, ever (the setting stays Auto)
       onAutoLite: () => {
         this.autoWentLite = true;
+        try { localStorage.setItem(AUTOLITE_KEY, rememberLite(Date.now())); } catch { /* private mode */ }
         this.view.detail = { pref: this.detail, now: "lite" };
         if (this.view.panel === "settings") this.render();
         let told = false;
         try { told = localStorage.getItem(AUTOLITE_TOLD_KEY) === "1"; localStorage.setItem(AUTOLITE_TOLD_KEY, "1"); } catch { /* private mode */ }
         if (!told) toast("Switched to a lighter look for smoother play — change in Settings", 5200);
       },
-    }, { seed: this.state.seed, reducedMotion: this.reduced, move: this.move, detail: this.detail });
+    }, { seed: this.state.seed, reducedMotion: this.reduced, move: this.move, detail: this.worldDetail() });
     this.autoWentLite = false;
-    this.view.detail = { pref: this.detail, now: this.detail === "lite" ? "lite" : "full" };
+    this.view.detail = { pref: this.detail, now: this.worldDetail() === "lite" ? "lite" : "full" };
     this.world.setSnapshot(this.snapshot());
   }
 
@@ -291,10 +307,28 @@ export class App {
     if (this.view.panel === "settings") this.render();
   }
 
+  /** What the world is built with: the setting, except that Auto starts lite when a lite decision is remembered. */
+  private worldDetail(): DetailPref {
+    return this.detail === "auto" && this.liteRemembered ? "lite" : this.detail;
+  }
+
+  /** A pre-v3 save exists and the title hasn't yet said so: say it once. */
+  private oldSaveUntold(): boolean {
+    try {
+      if (localStorage.getItem(NEW_SEASON_TOLD_KEY) === "1") return false;
+      if (!OLD_SAVE_KEYS.some((k) => localStorage.getItem(k) !== null)) return false;
+      localStorage.setItem(NEW_SEASON_TOLD_KEY, "1");
+      return true;
+    } catch { return false; }
+  }
+
   /** Detail: Auto / Full / Lite, remembered in this browser; a fresh world is built with it. */
   private setDetail(d: DetailPref): void {
     if (d === this.detail) return;
     this.detail = d;
+    // Choosing Auto again means "measure again": forget the remembered lite decision.
+    this.liteRemembered = false;
+    try { localStorage.removeItem(AUTOLITE_KEY); } catch { /* ignore */ }
     try { localStorage.setItem(DETAIL_KEY, d); } catch { /* ignore */ }
     this.world.dispose();
     this.makeWorld();
@@ -336,11 +370,12 @@ export class App {
   }
 
   /** A cached portrait of a made-up lamb with this look (forecast litters). */
-  private lambArt(l: { colour: string; pattern: string; horns: string }): string {
-    const colour = (COLOURS.has(l.colour) ? l.colour : "white") as WorldSheep["colour"];
+  private lambArt(l: { wool: string; pattern: string; horns: string }): string {
+    const wool = /^#[0-9a-fA-F]{6}$/.test(l.wool) ? l.wool.toUpperCase() : "#FAFAF7";
+    const family = wool === "#FAFAF7" ? "white" : "coloured";
     const ws: WorldSheep = {
-      id: `lamb-art-${colour}-${l.pattern}-${l.horns}`, name: "lamb", sex: l.horns === "horned" ? "ram" : "ewe", adult: false,
-      colour, pattern: l.pattern === "spotted" ? "spotted" : "solid", horns: l.horns === "horned" ? "horned" : "polled",
+      id: `lamb-art-${wool}-${l.pattern}-${l.horns}`, name: "lamb", sex: l.horns === "horned" ? "ram" : "ewe", adult: false,
+      wool, family, pattern: l.pattern === "spotted" ? "spotted" : "solid", horns: l.horns === "horned" ? "horned" : "polled",
       size: 46, fleeceWeight: 3.8, fineness: 24, crimp: 5, zone: "paddock", marker: null,
     };
     try { return this.world.portrait(ws, 72); } catch { return ""; }
@@ -348,14 +383,14 @@ export class App {
 
   private worldSheep(s: Sheep, zone: Zone, marker: Marker): WorldSheep {
     const p = s.phenotype;
-    const colour = String(p["colour"]);
+    const w = woolOf(s);
     return {
       id: s.id, name: s.name, sex: s.sex, adult: isAdult(s, this.state.season),
-      colour: (COLOURS.has(colour) ? colour : "white") as WorldSheep["colour"],
+      wool: w.hex, family: w.family,
       pattern: p["pattern"] === "spotted" ? "spotted" : "solid",
       horns: p["horns"] === "horned" ? "horned" : "polled",
       size: Number(p["size"] ?? 60), fleeceWeight: Number(p["fleeceWeight"] ?? 4),
-      fineness: Number(p["fineness"] ?? 26), crimp: Number(p["crimp"] ?? 5),
+      fineness: Number(p["fineness"] ?? 30), crimp: Number(p["crimp"] ?? 5),
       zone, marker, personality: personalityOf(s), dam: s.dam, fondness: fondnessOf(this.state, s.id),
     };
   }
@@ -880,7 +915,7 @@ export class App {
       this.view.tab = null;
       this.render();
       this.lambChorus(report.lambs.map((l) => l.id).filter((id) => this.state.flock.includes(id)));
-      const blues = report.lambs.filter((l) => l.phenotype["colour"] === "blue" && this.state.flock.includes(l.id));
+      const blues = report.lambs.filter((l) => woolOf(l).trueBlue && this.state.flock.includes(l.id));
       const found = new Set(report.discoveries.map((d) => d.sheep));
       for (const id of new Set([...blues.map((b) => b.id), ...found])) if (this.state.flock.includes(id)) this.world.celebrate(id);
     } finally {
@@ -940,7 +975,7 @@ export class App {
 
   private loadSave(): GameState | null {
     try {
-      const raw = localStorage.getItem(SAVE_KEY) ?? localStorage.getItem("blue-sheep-save-v1");
+      const raw = localStorage.getItem(SAVE_KEY);
       return raw ? deserialize(raw) : null;
     } catch (e) {
       console.warn("Could not load the save:", e);

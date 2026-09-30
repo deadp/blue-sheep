@@ -1,16 +1,18 @@
-/** Game state: construction, sheep bookkeeping, save/load and v1 migration. */
+/** Game state: construction, sheep bookkeeping, save/load (v3 saves only: DESIGN-v3 §15 item 5). */
 import {
-  Pedigree, createRng, discretePhenotype, genomeFromJSON, genomeToJSON, getLocus, quantitativePhenotype,
+  Pedigree, createRng, genomeFromJSON, genomeToJSON, getLocus, observePhenotypes,
   sampleFounder, type Genome, type Rng, type Species,
 } from "@blue-sheep/genetics";
-import { sheep as sheepSpecies } from "@blue-sheep/genetics";
+import { colourInputFromPhenotype, sheep3, woolColour } from "@blue-sheep/genetics";
+import { colourFields } from "./colour.js";
 import {
-  ACTS, ADULT_AGE, EWE_BREED_MAX_AGE, FAIR_CATEGORIES, FAIR_SEASON, MARKET_SIZE, MARKET_SIZE_YEAR1, SEASONS, START_MONEY,
+  ACTS, ADULT_AGE, EWE_BREED_MAX_AGE, FAIR_CATEGORIES, FAIR_SEASON, MARKET_BLUE_FREQ, MARKET_SIZE, MARKET_SIZE_YEAR1, SEASONS, START_MONEY,
 } from "./config.js";
 import { EWE_NAMES, RAM_NAMES } from "./names.js";
-import type { ActNumber, FairCategory, GameState, Phenotype, Sex, Sheep, SheepOrigin, Unlock, UpgradeId } from "./types.js";
+import type { ActNumber, FairCategory, GameState, Phenotype, Sex, Sheep, SheepOrigin, Unlock } from "./types.js";
 
-export const species: Species = sheepSpecies.sheep;
+/** The v3 species: pigment colour (W mask, red/yellow/blue doses, pale), spots, horns, fleece traits. */
+export const species: Species = sheep3.sheep3;
 
 export function seasonLabel(season: number): string {
   return `Year ${Math.floor(season / 4) + 1}, ${SEASONS[((season % 4) + 4) % 4]}`;
@@ -60,14 +62,15 @@ export function addLog(state: GameState, text: string): void {
   if (state.log.length > 300) state.log.splice(0, state.log.length - 300);
 }
 
+/**
+ * What anyone can see of a sheep: every quantitative trait (with its environment drawn from `rng`) and every
+ * discrete trait that isn't hidden (a white sheep's pigment doses, pale and spots are masked and left out).
+ * Plus the derived colour fields (core/colour.ts `colourFields`): `colour` (the colour's name), `family`,
+ * `wool` (hex) and `intensity`.
+ */
 export function computePhenotype(genome: Genome, inbreeding: number, rng: Rng): Phenotype {
-  const out: Phenotype = {};
-  for (const t of species.traits) {
-    out[t.id] = t.kind === "discrete"
-      ? discretePhenotype(genome, species.map, t)
-      : quantitativePhenotype(genome, species.map, t, rng, inbreeding);
-  }
-  return out;
+  const out: Phenotype = observePhenotypes(genome, species, rng, inbreeding);
+  return Object.assign(out, colourFields(out));
 }
 
 function pickName(state: GameState, sex: Sex, rng: Rng): string {
@@ -126,15 +129,29 @@ export function pedigreeOf(state: GameState): Pedigree {
   return p;
 }
 
-/** An unrelated adult that is not blue, so the player has to breed for it. */
+/** Blue "+" copies in a genome (U1 + U2, 0–4). The sim may read genomes; forecasts never do. */
+export function blueCopies(g: Genome): number {
+  let n = 0;
+  for (const id of ["U1", "U2"]) { const l = getLocus(species.map, id); n += g.chromosomes[l.chromosome]![0][l.index]! + g.chromosomes[l.chromosome]![1][l.index]!; }
+  return n;
+}
+
+/** True blue, from the genome at average colour strength: the market never sells the goal itself. */
+function wouldBeTrueBlue(g: Genome): boolean {
+  const ph = observePhenotypes(g, species, createRng(1));
+  return woolColour(colourInputFromPhenotype({ ...ph, depth: 1.4 })).trueBlue;
+}
+
+const MARKET_FREQ = { U1: [1 - MARKET_BLUE_FREQ, MARKET_BLUE_FREQ], U2: [1 - MARKET_BLUE_FREQ, MARKET_BLUE_FREQ] };
+
+/** An unrelated adult Farm sheep that can't already be true blue, so the player has to breed for it. */
 export function sampleFounderSheep(state: GameState, rng: Rng, sex: Sex, born: number, origin: SheepOrigin): Sheep {
   for (let tries = 0; tries < 50; tries++) {
-    const genome = sampleFounder(species.map, rng);
-    const colour = discretePhenotype(genome, species.map, sheepSpecies.colour);
-    if (colour === "blue") continue;
+    const genome = sampleFounder(species.map, rng, origin === "market" ? MARKET_FREQ : undefined);
+    if (wouldBeTrueBlue(genome)) continue;
     return addSheep(state, rng, { sex, born, dam: null, sire: null, genome, inbreeding: 0, origin });
   }
-  throw new Error("could not sample a non-blue founder");
+  throw new Error("could not sample a founder that isn't true blue");
 }
 
 export function fairCategoryFor(season: number): FairCategory {
@@ -157,7 +174,7 @@ export function newGame(seed: number): GameState {
   const rng = createRng(seed);
   const fairSeason = nextFairSeason(0);
   const state: GameState = {
-    version: 2,
+    version: 3,
     seed,
     rng: 0,
     season: 0,
@@ -212,30 +229,38 @@ export function setLocus(g: Genome, locus: string, alleles: [string, string]): v
 }
 
 /**
- * The starter pair's genes. Both white, both carry hidden colour (one white copy, one coloured copy) and are
- * black underneath, so a lamb that shows its colour is black. The ewe also carries one dilute copy, the ram
- * none, so no lamb of the pair can be blue (that stays the goal). Both are polled carriers of horns (one
- * no-horns copy, one horns copy): the tutorial's Punnet square. Both are solid with no hidden spotting (so
- * the tutorial's first lamb teaches nothing by surprise). Everything else is an ordinary founder.
+ * The starter pair's colour genes. Both white, both carry hidden colour (one white copy, one colour copy), and
+ * underneath both carry red paint that passes one dose to every lamb (the ewe on one red gene, the ram on the
+ * other), so a lamb that shows its colour has two red doses — but its own red copies are single, so later
+ * generations can breed the red out again. No yellow. Each also carries one blue copy on each blue gene, so
+ * blue can start here, but no lamb of the pair can be true blue (its two red doses always muddy the blue).
+ * The ewe carries one pale copy, the ram none, so no lamb of the pair is pale. Both are polled carriers of
+ * horns (the tutorial's Punnet square) and solid with no hidden spotting (one idea at a time). Everything else
+ * is an ordinary Farm founder.
  */
+function setStarterColour(g: Genome, sex: Sex, horns: [string, string]): void {
+  setLocus(g, "W", ["w", "W"]);
+  setLocus(g, "R1", sex === "ewe" ? ["+", "+"] : ["-", "-"]);
+  setLocus(g, "R2", sex === "ewe" ? ["-", "-"] : ["+", "+"]);
+  setLocus(g, "Y1", ["-", "-"]);
+  setLocus(g, "Y2", ["-", "-"]);
+  setLocus(g, "U1", ["-", "+"]);
+  setLocus(g, "U2", ["-", "+"]);
+  setLocus(g, "Dl", sex === "ewe" ? ["d", "D"] : ["D", "D"]);
+  setLocus(g, "P", horns);
+  setLocus(g, "S", ["S", "S"]);
+}
+
 function starterGenome(rng: Rng, sex: Sex): Genome {
   const g = sampleFounder(species.map, rng);
-  setLocus(g, "A", ["a", "Aw"]);
-  setLocus(g, "B", ["B", "B"]);
-  setLocus(g, "D", sex === "ewe" ? ["d", "D"] : ["D", "D"]);
-  setLocus(g, "P", ["p", "P"]);
-  setLocus(g, "S", ["S", "S"]); // solid, no hidden spotting: the tutorial's lambs bring one idea at a time
+  setStarterColour(g, sex, ["p", "P"]);
   return g;
 }
 
 /** The pair's mothers, long gone: white and horned (so the farm's records prove each child carries horns). */
 function starterMotherGenome(rng: Rng, forSex: Sex): Genome {
   const g = sampleFounder(species.map, rng);
-  setLocus(g, "A", ["a", "Aw"]);
-  setLocus(g, "B", ["B", "B"]);
-  setLocus(g, "D", forSex === "ewe" ? ["d", "D"] : ["D", "D"]);
-  setLocus(g, "P", ["p", "p"]);
-  setLocus(g, "S", ["S", "S"]);
+  setStarterColour(g, forSex, ["p", "p"]);
   return g;
 }
 
@@ -285,101 +310,27 @@ export function serialize(state: GameState): string {
   return JSON.stringify(state);
 }
 
+/** Thrown for a save from before v3 (pigment colours): the game starts a fresh farm instead (no migration). */
+export class OldSaveError extends Error {
+  constructor(version: unknown) {
+    super(`This save is from an older version of the game (${String(version)}); Kōwhai Creek starts afresh.`);
+    this.name = "OldSaveError";
+  }
+}
+
 export function deserialize(json: string): GameState {
   const raw = JSON.parse(json) as Record<string, unknown>;
   if (!raw || typeof raw !== "object") throw new Error("That save file is not a Blue Sheep save.");
-  if (raw["version"] === 2) {
+  if (raw["version"] === 3) {
     const st = raw as unknown as GameState;
-    // Saves from before farm improvements have no `upgrades`: treat as none bought.
     if (!Array.isArray(st.upgrades)) st.upgrades = [];
-    // The single sheepdog of older saves is Bess, the border collie.
-    st.upgrades = [...new Set((st.upgrades as string[]).map((u) => (u === "dog" ? "collie" : u)))] as UpgradeId[];
-    // Saves from before fondness and mice: every animal starts at its default (by origin), no mice due.
     if (!st.care || typeof st.care !== "object") st.care = {};
     if (st.mice === undefined) st.mice = null;
-    // Saves from before the tutorial have none.
     if (st.tutorial === undefined) st.tutorial = null;
-    // Saves from before the mini-lessons: none running, none done.
     if (st.lesson === undefined) st.lesson = null;
     if (!Array.isArray(st.lessonsDone)) st.lessonsDone = [];
-    // Tutorials saved before the three-lamb tutorial (no version): their steps no longer line up, so an
-    // unfinished one ends here (the farm stays as it is), and any neighbour's flock field is dropped.
-    if (st.tutorial && st.tutorial.ver === undefined) {
-      const old = st.tutorial as typeof st.tutorial & { held?: unknown };
-      delete old.held;
-      if (!old.done) { old.done = true; old.step = 17; }
-      old.ver = 3;
-    }
     return st;
   }
-  if (raw["version"] === 1) return migrateV1(raw);
+  if (raw["version"] === 1 || raw["version"] === 2) throw new OldSaveError(raw["version"]);
   throw new Error(`This save is from an unknown version (${String(raw["version"])}).`);
-}
-
-/** Best-effort upgrade of a v1 prototype save. Throws if the save has no usable flock. */
-export function migrateV1(v1: Record<string, unknown>): GameState {
-  const sheep = v1["sheep"] as Record<string, Partial<Sheep>> | undefined;
-  const flock = v1["flock"] as string[] | undefined;
-  const season = Number(v1["season"]);
-  if (!sheep || !Array.isArray(flock) || !Number.isFinite(season)) throw new Error("This old save is too damaged to load.");
-  const outSheep: Record<string, Sheep> = {};
-  for (const [id, s] of Object.entries(sheep)) {
-    if (!s || !Array.isArray(s.genome) || !s.phenotype) throw new Error("This old save is too damaged to load.");
-    outSheep[id] = {
-      id, name: String(s.name ?? id), sex: s.sex === "ram" ? "ram" : "ewe", born: Number(s.born ?? 0),
-      dam: s.dam ?? null, sire: s.sire ?? null, genome: s.genome, inbreeding: Number(s.inbreeding ?? 0),
-      phenotype: s.phenotype, tested: s.tested ?? {}, ill: false, rosettes: [],
-      origin: s.dam ? "bred" : (flock.includes(id) ? "founder" : "market"),
-    };
-  }
-  const achievements = (v1["achievements"] as string[] | undefined) ?? [];
-  const lambs = Object.values(outSheep).filter((s) => s.dam !== null);
-  const blues = lambs.filter((s) => s.phenotype["colour"] === "blue").length;
-  const act: ActNumber = achievements.includes("blue") || blues > 0 ? 2 : lambs.length > 0 ? 1 : 0;
-  const seed = Number(v1["seed"] ?? 1);
-  const fairSeason = nextFairSeason(season);
-  const oldDisc = (v1["discoveries"] as { season: number; sheep: string; text: string }[] | undefined) ?? [];
-  const state: GameState = {
-    version: 2,
-    seed,
-    rng: Number(v1["rng"] ?? seed),
-    season,
-    money: Math.max(0, Number(v1["money"] ?? 0)),
-    act,
-    actStart: { season, ordersFilled: 0, fairsWon: 0 },
-    flockCap: Math.max(ACTS[act]!.flockCap, Number(v1["flockCap"] ?? 0)),
-    reputation: 0,
-    sheep: outSheep,
-    flock: flock.filter((id) => outSheep[id]),
-    market: ((v1["market"] as string[] | undefined) ?? []).filter((id) => outSheep[id]),
-    log: (v1["log"] as GameState["log"] | undefined) ?? [],
-    nextId: Number(v1["nextId"] ?? Object.keys(outSheep).length + 1),
-    zone: (v1["zone"] as Record<string, string> | undefined) ?? {},
-    plans: (v1["plans"] as Record<string, string> | undefined) ?? {},
-    known: (v1["known"] as GameState["known"] | undefined) ?? {},
-    discoveries: oldDisc.map((d, i) => ({ id: `d${i + 1}`, season: d.season, sheep: d.sheep, locus: "", text: d.text })),
-    unlocks: unlocksUpTo(act),
-    orders: [],
-    acceptedOrders: [],
-    orderHistory: [],
-    nextOrderId: 1,
-    fair: { nextSeason: fairSeason, category: fairCategoryFor(fairSeason), entry: null, history: [] },
-    visitingRam: null,
-    hiredRam: null,
-    events: [],
-    pendingEvent: null,
-    ending: null,
-    stats: {
-      lambsBorn: lambs.length, bluesBorn: blues, coinsEarned: 0, discoveries: oldDisc.length,
-      fairsWon: 0, ordersFilled: 0, ordersFailed: 0,
-    },
-    upgrades: [],
-    care: {},
-    mice: null,
-    achievements,
-    tutorial: null,
-  };
-  if (state.flock.length === 0) throw new Error("This old save has no sheep left to farm.");
-  addLog(state, "Your farm has been carried over to the new version.");
-  return state;
 }

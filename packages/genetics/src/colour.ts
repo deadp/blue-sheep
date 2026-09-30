@@ -37,7 +37,7 @@ export interface WoolColour {
   /** Hue 0–360, saturation and lightness 0–1. */
   hsl: [number, number, number];
   family: ColourFamily;
-  /** Display word: the family, or its pastel name when dilute (pink, sky…), "snow-white", "gold". */
+  /** Display word: the family, its pastel name when dilute (pink, sky…), "slate"/"olive" for muted cool hues, "snow-white", "gold". */
   name: string;
   /** Colourfulness 0–1: (max − min) of the paint amounts, halved when dilute. */
   intensity: number;
@@ -222,6 +222,20 @@ export function intensityBand(i: number): "none" | "soft" | "bright" | "vivid" {
 
 export const VIVID = 0.6;
 
+/** Names for muted cool hues (DESIGN-v3 §15 item 19): the cool counterparts of brown. */
+export const MUTED_NAMES = ["slate", "olive"] as const;
+
+/**
+ * "slate" (muted blue) and "olive" (muted green): a cool hue over a good share of natural colour
+ * (min ≥ 0.25) with C ≤ 0.5. Their family stays blue or green; only the word changes. Null otherwise.
+ */
+export function mutedName(family: ColourFamily, r: number, y: number, b: number): "slate" | "olive" | null {
+  if (family !== "blue" && family !== "green") return null;
+  const m = Math.min(r, y, b), C = Math.max(r, y, b) - m;
+  if (m < 0.25 || C > 0.5) return null;
+  return family === "blue" ? "slate" : "olive";
+}
+
 /** The wool colour a sheep shows. */
 export function woolColour(ph: ColourInput): WoolColour {
   const spotted = !ph.white && !!ph.spotted;
@@ -238,9 +252,10 @@ export function woolColour(ph: ColourInput): WoolColour {
   const intensity = (Math.max(r, y, b) - Math.min(r, y, b)) * (ph.dilute ? 0.5 : 1);
   const family = colourFamily(r, y, b);
   const gold = !ph.dilute && (family === "yellow" || family === "orange") && intensity >= VIVID && (ph.lustre ?? 0) >= 6;
+  const muted = mutedName(family, r, y, b);
   const name = gold ? "gold"
     : ph.dilute ? (isHueFamily(family) ? PASTEL[family] : PASTEL_NEUTRAL[family as NeutralFamily] ?? family)
-    : family;
+    : muted ?? family;
   return {
     hex: rgbToHex(rgb), rgb, hsl: rgbToHsl(rgb), family, name, intensity, dilute: ph.dilute, spotted,
     amounts: { red: r, yellow: y, blue: b },

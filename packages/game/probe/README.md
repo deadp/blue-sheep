@@ -61,6 +61,10 @@ explicitly to test the other modes.
   and its ring goes away; a full hold (~1.2 s) raises fondness by 6 once a season ("Brushed this season"),
   with a filling ring, tufts and hearts (`brush-hold-1`, `brush-ring`, `brush-fluff.png` read back from the
   canvas mid-hold); holding the collie's picture pats her, a short press does not.
+- **colour.mjs**: pigment colours in the live game (DESIGN-v3 Phase 2) on the `?act=3` farm: world sheep are
+  drawn in their phenotype's wool hex and family; a coloured sheep's card lights one dot per dose; the vet
+  offers a pigment test per colour and a test pins both genes; the forecast's ten swatches match the core
+  litter (`panels.mjs assertSwatches`); report cards wear the lamb's wool. Shots `colour-*`.
 - **dressing.mjs**: the world dressing pass (DESIGN-v3 §15 item 27). Six fixed views at 1280×800 (boot walk
   view, home paddock with the flock, woolshed, creek/bush edge, winter, pan overview), full and lite, into
   `out/dressing/` with `perf.json` (draw calls, triangles, the world's `__game.debug.breakdown()`). Asserts lite

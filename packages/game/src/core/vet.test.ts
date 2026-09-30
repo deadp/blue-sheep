@@ -5,23 +5,23 @@ import { GENOTYPE_RE } from "./testkit.js";
 describe("vet", () => {
   it("needs the vet unlock, charges the fee and pins the locus", () => {
     const g = newGame(60);
-    const white = Object.values(g.sheep).find((s) => g.flock.includes(s.id) && s.phenotype["colour"] === "white")!;
-    expect(() => vetTest(g, white.id, "D")).toThrow(/hasn't opened/);
+    const white = Object.values(g.sheep).find((s) => g.flock.includes(s.id) && s.phenotype["white"] === "white")!;
+    expect(() => vetTest(g, white.id, "Dl")).toThrow(/hasn't opened/);
     enterAct(g, 1, undefined, { grant: true });
-    const before = forecastVet(g, white.id, "D");
+    const before = forecastVet(g, white.id, "Dl");
     expect(before.gainBits).toBeGreaterThan(0.3);
-    expect(before.gainBits).toBeCloseTo(entropyBits(Object.values(marginal(g, white.id, "D"))), 6);
+    expect(before.gainBits).toBeCloseTo(entropyBits(Object.values(marginal(g, white.id, "Dl"))), 6);
     expect(before.text).not.toMatch(GENOTYPE_RE);
     const money = g.money;
-    vetTest(g, white.id, "D");
+    vetTest(g, white.id, "Dl");
     expect(g.money).toBe(money - VET_FEE);
-    expect(white.tested["D"]).toBeDefined();
-    const after = forecastVet(g, white.id, "D");
+    expect(white.tested["Dl"]).toBeDefined();
+    const after = forecastVet(g, white.id, "Dl");
     expect(after.gainBits).toBe(0);
-    const fact = factsFor(g, white.id).find((f) => f.locus === "D")!;
+    const fact = factsFor(g, white.id).find((f) => f.locus === "Dl")!;
     expect(fact.certain).toBe(true);
-    expect(entropyBits(Object.values(marginal(g, white.id, "D")))).toBeLessThan(0.01);
-    expect(() => vetTest(g, white.id, "D")).toThrow(/already/);
+    expect(entropyBits(Object.values(marginal(g, white.id, "Dl")))).toBeLessThan(0.01);
+    expect(() => vetTest(g, white.id, "Dl")).toThrow(/already/);
     expect(g.log.at(-1)!.text).not.toMatch(GENOTYPE_RE);
   });
 
@@ -37,6 +37,6 @@ describe("vet", () => {
     const g = newGame(62);
     enterAct(g, 1, undefined, { grant: true });
     g.money = VET_FEE - 1;
-    expect(() => vetTest(g, g.flock[0]!, "A")).toThrow(/costs/);
+    expect(() => vetTest(g, g.flock[0]!, "W")).toThrow(/costs/);
   });
 });

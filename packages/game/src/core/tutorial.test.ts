@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TUTORIAL_STEPS, advanceSeason, advanceTutorial, buyPrice, buySheep, cheapestMarketEwe, deserialize, forecastCross, knownPunnet,
   newGame, newTutorialGame, planMating, PUNNET_GENES, serialize, skipTutorial, tutorialActive, tutorialInfo, tutorialLambs, tutorialOver,
-  tutorialStep, type GameState, type SeasonReport,
+  tutorialStep, woolOf, OldSaveError, type GameState, type SeasonReport,
 } from "./index.js";
 
 /** Plan the tutorial pair and sleep, as the steps ask. */
@@ -25,7 +25,7 @@ function playThrough(seed: number, money?: number): { g: GameState; reports: Sea
   reports.push(breed(g));
   for (const id of ["again", "sleep2", "horns", "punnet"] as const) expect(advanceTutorial(g, id)).toBe(true);
   reports.push(breed(g));
-  for (const id of ["again2", "sleep3", "black"] as const) expect(advanceTutorial(g, id)).toBe(true);
+  for (const id of ["again2", "sleep3", "colour"] as const) expect(advanceTutorial(g, id)).toBe(true);
   if (money !== undefined) g.money = money;
   expect(advanceTutorial(g, "why")).toBe(true);
   expect(tutorialStep(g)).toBe("market");
@@ -44,18 +44,19 @@ describe("tutorial", () => {
     expect(TUTORIAL_STEPS.map((s) => s.id)).toEqual([
       "ewe", "ram", "forecast", "plan", "sleep", "lamb1",
       "again", "sleep2", "horns", "punnet",
-      "again2", "sleep3", "black", "why", "market", "goal", "done",
+      "again2", "sleep3", "colour", "why", "market", "goal", "done",
     ]);
-    // The Punnet square comes only after the horned lamb; the colour square right after the black lamb.
+    // The Punnet square comes only after the horned lamb; the colour square right after the coloured lamb.
     const at = (id: string) => TUTORIAL_STEPS.findIndex((s) => s.id === id);
     expect(at("punnet")).toBe(at("horns") + 1);
-    expect(at("why")).toBe(at("black") + 1);
+    expect(at("why")).toBe(at("colour") + 1);
     expect(TUTORIAL_STEPS.filter((s) => s.ack).map((s) => s.id)).toEqual(["punnet", "why", "goal", "done"]);
     expect(tutorialInfo(g)).toEqual({ step: 1, id: "ewe", done: false });
     expect(g.flock).toHaveLength(2);
     const [e, r] = g.flock.map((id) => g.sheep[id]!);
     expect([e!.sex, r!.sex]).toEqual(["ewe", "ram"]);
-    expect([e!.phenotype["colour"], r!.phenotype["colour"]]).toEqual(["white", "white"]);
+    expect([e!.phenotype["white"], r!.phenotype["white"]]).toEqual(["white", "white"]);
+    expect([e!.phenotype["family"], r!.phenotype["colour"]]).toEqual(["white", "snow-white"]);
   });
 
   it("the tutorial farm is exactly newGame(seed) plus the mentor (the skip start mirrors it)", () => {
@@ -88,23 +89,29 @@ describe("tutorial", () => {
     expect(serialize(playThrough(21).g)).toBe(serialize(playThrough(21).g));
   });
 
-  it("three lambs, one idea each: white and polled; horned (with the first card); black (never blue)", () => {
+  it("three lambs, one idea each: white and polled; horned (with the first card); a clear red (never true blue)", () => {
     for (let seed = 1; seed <= 30; seed++) {
       const { g, reports } = playThrough(seed);
       const t = g.tutorial!;
       const [a, b, c] = tutorialLambs(g);
       expect(reports.map((r) => r.lambs.length), `seed ${seed}`).toEqual([1, 1, 1]);
-      expect([a!.phenotype["colour"], a!.phenotype["horns"]], `seed ${seed}`).toEqual(["white", "polled"]);
-      expect([b!.phenotype["colour"], b!.phenotype["horns"]], `seed ${seed}`).toEqual(["white", "horned"]);
-      expect(c!.phenotype["colour"], `seed ${seed}`).toBe("black");
+      expect([a!.phenotype["white"], a!.phenotype["horns"]], `seed ${seed}`).toEqual(["white", "polled"]);
+      expect([b!.phenotype["white"], b!.phenotype["horns"]], `seed ${seed}`).toEqual(["white", "horned"]);
+      // The coloured lamb: red (two red doses from the pair's true-breeding red), polled, never true blue.
+      expect(c!.phenotype["white"], `seed ${seed}`).toBe("coloured");
+      expect([c!.phenotype["family"], c!.phenotype["colour"], c!.phenotype["horns"]], `seed ${seed}`).toEqual(["red", "red", "polled"]);
+      expect(c!.phenotype["red"]).toBe("2");
+      expect(c!.phenotype["blue"]).toBe("0");
+      expect(woolOf(c!).trueBlue).toBe(false);
+      expect(woolOf(c!).intensity, `seed ${seed}`).toBeGreaterThanOrEqual(0.3); // bright or better: clearly visible
       // No card with the plain first lamb (so no codex yet); the horned lamb brings the first card and the codex.
       expect(reports[0]!.discoveries, `seed ${seed}`).toEqual([]);
       expect(reports[0]!.unlocked).toBeNull();
       expect(reports[1]!.discoveries[0]?.sheep, `seed ${seed}`).toBe(b!.id);
       expect(reports[1]!.discoveries[0]?.locus).toBe("P");
       expect(reports[1]!.unlocked).toBe("cards");
-      // The black lamb shows both parents carry hidden colour.
-      const colourCards = reports[2]!.discoveries.filter((d) => (d.loci ?? [d.locus]).includes("A"));
+      // The coloured lamb shows both parents hide colour under the white.
+      const colourCards = reports[2]!.discoveries.filter((d) => (d.loci ?? [d.locus]).includes("W"));
       expect(colourCards.map((d) => d.sheep).sort(), `seed ${seed}`).toEqual([t.ewe, t.ram].sort());
       expect(knownPunnet(g, PUNNET_GENES.colour, t.ewe, t.ram)!.counts).toEqual({ white: 3, coloured: 1 });
       expect(g.act).toBe(1);
@@ -121,7 +128,7 @@ describe("tutorial", () => {
       h.rng = (h.rng + k * 7919) >>> 0;
       planMating(h, t.ewe, t.ram);
       const r = advanceSeason(h);
-      if (r.lambs.some((l) => l.phenotype["colour"] === "white")) white++;
+      if (r.lambs.some((l) => l.phenotype["white"] === "white")) white++;
     }
     expect(white).toBeGreaterThan(0);
     expect(white).toBeLessThan(20);
@@ -176,7 +183,7 @@ describe("tutorial", () => {
     expect(g.flock).toEqual(flock);
   });
 
-  it("round-trips through a save; old saves load without a tutorial; an unfinished old tutorial ends on load", () => {
+  it("round-trips through a save; saves without a tutorial load as none; pre-v3 saves are refused (fresh start)", () => {
     const g = newTutorialGame(13);
     advanceTutorial(g, "ewe");
     expect(serialize(deserialize(serialize(g)))).toBe(serialize(g));
@@ -184,12 +191,8 @@ describe("tutorial", () => {
     delete old["tutorial"];
     expect(deserialize(JSON.stringify(old)).tutorial).toBeNull();
     expect(newGame(13).tutorial).toBeNull();
-    const mid = JSON.parse(serialize(newTutorialGame(13))) as { tutorial: Record<string, unknown> };
-    mid.tutorial["step"] = 4;
-    mid.tutorial["held"] = [];
-    delete mid.tutorial["ver"];
-    const back = deserialize(JSON.stringify(mid));
-    expect(tutorialActive(back)).toBe(false);
-    expect("held" in back.tutorial!).toBe(false);
+    const v2 = JSON.parse(serialize(newTutorialGame(13))) as Record<string, unknown>;
+    v2["version"] = 2;
+    expect(() => deserialize(JSON.stringify(v2))).toThrow(OldSaveError);
   });
 });

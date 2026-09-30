@@ -14,8 +14,10 @@ export interface PunnetView {
   sireName: string;
   /** Show allele letters (only with the numbers unlock). */
   letters: boolean;
-  /** Colour gene: the colour a lamb with two colour copies shows (default "black"). */
+  /** Colour gene: the shade (hex or colour name) a lamb with two colour copies shows (default red). */
   lambColour?: string;
+  /** Colour gene: that colour in words (default "coloured"). */
+  lambWord?: string;
   /** Small: for the mentor card (default) or the codex. */
   size?: "sm" | "md";
   /** Distinguishes squares on one page (the copies' radio group). */
@@ -70,11 +72,12 @@ function inFour(n: number): string {
 export function punnetHtml(v: PunnetView): string {
   const sq = v.square;
   const g = sq.gene;
-  const colour = v.lambColour ?? "black";
+  const colour = v.lambColour ?? "red";
+  const colourWord = v.lambWord ?? "coloured";
   const sm = (v.size ?? "sm") === "sm";
   const copyPx = sm ? 24 : 32, cellPx = sm ? 32 : 42;
   const name = `pq-${v.id ?? `${g.id}-${sm ? "sm" : "md"}`}`;
-  const lookWord = (look: string) => (g.id === "colour" && look === g.recessiveLook ? colour : look);
+  const lookWord = (look: string) => (g.id === "colour" && look === g.recessiveLook ? colourWord : look);
   const copy = (side: "d" | "s", i: number, allele: string) => {
     const dom = allele === g.dominant;
     const words = dom ? g.dominantCopy : g.recessiveCopy;

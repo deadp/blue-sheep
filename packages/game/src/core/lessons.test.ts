@@ -21,7 +21,7 @@ function playVet(seed: number): GameState {
   expect(lessonStepMet(g, V("vet"))).toBe(true);
   expect(advanceLesson(g, "vet")).toBe(true);
   const id = g.flock[0]!;
-  vetTest(g, id, "D");
+  vetTest(g, id, "Dl");
   expect(lessonStepMet(g, V("vet"))).toBe(true);
   expect(advanceLesson(g, "test")).toBe(true);
   expect(ackLesson(g)).toBe(true);
@@ -66,12 +66,12 @@ describe("mini-lessons", () => {
     // The arrow goes to the chosen sheep's most informative untested trait (never one that would teach nothing).
     const pt = lessonSpeech(g, V("vet"))?.point as { sel: string[] };
     expect(pt.sel[1]).toBe("#overlay .chips");
-    const m = pt.sel[0]!.match(/data-test="(s\d+):([A-Z])"/)!;
+    const m = pt.sel[0]!.match(/data-test="(s\d+):([A-Za-z]+)"/)!;
     expect(m[1]).toBe(g.flock[0]);
-    const gains = ["A", "B", "D", "S", "P"].map((l) => forecastVet(g, g.flock[0]!, l).gainBits);
+    const gains = ["W", "red", "yellow", "blue", "Dl", "S", "P"].map((l) => forecastVet(g, g.flock[0]!, l).gainBits);
     expect(forecastVet(g, g.flock[0]!, m[2]!).gainBits).toBe(Math.max(...gains));
     expect(lessonStepMet(g, V("vet"))).toBe(false);
-    vetTest(g, g.flock[1]!, "B");
+    vetTest(g, g.flock[1]!, "blue");
     expect(lessonStepMet(g, V("vet"))).toBe(true);
     expect(advanceLesson(g, "test")).toBe(true);
     expect(lessonInfo(g)).toMatchObject({ stepId: "learnt", ack: "Got it" });

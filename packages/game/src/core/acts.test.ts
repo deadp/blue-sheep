@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ACTS, advanceSeason, checkActAdvance, currentAct, enterAct, flockSheep, isEnding, markEndingShown, newGame, registryStatus,
+  ACTS, advanceSeason, checkActAdvance, currentAct, enterAct, flockSheep, isEnding, markEndingShown, newGame, registryStatus, setColour,
 } from "./index.js";
 import { GENOTYPE_RE, planAll } from "./testkit.js";
 
@@ -81,12 +81,13 @@ describe("acts", () => {
     expect(registryStatus(g).met).toBe(false);
     expect(currentAct(g).progress).toBeLessThan(1);
     // Make six unrelated fine blue sheep.
-    for (const s of flockSheep(g)) { s.phenotype["colour"] = "blue"; s.phenotype["fineness"] = 20; }
+    const blue = { blue: 4, depth: 1 };
+    for (const s of flockSheep(g)) { setColour(s.phenotype, blue); s.phenotype["fineness"] = 20; }
     const extra = g.market.slice(0, 2);
-    for (const id of extra) { g.flock.push(id); g.sheep[id]!.phenotype["colour"] = "blue"; g.sheep[id]!.phenotype["fineness"] = 20; }
+    for (const id of extra) { g.flock.push(id); setColour(g.sheep[id]!.phenotype, blue); g.sheep[id]!.phenotype["fineness"] = 20; }
     // …and the two long-gone mothers of the starter pair, back on the farm for the photo (unrelated founders).
     for (const s of Object.values(g.sheep).filter((x) => !g.flock.includes(x.id) && !g.market.includes(x.id))) {
-      g.flock.push(s.id); s.born = g.season - 4; s.phenotype["colour"] = "blue"; s.phenotype["fineness"] = 20;
+      g.flock.push(s.id); s.born = g.season - 4; setColour(s.phenotype, blue); s.phenotype["fineness"] = 20;
     }
     expect(registryStatus(g).met).toBe(true);
     const r = advanceSeason(g);

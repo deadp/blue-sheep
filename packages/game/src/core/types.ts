@@ -58,7 +58,8 @@ export interface CareRecord {
  */
 export type Unlock = "numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards" | "farm" | "dogs" | "cat";
 
-export type Locus = "A" | "B" | "D" | "S" | "P";
+/** Genes the vet can test and facts can be about: W (hidden colour), a pigment channel, Dl (pale), S, P. */
+export type Locus = "W" | "red" | "yellow" | "blue" | "Dl" | "S" | "P";
 
 export interface Discovery {
   id: string;
@@ -67,7 +68,7 @@ export interface Discovery {
   locus: string;
   /** Every locus on this card (one card batches all that was learned about a sheep in one go). Absent in old saves. */
   loci?: string[];
-  /** Plain sentence, e.g. "Clover carries the dilute (blue!) allele." */
+  /** Plain sentence, e.g. "Clover passes one red dose to every lamb." */
   text: string;
 }
 
@@ -82,8 +83,10 @@ export interface Order {
   villager: string;
   /** Plain sentence shown on the board. */
   text: string;
-  /** colour orders: wanted colour. */
+  /** colour orders: the wanted colour name ("red", "pink", "slate", "true blue"; core/colour.ts `woolMatches`). */
   colour: string | null;
+  /** colour orders: the lowest intensity band accepted ("soft" | "bright" | "vivid"), or null for any. */
+  band: "soft" | "bright" | "vivid" | null;
   /** horns orders: "horned" | "polled". */
   horns: string | null;
   /** Optional sex requirement (colour/horns orders). */
@@ -147,7 +150,7 @@ export interface PendingEvent {
   kind: EventKind;
   /** The season in which it happens. */
   season: number;
-  /** woolBoom: which colour's wool doubles in price. */
+  /** woolBoom: which colour family's wool doubles in price. */
   colour: string | null;
   /** Announcement sentence. */
   text: string;
@@ -202,6 +205,7 @@ export interface ActInfo {
 
 export interface Stats {
   lambsBorn: number;
+  /** True blue lambs born (family blue, vivid, not pale). */
   bluesBorn: number;
   coinsEarned: number;
   discoveries: number;
@@ -229,7 +233,7 @@ export interface TutorialState {
 }
 
 export interface GameState {
-  version: 2;
+  version: 3;
   seed: number;
   rng: number;
   season: number;
@@ -249,7 +253,7 @@ export interface GameState {
   zone: Record<string, string>;
   /** Planned matings for this season: ewe id -> ram id. Cleared when the season resolves. */
   plans: Record<string, string>;
-  /** Facts the player has proven: sheep id -> locus -> genotype string (internal; never display). */
+  /** Facts the player has proven: sheep id -> gene (W, red, yellow, blue, Dl, S, P) -> genotype string or pigment class (internal; never display). */
   known: Record<string, Record<string, string>>;
   discoveries: Discovery[];
   unlocks: Unlock[];
@@ -290,17 +294,54 @@ export interface GameState {
 
 // ---- Forecasts ------------------------------------------------------------
 
+/** One colour class of a lamb forecast (core/forecast.ts): a colour name at an intensity band, or white. */
+export interface LambSwatch {
+  /** Class key: "snow-white", "pink:soft", "oatmeal". */
+  key: string;
+  /** Display words: "soft pink", "snow-white". */
+  word: string;
+  /** Colour name (family, pastel name, slate, olive, gold or snow-white). */
+  name: string;
+  family: string;
+  /** The class's shade, from its most likely member. */
+  hex: string;
+  /** Chance one lamb is in this class. */
+  p: number;
+  /** White on top: the colour underneath is unknown. */
+  hidden: boolean;
+  trueBlue: boolean;
+  /** "soft" | "bright" | "vivid" | "none". */
+  band: string;
+  intensity: number;
+}
+
 export interface CrossForecast {
+  /** Chance per colour class key (see `swatches`). */
   colour: Record<string, number>;
+  /** Colour classes, most likely first (the swatch litter is `litterOf(swatches)`). */
+  swatches: LambSwatch[];
+  /** Chance per colour family ("white", "red", "blue", "oatmeal"…). */
+  families: Record<string, number>;
+  /** Chance a lamb is white (colour hidden underneath). */
+  white: number;
+  /** Chance a lamb is true blue (family blue, vivid, not pale). */
+  trueBlue: number;
+  /** Chance a lamb is any vivid colour. */
+  vivid: number;
+  /** Colour strength forecast (from sheep that show colour). */
+  depth: QuantForecast;
   horns: Record<string, number>;
+  /** Spots show only on coloured lambs: `spotted` is the chance a lamb shows spots. */
   pattern: Record<string, number>;
   learnBits: number;
   fineness: QuantForecast;
   fleeceWeight: QuantForecast;
   relatedness: number;
   inbreeding: number;
-  /** Short warm sentence about the chance of a blue lamb. */
+  /** Short warm sentence about the chance of a true blue lamb. */
   blueText: string;
+  /** The litter's colours in words ("Most lambs snow-white, about one in five bright red."). */
+  colourText: string;
   /** Short sentence about what the cross would teach. */
   learnText: string;
 }

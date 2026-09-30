@@ -1,29 +1,31 @@
 /** The season report: lambs next to the forecast the player saw, money, orders, fair, event, discoveries, act advance. */
 import {
-  FAIR_LABEL, MICE_ANNOUNCE, PET_NAME, paceStep, seasonLabel, type CrossForecast, type GameState, type SeasonReport, type Sheep,
+  FAIR_LABEL, MICE_ANNOUNCE, PET_NAME, paceStep, seasonLabel, woolOf, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
 import { lambTile, litterLooks } from "./forecast.js";
-import { cap, discoveryText, discoveryTitle, esc, hex, portrait, UNLOCK_ICON, UNLOCK_WORDS } from "./util.js";
+import { cap, discoveryText, discoveryTitle, esc, portrait, UNLOCK_ICON, UNLOCK_WORDS } from "./util.js";
 import { btn, head, icon, iconize, nm, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 
-const SURPRISE = 0.2;
+const SURPRISE = 0.15;
 const MAX_CARDS = 4;
 
 function lambReveal(state: GameState, view: View, l: Sheep, f: CrossForecast | undefined, k: number, inTen: boolean): string {
-  const colour = String(l.phenotype["colour"]);
-  const p = f ? f.colour[colour] ?? 0 : 1;
+  const w = woolOf(l);
+  // A surprise is a colour the forecast gave little chance to: judged on the colour family (white, red, blue…),
+  // not the exact shade, so a lamb a shade off what was expected isn't called a long shot.
+  const p = f ? (w.family === "white" ? f.white : f.families[w.family] ?? 0) : 1;
   const surprise = !!f && p < SURPRISE;
-  const blue = colour === "blue";
-  const words = `${colour}${l.phenotype["pattern"] === "spotted" ? ", spotted" : ""}${l.phenotype["horns"] === "horned" ? ", horned" : ""}`;
+  const blue = w.trueBlue;
+  const words = `${w.word}${blue ? " (true blue)" : ""}${l.phenotype["pattern"] === "spotted" ? ", spotted" : ""}${l.phenotype["horns"] === "horned" ? ", horned" : ""}`;
   const why = surprise ? (inTen ? "A long shot!" : "Not one of your ten!") : "";
-  return `<button class="born flip ${surprise ? "surprise" : ""} ${blue ? "blue" : ""}" data-sheep="${esc(l.id)}" style="--d:${k}" aria-label="${esc(`${l.name}, ${words}`)}">
+  return `<button class="born flip ${surprise ? "surprise" : ""} ${blue ? "blue" : ""}" data-sheep="${esc(l.id)}" data-family="${esc(w.family)}" data-wool="${esc(w.hex)}" style="--d:${k};--wool:${esc(w.hex)}" aria-label="${esc(`${l.name}, ${words}`)}">
     <span class="flip-inner">
       <span class="f-back" aria-hidden="true">${icon("sheep", "lg")}</span>
       <span class="f-front">
         ${portrait(view, l, "sm")}
         <span class="b-txt"><span class="nm">${esc(l.name)}</span> <span class="meta">${l.sex === "ewe" ? "♀" : "♂"}</span><br>
-        <span class="swatch" style="--wool:${hex(colour)}"></span>${esc(words)}${blue ? "!" : ""}
+        <span class="swatch" style="--wool:${esc(w.hex)}"></span>${esc(words)}${blue ? "!" : ""}
         ${surprise ? `<br><span class="surprise-tag">${icon("sparkle", "inl")} ${esc(why)}</span>` : ""}${l.inbreeding >= 0.125 ? `<br><span class="meta">small: close kin</span>` : ""}</span>
       </span>
     </span>
@@ -37,8 +39,8 @@ function expectedRow(state: GameState, view: View, f: CrossForecast, lambs: Shee
   const used = new Set<number>();
   const hit = new Map<number, number>();
   const inTen = lambs.map((l, k) => {
-    const c = String(l.phenotype["colour"]);
-    const idx = looks.findIndex((x, i) => !used.has(i) && x.colour === c);
+    const c = woolOf(l).key;
+    const idx = looks.findIndex((x, i) => !used.has(i) && x.key === c);
     if (idx < 0) return false;
     used.add(idx);
     hit.set(idx, k);
@@ -90,9 +92,9 @@ export function reportHtml(state: GameState, view: View): string {
     blocks.push(`<div class="act-banner new-thing" data-unlocked="${esc(u)}">${icon(UNLOCK_ICON[u], "xl")}<div><div class="act">New: ${esc(UNLOCK_WORDS[u])}</div>
       <div class="tom-says">${icon("tom", "inl")} “${iconize(esc(paceStep(u)?.intro ?? ""))}”</div></div></div>`);
   }
-  const blues = r.lambs.filter((l) => l.phenotype["colour"] === "blue");
+  const blues = r.lambs.filter((l) => woolOf(l).trueBlue);
   if (blues.length && state.stats.bluesBorn === blues.length) {
-    blocks.push(`<div class="act-banner blue">${icon("heart", "xl t-blue")}<div><div class="act">Your first blue lamb!</div><div>${esc(blues.map((b) => b.name).join(" and "))} ${blues.length > 1 ? "are" : "is"} blue.</div></div></div>`);
+    blocks.push(`<div class="act-banner blue">${icon("heart", "xl t-blue")}<div><div class="act">Your first true blue lamb!</div><div>${esc(blues.map((b) => b.name).join(" and "))} ${blues.length > 1 ? "are" : "is"} true blue.</div></div></div>`);
   }
   if (r.endingReached) blocks.push(`<div class="act-banner gold">${icon("rosette", "xl")}<div><div class="act">Your breed is registered!</div><div>The whole village is coming to see.</div></div></div>`);
   const matings = matingRows(state, view, r);

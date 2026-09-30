@@ -2,7 +2,7 @@
 // asserting game invariants after every sleep.
 import { isMain, runSteps } from "./lib/harness.mjs";
 import { ProbeError } from "./lib/browser.mjs";
-import { adultEwes, adultRams, capOf, fairScore, flock, isAdult, roughValue } from "./lib/game.mjs";
+import { HEX_RE, adultEwes, adultRams, capOf, fairScore, flock, isAdult, roughValue } from "./lib/game.mjs";
 import { BOOT_QUERY } from "./smoke.mjs";
 
 const SEASONS = 12;
@@ -31,7 +31,7 @@ export const play = {
     g.assertNoErrors("during boot");
     let st = await g.state();
     let prevAct = st.act;
-    const tally = { plans: 0, accepted: 0, fairs: 0, sold: 0, lambs: 0, rejected: 0 };
+    const tally = { plans: 0, accepted: 0, fairs: 0, sold: 0, lambs: 0, rejected: 0, families: /** @type {Set<string>} */ (new Set()) };
     let usedForecast = false;
     let fallbackNoted = false;
     /** Farm improvement bought through the market UI: checked to persist across every later sleep. */
@@ -83,7 +83,7 @@ export const play = {
         if (upgraded) { ctx.note(`S${season}: bought upgrade "${upgraded}" via the market panel`); st = await g.state(); }
       }
 
-      // Matings: each adult ewe with the ram maximising P(blue), or round-robin rams without the hook.
+      // Matings: each adult ewe with the ram maximising P(true blue), or round-robin rams without the hook.
       const rams = adultRams(st);
       let budget = Math.max(1, Math.floor((cap - st.flock.length) / 2));
       let rr = 0;
@@ -96,7 +96,7 @@ export const play = {
           const f = await forecast(g, "cross", ewe.id, cand.id);
           if (f === undefined) break;
           usedForecast = true;
-          const p = f.colour?.blue ?? 0;
+          const p = (f.trueBlue ?? 0) + (f.vivid ?? 0) * 0.1;
           if (p > bestP) { bestP = p; ram = cand; }
         }
         const r = await g.act({ type: "plan", ewe: ewe.id, ram: ram.id });
@@ -132,6 +132,16 @@ export const play = {
       if (upgraded && !(st.upgrades ?? []).includes(upgraded)) throw new ProbeError(`${where}: upgrade "${upgraded}" was lost`);
       const born = (st.stats?.lambsBorn ?? 0) - lambsBefore;
       tally.lambs += born;
+      // Rule (DESIGN-v3 §2.2): every lamb shows a colour from the colour model — a family, a valid wool hex, and
+      // pigment doses only when it isn't white (the white mask hides them).
+      for (const l of Object.values(st.sheep).filter((/** @type {any} */ x) => x.born === st.season && x.origin === "bred")) {
+        const p = /** @type {any} */ (l).phenotype;
+        if (typeof p.family !== "string" || !p.family) throw new ProbeError(`${where}: lamb ${/** @type {any} */ (l).name} has no colour family`);
+        if (!HEX_RE.test(String(p.wool))) throw new ProbeError(`${where}: lamb ${/** @type {any} */ (l).name} has no valid wool hex (${p.wool})`);
+        if ((p.white === "white") !== (p.family === "white")) throw new ProbeError(`${where}: lamb ${/** @type {any} */ (l).name}: white mask ${p.white} but family ${p.family}`);
+        if (p.white === "white" && (p.red !== undefined || p.blue !== undefined)) throw new ProbeError(`${where}: a white lamb's hidden doses are visible in its phenotype`);
+        tally.families.add(p.family);
+      }
       if (plannedEwes.length > 0 && born < 1 && !illnessReported(st, season, plannedEwes)) {
         throw new ProbeError(`${where}: ${plannedEwes.length} mating(s) planned, no illness reported, but stats.lambsBorn did not increase ("no lamb" bug)`);
       }
@@ -139,7 +149,7 @@ export const play = {
 
     if (!upgraded) ctx.note("no farm improvement became affordable in 12 seasons (upgrade purchase not exercised)");
     ctx.artifact(await g.screenshot("04-play-end"));
-    ctx.note(`12 seasons: act ${st.act}, money ${st.money}, flock ${st.flock.length}/${capOf(st)}, lambs ${tally.lambs}, plans ${tally.plans}, sold ${tally.sold}, orders accepted ${tally.accepted}, fair entries ${tally.fairs}, refused actions ${tally.rejected}`);
+    ctx.note(`12 seasons: act ${st.act}, money ${st.money}, flock ${st.flock.length}/${capOf(st)}, lambs ${tally.lambs} (families: ${[...tally.families].join(", ")}), plans ${tally.plans}, sold ${tally.sold}, orders accepted ${tally.accepted}, fair entries ${tally.fairs}, refused actions ${tally.rejected}`);
   },
 };
 
@@ -167,7 +177,7 @@ async function buyUpgradeViaMarket(g, st, season) {
   const where = `S${season}: upgrade "${pick.id}"`;
   if (!(after.upgrades ?? []).includes(pick.id)) throw new ProbeError(`${where}: clicking Buy did not record it in state.upgrades`);
   if (before - after.money !== pick.price) throw new ProbeError(`${where}: money went ${before} -> ${after.money}, expected -${pick.price}`);
-  const saved = await g.page.evaluate(() => JSON.parse(localStorage.getItem("blue-sheep-save-v2") ?? "{}").upgrades ?? []);
+  const saved = await g.page.evaluate(() => JSON.parse(localStorage.getItem("blue-sheep-save-v3") ?? "{}").upgrades ?? []);
   if (!saved.includes(pick.id)) throw new ProbeError(`${where}: not in the saved game`);
   const again = await g.act({ type: "upgrade", id: pick.id });
   if (again.ok) throw new ProbeError(`${where}: could be bought twice`);

@@ -1,13 +1,20 @@
 /** Deterministic game states at different points of the story, for UI tests and the dev preview. Uses only core actions. */
 import {
-  ACTS, advanceSeason, acceptOrder, canBreed, deserialize, enterAct, grantUnlock, greetAnimal, lambRoom, newGame, ownedPets, planMating, rankCandidates, sellSheep,
+  ACTS, advanceSeason, acceptOrder, buyPrice, buySheep, canBreed, deserialize, enterAct, grantUnlock, greetAnimal, lambRoom, newGame, ownedPets, planMating, rankCandidates, sellSheep,
   seasonOfYear, serialize, sheepValue, hireVisitingRam, enterFair, isAdult,
   type GameState, type SeasonReport,
 } from "../core/index.js";
 
-/** One greedy season: say hello to everyone, make room, plan every ewe with its best "blue" mate, take an order, sleep. */
+/**
+ * One greedy season: say hello to everyone, buy a coloured sheep from the market when there's room and coins to
+ * spare (so fixtures show a flock of several colours), make room, plan every ewe with its best "true blue" mate,
+ * take an order, sleep.
+ */
 export function greedySeason(s: GameState): SeasonReport {
   for (const id of [...s.flock, ...ownedPets(s)]) greetAnimal(s, id);
+  const coloured = s.market.map((id) => s.sheep[id]!).filter((m) => m.phenotype["white"] !== "white" && buyPrice(m) + 5 <= s.money)
+    .sort((a, b) => Number(b.phenotype["intensity"] ?? 0) - Number(a.phenotype["intensity"] ?? 0))[0];
+  if (coloured && s.flock.length < s.flockCap - 3) { try { buySheep(s, coloured.id); } catch { /* not for sale */ } }
   while (lambRoom(s) < 3 && s.flock.length > 6) {
     const cheapest = s.flock.map((id) => s.sheep[id]!).sort((a, b) => sheepValue(a, s.season) - sheepValue(b, s.season))[0]!;
     sellSheep(s, cheapest.id);
@@ -15,7 +22,7 @@ export function greedySeason(s: GameState): SeasonReport {
   for (const id of s.flock) {
     const e = s.sheep[id]!;
     if (e.sex !== "ewe" || !canBreed(e, s.season) || lambRoom(s) < 1) continue;
-    const best = rankCandidates(s, id, "blue").find((c) => c.sheep.origin !== "visitor" || s.hiredRam === c.sheep.id);
+    const best = rankCandidates(s, id, "trueblue").find((c) => c.sheep.origin !== "visitor" || s.hiredRam === c.sheep.id);
     if (best) { try { planMating(s, id, best.sheep.id); } catch { /* busy ram etc. */ } }
   }
   const open = s.orders.find((o) => o.status === "open");

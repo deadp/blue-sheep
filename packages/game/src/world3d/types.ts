@@ -30,7 +30,10 @@ export interface WorldSheep {
   name: string;
   sex: "ewe" | "ram";
   adult: boolean;
-  colour: "white" | "black" | "brown" | "blue" | "fawn";
+  /** Wool colour as a hex, from the colour model (core/colour.ts), e.g. "#FAFAF7" snow-white, "#C8322F" red. */
+  wool: string;
+  /** Colour family: "white", "oatmeal", "taupe", "charcoal", "brown", "red", "orange", "yellow", "green", "blue", "purple". */
+  family: string;
   pattern: "solid" | "spotted";
   horns: "polled" | "horned";
   /** kg, typically 40–80 → body scale */

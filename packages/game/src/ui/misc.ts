@@ -9,8 +9,8 @@ import { lessonShown, lessonTarget, tutorialTarget } from "./tutorial.js";
 import { btn, head, icon, more, pom, stitch, type IconName } from "./felt/index.js";
 
 const FLAVOUR = [
-  "Somewhere in this flock, a blue lamb is waiting to be born.",
-  "Two white sheep, one black lamb. Something is hiding in the wool.",
+  "Somewhere in this flock, a true blue lamb is waiting to be born.",
+  "Two white sheep, one red lamb. Something is hiding in the wool.",
   "Every lamb is a little surprise. Some are big ones.",
 ];
 
@@ -22,6 +22,7 @@ export function titleHtml(state: GameState, view: View): string {
   return `<div class="title">
     <div class="title-art" aria-hidden="true">${icon("sheep", "xl t-blue")}<span class="title-knot k1"></span><span class="title-knot k2"></span></div>
     <h1>Blue Sheep <small>of Kōwhai Creek</small></h1>
+    ${view.oldSave ? `<p class="new-season" data-new-season>${icon("sprout", "inl")} A new season at Kōwhai Creek. The valley has fresh colours now, so every farm starts afresh.</p>` : ""}
     <p class="flavour">${esc(FLAVOUR[state.seed % FLAVOUR.length])}</p>
     <div class="title-actions">
       ${played
@@ -97,7 +98,7 @@ export function endingHtml(state: GameState, _view: View): string {
     <div class="title-art" aria-hidden="true">${icon("rosette", "xl")}</div>
     <h1>A breed of your own</h1>
     <p>Six blue sheep, fine wool, healthy lines. The registry has a new page with your farm's name on it.</p>
-    <div class="stats">${stat("sheep", st.lambsBorn, "lambs born")}${stat("heart", st.bluesBorn, "blue lambs")}${stat("sparkle", st.discoveries, "discoveries")}${stat("mail", st.ordersFilled, "orders filled")}${stat("rosette", st.fairsWon, "rosettes")}${stat("coin", st.coinsEarned, "coins earned")}</div>
+    <div class="stats">${stat("sheep", st.lambsBorn, "lambs born")}${stat("heart", st.bluesBorn, "true blue lambs")}${stat("sparkle", st.discoveries, "discoveries")}${stat("mail", st.ordersFilled, "orders filled")}${stat("rosette", st.fairsWon, "rosettes")}${stat("coin", st.coinsEarned, "coins earned")}</div>
     <p class="meta">It took ${tookWords(state.season)}.</p>
     <div class="row center">${btn("Keep farming", { kind: "primary", cls: "big", icon: "sheep", data: { close: "" } })}${btn("Start a new farm", { icon: "sprout", data: { newgame: "" } })}</div>
   </div>`;
@@ -116,7 +117,8 @@ export function growingText(state: GameState, sex?: "ewe" | "ram"): string | nul
 
 function hint(state: GameState, view: View): { text: string; icon: IconName; market?: string } | null {
   const n = Object.keys(state.plans).length;
-  if (view.panel === "forecast") return null;
+  // The open bag tray covers the hint's corner: one thing at a time.
+  if (view.panel === "forecast" || view.tray) return null;
   if (state.season === 0 && n === 0) return { icon: "sheep", text: "Click a sheep to meet it." };
   if (n > 0) return { icon: "moon", text: `${n} mating${n === 1 ? "" : "s"} planned. Press Next season when you're ready.` };
   if (lambRoom(state) < 1) {

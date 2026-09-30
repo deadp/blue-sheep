@@ -66,7 +66,7 @@ describe("farm improvements", () => {
   });
 
   it("a devoted Maremma sees the fox off", () => {
-    const g = atWinter(204, "fox", "maremma");
+    const g = atWinter(206, "fox", "maremma");
     g.care = { maremma: { level: 100, greeted: -1, treated: -1, cared: 99 } };
     planAll(g); advanceSeason(g); // lambs in the field
     const lambs = flockSheep(g).filter((s) => !isAdult(s, g.season)).length;

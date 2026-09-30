@@ -3,12 +3,16 @@ export * from "./types.js";
 export * from "./config.js";
 export {
   species, seasonLabel, seasonOfYear, yearOf, ageOf, isAdult, isIll, canBreed, flockSheep, pedigreeOf, genomeOf,
-  newGame, serialize, deserialize, migrateV1, nextFairSeason, fairCategoryFor, unlocksUpTo, addLog, marketSize,
+  newGame, serialize, deserialize, OldSaveError, nextFairSeason, fairCategoryFor, unlocksUpTo, addLog, marketSize,
 } from "./state.js";
 export { advanceSeason, renameSheep, twinChance } from "./sim.js";
 export { planMating, unplanMating, plannedPairings, ramLoad, ramAvailable, lambRoom, overCap, growingLambs } from "./breeding.js";
 export { buySheep, sellSheep, sheepValue, buyPrice, ramPrice, woolIncome, finenessMultiplier } from "./economy.js";
-export { vetTest, forecastVet, isTestLocus } from "./vet.js";
+export { vetTest, forecastVet, isTestLocus, wasTested } from "./vet.js";
+export {
+  woolOf, woolFromPhenotype, dressWool, colourFields, setColour, isTrueBlue, isColoured, bandRank, woolMatches, targetWords, woolPricePerKg,
+  colourValue, colourShowScore, BANDS, PASTEL_NAMES, HUE_NAMES, type Wool, type Band, type ColourTarget,
+} from "./colour.js";
 export {
   buyUpgrade, forecastUpgrade, upgradeBlocked, upgradeOffered, upgradeDef, hasUpgrade, upgradeCapBonus, feedPerHead, chanceWords, type UpgradeForecast,
 } from "./upgrades.js";
@@ -20,16 +24,18 @@ export {
 } from "./care.js";
 export { hasCat, catCatch, miceCost, miceNow, miceComingText, MICE_ANNOUNCE } from "./mice.js";
 export {
-  acceptOrder, declineOrder, forecastOrder, forecastOrderFor, sheepMatchesOrder, orderBoardLimit,
+  acceptOrder, declineOrder, forecastOrder, forecastOrderFor, sheepMatchesOrder, orderBoardLimit, orderTarget, colourChanceBySample,
 } from "./orders.js";
 export { enterFair, forecastFair, fairScore, fairOdds, fieldMean } from "./fair.js";
 export { hireVisitingRam, forecastVisitor } from "./visitor.js";
 export { announceText, eventPool, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
-  forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, GOALS, type Goal,
+  forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, colourText, colourClasses,
+  litterOf, pColour, goalColour, GOALS, type Goal,
 } from "./forecast.js";
 export {
-  factsFor, posteriors, updateDiscoveries, marginal, entropyBits, DISCRETE_TRAITS, LOCUS_WORDS, type Fact,
+  factsFor, posteriors, updateDiscoveries, marginal, geneDist, geneLoci, entropyBits, channelClassWords, isChannel,
+  DISCRETE_TRAITS, LOCUS_WORDS, GENE_LABEL, GENES, CHANNELS, type Fact, type GeneId, type Channel,
 } from "./knowledge.js";
 export { familyTree, type FamilyTree, type TreeNode, type AncestorNode, type DescendantNode } from "./tree.js";
 export {

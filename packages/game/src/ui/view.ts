@@ -23,7 +23,7 @@ export interface View {
   /** PNG data URL for a sheep (from WorldView.portrait). */
   portraits: (id: string) => string;
   /** PNG data URL of a made-up lamb with this look, for forecast litters (optional; CSS blobs without it). */
-  lambArt?: (look: { colour: string; pattern: string; horns: string }) => string;
+  lambArt?: (look: { wool: string; pattern: string; horns: string }) => string;
   /** PNG data URL of a farm dog or the cat (PetId), for the animal card (optional; an emoji without it). */
   petArt?: (id: string) => string;
   /** Settings: walk the farmer (default) or pan the camera (optional; saved in localStorage by the controller). */
@@ -36,10 +36,12 @@ export interface View {
   sound?: { on: boolean; volume: number };
   /** HUD: the bag's tray of farm places is open (optional; closed by default and whenever a panel opens). */
   tray?: boolean;
+  /** Title: a save from before v3 was found and set aside: say "A new season at Kōwhai Creek" (once). */
+  oldSave?: boolean;
   /** Title: whether a saved game exists to continue (optional; defaults to "state has been played"). */
   hasSave?: boolean;
 }
 
 export function defaultView(portraits: (id: string) => string = () => ""): View {
-  return { panel: null, sheepId: null, mateId: null, goal: "blue", tab: null, report: null, portraits };
+  return { panel: null, sheepId: null, mateId: null, goal: "trueblue", tab: null, report: null, portraits };
 }

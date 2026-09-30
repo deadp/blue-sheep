@@ -1,11 +1,15 @@
 /** Family tree for the tree page (act 3+). Pure view over the sheep table. */
+import { woolOf } from "./colour.js";
 import type { GameState, Sex, Sheep } from "./types.js";
 
 export interface TreeNode {
   id: string;
   name: string;
   sex: Sex;
+  /** Colour words ("soft pink", "snow-white"). */
   colour: string;
+  /** Wool hex. */
+  wool: string;
   born: number;
   inbreeding: number;
   /** Still in the flock. */
@@ -26,7 +30,7 @@ export interface FamilyTree {
 
 function node(state: GameState, s: Sheep): TreeNode {
   return {
-    id: s.id, name: s.name, sex: s.sex, colour: String(s.phenotype["colour"]), born: s.born, inbreeding: s.inbreeding,
+    id: s.id, name: s.name, sex: s.sex, colour: woolOf(s).word, wool: woolOf(s).hex, born: s.born, inbreeding: s.inbreeding,
     inFlock: state.flock.includes(s.id), rosettes: s.rosettes.length,
   };
 }

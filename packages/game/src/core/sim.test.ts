@@ -1,24 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceSeason, buySheep, deserialize, isAdult, newGame, pedigreeOf, planMating, sellSheep, serialize,
-  flockSheep, canBreed, START_MONEY,
+  flockSheep, canBreed, START_MONEY, woolOf,
 } from "./index.js";
 import { planAll } from "./testkit.js";
 
 describe("game sim", () => {
-  it("new game starts small: one white ewe and one white ram (horn carriers, known), a quiet market, v2 fields", () => {
+  it("new game starts small: one white ewe and one white ram (horn carriers, known), a quiet market, v3 fields", () => {
     const g = newGame(1);
     const flock = g.flock.map((id) => g.sheep[id]!);
     expect(flock.map((s) => s.sex)).toEqual(["ewe", "ram"]);
-    expect(flock.map((s) => s.phenotype["colour"])).toEqual(["white", "white"]);
+    expect(flock.map((s) => s.phenotype["family"])).toEqual(["white", "white"]);
     expect(flock.map((s) => s.phenotype["horns"])).toEqual(["polled", "polled"]);
     // Their horned mothers are on record, so the farm knows each carries one horns copy: no card for that.
     for (const s of flock) expect(g.known[s.id]?.["P"]).toBe("p/P");
     expect(g.market).toHaveLength(2); // one ewe and one ram in the first year
     expect(g.unlocks).toEqual([]);
-    expect(flock.every((s) => s.phenotype["colour"] !== "blue")).toBe(true);
+    expect(flock.every((s) => !woolOf(s).trueBlue)).toBe(true);
+    // Every sheep, market ones too, carries the derived colour fields.
+    for (const s of Object.values(g.sheep)) expect(s.phenotype["wool"]).toMatch(/^#[0-9A-F]{6}$/);
     expect(flock.every((s) => isAdult(s, g.season))).toBe(true);
-    expect(g.version).toBe(2);
+    expect(g.version).toBe(3);
     expect(g.act).toBe(0);
     expect(g.money).toBe(START_MONEY);
     expect(g.stats.lambsBorn).toBe(0);

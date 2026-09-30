@@ -1,5 +1,6 @@
 /** Winter events: announced a season ahead (so they are decisions), resolved in winter. */
 import type { Rng } from "@blue-sheep/genetics";
+import { woolOf } from "./colour.js";
 import { DOG_GUARD, DOG_IDS, FOX_GUARD_BOLDNESS, PET_NAME, WOLF_MIN_ACT } from "./config.js";
 import { ownedPets, petEffort } from "./care.js";
 import { removeFromFlock } from "./economy.js";
@@ -63,8 +64,8 @@ export function announceEvent(state: GameState, rng: Rng): PendingEvent | null {
   const kind = pool[rng.int(pool.length)]!;
   let colour: string | null = null;
   if (kind === "woolBoom") {
-    const have = [...new Set(flockSheep(state).map((s) => String(s.phenotype["colour"])))].filter((c) => c !== "white");
-    const pool = have.length ? have : ["black", "brown"];
+    const have = [...new Set(flockSheep(state).map((s) => woolOf(s).family as string))].filter((c) => c !== "white");
+    const pool = have.length ? have : ["oatmeal", "red"];
     colour = pool[rng.int(pool.length)]!;
   }
   const ev: PendingEvent = { kind, season: state.season + 1, colour, text: announceText(kind, colour) };

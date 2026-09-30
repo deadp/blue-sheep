@@ -1,6 +1,5 @@
 /** Villager orders: generation, knowledge-limited fulfilment forecasts, accepting and resolution. */
-import { createRng, type Rng } from "@blue-sheep/genetics";
-import { sheep as sheepDefs } from "@blue-sheep/genetics";
+import { createRng, sheep3 as sheepDefs, type Rng } from "@blue-sheep/genetics";
 import { forecastQuantitative } from "@blue-sheep/inference";
 import { plannedPairings, ramAvailable } from "./breeding.js";
 import {
@@ -8,7 +7,9 @@ import {
 } from "./config.js";
 import { removeFromFlock } from "./economy.js";
 import { flockStats, traitRecords } from "./forecast.js";
-import { lambChanceBySample, posteriors } from "./knowledge.js";
+import { lambChanceBySample, lambOutcomesBySample, posteriors } from "./knowledge.js";
+import { dressWool, targetWords, woolMatches, woolOf, type Band, type ColourTarget } from "./colour.js";
+import { woolColour } from "@blue-sheep/genetics";
 import { VILLAGERS } from "./names.js";
 import { addLog, ageOf, canBreed, flockSheep, isAdult, seasonLabel } from "./state.js";
 import { oddsText } from "./words.js";
@@ -21,9 +22,14 @@ export function sheepMatchesOrder(s: Sheep, o: Order): boolean {
   // Colour and horns orders are "breed me one": only lambs born after the order was posted count.
   if (s.born <= o.posted) return false;
   if (o.sex && s.sex !== o.sex) return false;
-  if (o.colour && s.phenotype["colour"] !== o.colour) return false;
+  if (o.colour && !woolMatches(woolOf(s), orderTarget(o))) return false;
   if (o.horns && s.phenotype["horns"] !== o.horns) return false;
   return true;
+}
+
+/** The colour a colour order asks for. */
+export function orderTarget(o: Pick<Order, "colour" | "band">): ColourTarget {
+  return { colour: o.colour ?? "", min: o.band ?? null };
 }
 
 function findOrder(state: GameState, orderId: string): Order {
@@ -65,13 +71,45 @@ function mean(xs: Float64Array): number {
   let t = 0; for (const x of xs) t += x; return xs.length ? t / xs.length : 0;
 }
 
+/**
+ * Per posterior sample, the chance one lamb of this pair shows a colour that fits `target`: coloured (not
+ * white) × the pigment doses and pale that make a matching colour at the pair's likely colour strength.
+ */
+export function colourChanceBySample(state: GameState, target: ColourTarget, ewe: string, ram: string): Float64Array {
+  const n = posteriors(state).byTrait.get("white")!.samples.length;
+  if (target.colour === "white" || target.colour === "snow-white") return lambChanceBySample(state, "white", ewe, ram, "white");
+  const out = new Float64Array(n);
+  const coloured = lambChanceBySample(state, "white", ewe, ram, "coloured");
+  const R = lambOutcomesBySample(state, "red", ewe, ram), Y = lambOutcomesBySample(state, "yellow", ewe, ram);
+  const B = lambOutcomesBySample(state, "blue", ewe, ram), D = lambOutcomesBySample(state, "dilute", ewe, ram);
+  const depth = pairDepth(state, ewe, ram);
+  const combos: { r: Float64Array; y: Float64Array; b: Float64Array; d: Float64Array }[] = [];
+  for (const [r, pr] of Object.entries(R)) for (const [y, py] of Object.entries(Y)) for (const [b, pb] of Object.entries(B)) for (const [d, pd] of Object.entries(D)) {
+    const w = dressWool(woolColour({ white: false, red: Number(r), yellow: Number(y), blue: Number(b), dilute: d === "pale", depth }));
+    if (woolMatches(w, target)) combos.push({ r: pr, y: py, b: pb, d: pd });
+  }
+  if (!combos.length) return out;
+  for (let k = 0; k < n; k++) {
+    let p = 0;
+    for (const c of combos) p += c.r[k]! * c.y[k]! * c.b[k]! * c.d[k]!;
+    out[k] = coloured[k]! * p;
+  }
+  return out;
+}
+
+/** The pair's likely colour strength: the mean of what's measured on the parents that show colour. */
+function pairDepth(state: GameState, ewe: string, ram: string): number {
+  const vals = [state.sheep[ewe], state.sheep[ram]].filter((s) => s && s.phenotype["white"] !== "white").map((s) => Number(s!.phenotype["depth"]));
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 1;
+}
+
 /** Per-sample chance one lamb of this pair fits a colour/horns order. */
 function matchChance(state: GameState, o: Order, ewe: string, ram: string): Float64Array {
   let out: Float64Array | null = null;
   const mul = (a: Float64Array) => { if (!out) out = Float64Array.from(a); else for (let i = 0; i < out.length; i++) out[i]! *= a[i]!; };
-  if (o.colour) mul(lambChanceBySample(state, "colour", ewe, ram, o.colour));
+  if (o.colour) mul(colourChanceBySample(state, orderTarget(o), ewe, ram));
   if (o.horns) mul(lambChanceBySample(state, "horns", ewe, ram, o.horns));
-  const n = posteriors(state).byTrait.get("colour")!.samples.length;
+  const n = posteriors(state).byTrait.get("white")!.samples.length;
   const res: Float64Array = out ?? new Float64Array(n).fill(1);
   if (o.sex) for (let i = 0; i < res.length; i++) res[i]! *= 0.5;
   return res;
@@ -90,7 +128,7 @@ function pFillBreed(state: GameState, o: Order): number {
   const best = bestSet(state, (e, r) => mean(chance(e, r)));
   const planned = plannedPairings(state);
   const first = planned.length ? planned : best;
-  const n = posteriors(state).byTrait.get("colour")!.samples.length;
+  const n = posteriors(state).byTrait.get("white")!.samples.length;
   let total = 0;
   for (let k = 0; k < n; k++) {
     let none = 1;
@@ -192,7 +230,24 @@ export function forecastOrder(state: GameState, orderId: string): { pFill: numbe
 
 // ---- Generation ---------------------------------------------------------------
 
-const COLOUR_REWARD: Record<string, number> = { black: 20, brown: 24, fawn: 36, blue: 60 };
+/** Base reward for a colour order, by the band asked for (true blue is the prize). */
+const COLOUR_REWARD: Record<string, number> = { any: 20, soft: 20, bright: 28, vivid: 40, trueblue: 60 };
+
+/** Colours villagers ask for, by act: pastels and naturals early, vivid colours later. */
+const COLOUR_ASKS: { colour: string; band: Band | null; minAct: number }[] = [
+  { colour: "oatmeal", band: null, minAct: 1 }, { colour: "red", band: null, minAct: 1 }, { colour: "pink", band: null, minAct: 1 },
+  { colour: "purple", band: null, minAct: 1 }, { colour: "orange", band: null, minAct: 1 }, { colour: "yellow", band: null, minAct: 1 },
+  { colour: "lemon", band: null, minAct: 1 }, { colour: "peach", band: null, minAct: 1 }, { colour: "brown", band: null, minAct: 1 },
+  { colour: "taupe", band: null, minAct: 1 }, { colour: "slate", band: null, minAct: 2 }, { colour: "olive", band: null, minAct: 2 },
+  { colour: "green", band: null, minAct: 1 }, { colour: "blue", band: null, minAct: 1 }, { colour: "sky", band: null, minAct: 1 },
+  { colour: "lilac", band: null, minAct: 1 }, { colour: "mint", band: null, minAct: 1 },
+  { colour: "red", band: "bright", minAct: 2 }, { colour: "purple", band: "bright", minAct: 2 }, { colour: "orange", band: "bright", minAct: 2 },
+  { colour: "red", band: "vivid", minAct: 3 }, { colour: "blue", band: "bright", minAct: 3 }, { colour: "true blue", band: null, minAct: 4 },
+];
+
+function article(w: string): string {
+  return /^[aeiou]/.test(w) ? `an ${w}` : `a ${w}`;
+}
 
 function deadlineWords(deadline: number): string {
   return `by ${seasonLabel(deadline)}`;
@@ -203,13 +258,13 @@ function orderText(o: Order): string {
   if (o.kind === "wool") return `${who} wants ${o.kg} kg of fleece finer than ${o.microns} µm from one shearing, ${deadlineWords(o.deadline)}.`;
   const lamb = o.sex ? `${o.sex} lamb` : "lamb";
   if (o.kind === "horns") return `${who} needs a ${o.horns} ${lamb} for the hill flock, ${deadlineWords(o.deadline)}.`;
-  return `${who} would love a ${o.colour} ${lamb} bred on your farm, ${deadlineWords(o.deadline)}.`;
+  return `${who} would love ${article(targetWords(orderTarget(o)))} ${lamb} bred on your farm, ${deadlineWords(o.deadline)}.`;
 }
 
 function blankOrder(state: GameState, rng: Rng): Order {
   return {
     id: `o${state.nextOrderId}`, kind: "colour", villager: VILLAGERS[rng.int(VILLAGERS.length)]!, text: "",
-    colour: null, horns: null, sex: null, kg: null, microns: null,
+    colour: null, band: null, horns: null, sex: null, kg: null, microns: null,
     posted: state.season, expires: state.season + ORDER_OFFER_SEASONS, deadline: state.season + 4,
     reward: 0, reputation: 1, status: "open", filledBy: [], resolvedSeason: null,
   };
@@ -234,17 +289,19 @@ function proposeOrder(state: GameState, rng: Rng, first = false): Order | null {
     o.sex = rng.chance(0.5) ? "ram" : "ewe";
     o.deadline = state.season + 3 + rng.int(3);
   } else {
-    const colours = state.act >= 4 ? ["black", "brown", "fawn"] : ["black", "brown", "fawn", "blue"];
-    o.colour = colours[rng.int(colours.length)]!;
+    const asks = COLOUR_ASKS.filter((a) => a.minAct <= Math.max(1, state.act));
+    const ask = asks[rng.int(asks.length)]!;
+    o.colour = ask.colour;
+    o.band = ask.band;
     o.sex = rng.chance(0.4) ? (rng.chance(0.5) ? "ewe" : "ram") : null;
     o.deadline = state.season + 3 + rng.int(3);
   }
-  if (state.orders.some((x) => x.kind === o.kind && x.colour === o.colour && x.horns === o.horns && x.sex === o.sex)) return null;
+  if (state.orders.some((x) => x.kind === o.kind && x.colour === o.colour && x.band === o.band && x.horns === o.horns && x.sex === o.sex)) return null;
   const { pFill } = forecastOrderFor(state, o);
   if (pFill < ORDER_MIN_PFILL) return null;
   const difficulty = 0.8 + 0.8 * (1 - pFill);
   const repBonus = 1 + 0.05 * Math.min(ORDER_REP_BONUS_CAP, Math.max(0, state.reputation));
-  const base = o.kind === "wool" ? 10 + 4 * (o.kg ?? 0) : o.kind === "horns" ? 18 : COLOUR_REWARD[o.colour!] ?? 20;
+  const base = o.kind === "wool" ? 10 + 4 * (o.kg ?? 0) : o.kind === "horns" ? 18 : COLOUR_REWARD[o.colour === "true blue" ? "trueblue" : o.band ?? "any"] ?? 20;
   o.reward = Math.round(base * difficulty * repBonus);
   o.reputation = pFill < 0.5 ? 2 : 1;
   o.text = orderText(o);

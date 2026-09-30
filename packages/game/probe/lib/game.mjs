@@ -16,12 +16,19 @@ export const adultRams = (st) => flock(st).filter((s) => s.sex === "ram" && isAd
 /** Flock cap: v2 may name it `flockCap` (v1) or `cap`. @param {any} st */
 export const capOf = (st) => st.flockCap ?? st.cap ?? Infinity;
 
-const COLOUR_RANK = { blue: 5, fawn: 4, brown: 3, black: 2, white: 1 };
+/** How prized a sheep's colour is (v3 phenotype fields): white least, vivid colours and blue most. @param {any} p phenotype */
+function colourRank(p) {
+  if (p.family === "white") return 1;
+  return 1 + (p.intensity ?? 0) * 5 + (p.family === "blue" ? 2 : 0);
+}
+
+/** A 7-digit hex colour, as the colour model writes into `phenotype.wool`. */
+export const HEX_RE = /^#[0-9A-F]{6}$/i;
 
 /** Rough market value used only to pick which lamb to sell. Blue is precious; finer, heavier fleece is better. @param {any} s */
 export function roughValue(s) {
   const p = s.phenotype ?? {};
-  return (COLOUR_RANK[/** @type {keyof typeof COLOUR_RANK} */ (p.colour)] ?? 1) * 10 + (p.fleeceWeight ?? 0) * 2 - (p.fineness ?? 26) * 0.5;
+  return colourRank(p) * 10 + (p.fleeceWeight ?? 0) * 2 - (p.fineness ?? 30) * 0.5;
 }
 
 /**
@@ -34,7 +41,7 @@ export function fairScore(category, s) {
   const p = s.phenotype ?? {};
   if (/fine/.test(c)) return -(p.fineness ?? 99);
   if (/fleece|heav/.test(c)) return p.fleeceWeight ?? 0;
-  if (/colou?r|rare/.test(c)) return COLOUR_RANK[/** @type {keyof typeof COLOUR_RANK} */ (p.colour)] ?? 0;
+  if (/colou?r|rare|vivid/.test(c)) return colourRank(p);
   if (/big|size/.test(c)) return p.size ?? 0;
   return roughValue(s);
 }

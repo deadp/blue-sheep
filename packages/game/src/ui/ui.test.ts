@@ -30,10 +30,14 @@ const VOCAB = new Set([
   "brushed", "unlocked", "concept",
   // not actions: the Punnet square's markers (gene, counts, copy picks, cell row/column/look) for CSS and probes
   "gene", "dom", "rec", "pick", "r", "c", "look",
+  // not actions: colour markers (card colour row, lamb tiles, reveals, order icons, vet rows, title) for CSS and probes
+  "colour", "hex", "family", "wool", "key", "order-colour", "test-row", "new-season",
 ]);
+/** A pigment genotype (never shown): "-/+", "+/+". */
+const PIGMENT_GENOTYPE = /[-+]\/[-+]/;
 
 function view(p: Partial<View> = {}): View {
-  return { panel: null, sheepId: null, mateId: null, goal: "blue", tab: null, report: null, portraits: () => PORTRAIT, ...p };
+  return { panel: null, sheepId: null, mateId: null, goal: "trueblue", tab: null, report: null, portraits: () => PORTRAIT, ...p };
 }
 
 /** Player-visible markup: drop image sources (data URLs contain "image/png"). */
@@ -44,7 +48,7 @@ function visible(html: string): string {
 function checkCommon(html: string, s: GameState, where: string): void {
   expect(html.trim().length, where).toBeGreaterThan(20);
   const v = visible(html);
-  const m = v.match(GENOTYPE);
+  const m = v.match(GENOTYPE) ?? v.match(PIGMENT_GENOTYPE);
   expect(m, `${where}: genotype-like text ${m?.[0]} near ${m ? v.slice(Math.max(0, m.index! - 40), m.index! + 40) : ""}`).toBeNull();
   if (!s.unlocks.includes("numbers")) {
     expect(v.includes("%"), `${where}: % before numbers unlock`).toBe(false);
@@ -219,10 +223,11 @@ describe("panel content", () => {
   it("vet lists friendly locus names with forecasts and tests", () => {
     const s = fx("act2").state;
     const h = renderPanel(s, view({ panel: "vet", tab: s.flock[1]! }));
-    for (const w of ["hidden colour", "brown", "dilute", "spotting", "horns"]) expect(h).toContain(w);
-    expect(h).toContain(`data-test="${s.flock[1]}:D"`);
+    for (const w of ["red paint", "yellow paint", "blue paint", "pale", "spots", "horns"]) expect(h).toContain(w);
+    expect(h).toContain(`data-test="${s.flock[1]}:blue"`);
+    expect(h).toContain('class="pig');
     expect(h).toContain(`data-tab="${s.flock[0]}"`);
-    expect(h).not.toMatch(/>\s*[ABDSP]\s*</);
+    expect(h).not.toMatch(/>\s*(W|Dl|S|P|R1|R2|U1|U2|Y1|Y2)\s*</);
   });
 
   it("fair lists eligible sheep with forecasts and an enter button", () => {
@@ -422,8 +427,11 @@ describe("presentation", () => {
   it("forecast litters use rendered lamb portraits when the view can draw them, one per chance in ten", () => {
     const s = fx("fresh").state;
     const looks: string[] = [];
-    const h = renderPanel(s, view({ panel: "forecast", lambArt: (l) => { looks.push(`${l.colour}/${l.pattern}/${l.horns}`); return PORTRAIT; } }));
+    const h = renderPanel(s, view({ panel: "forecast", lambArt: (l) => { looks.push(`${l.wool}/${l.pattern}/${l.horns}`); return PORTRAIT; } }));
     expect(h.match(/class="lamb-tile art/g)?.length).toBe(10);
+    // Each lamb is drawn in its forecast colour (a valid wool hex), and white lambs wear a "?".
+    for (const l of looks) expect(l).toMatch(/^#[0-9A-F]{6}\//);
+    expect(h.match(/data-wool="#[0-9A-F]{6}"/g)?.length).toBe(10);
     expect(h).toContain("Each lamb = one chance in ten");
     expect(looks.length).toBeGreaterThanOrEqual(10);
     expect(visible(h)).not.toContain("%");
@@ -458,7 +466,7 @@ describe("presentation", () => {
     const h = renderPanel(f.state, view({ panel: "report", report: f.report }));
     expect(h.match(/class="born flip/g)?.length).toBe(f.report!.lambs.filter((l) => f.report!.matings[l.dam ?? ""]).length);
     expect(h).toContain('class="f-back"');
-    expect(h).toMatch(/lamb-tile [a-z]+ hit/);
+    expect(h).toMatch(/lamb-tile[a-z ]* hit/);
   });
 
   it("the act track shows five milestones in the board and a mini track in the HUD", () => {
@@ -554,7 +562,7 @@ describe("tutorial", () => {
     // 5–6: sleep; the first lamb is plain white and polled, with no card and no codex
     let { r, v: rv } = sleep("sleep");
     const l1 = r.lambs[0]!;
-    expect([l1.phenotype["colour"], l1.phenotype["horns"]]).toEqual(["white", "polled"]);
+    expect([l1.phenotype["family"], l1.phenotype["horns"]]).toEqual(["white", "polled"]);
     const r1 = check(rv);
     expect(r1).toContain(`${l1.name}</b>, white`);
     expect(r1).toContain("two seasons");
@@ -568,7 +576,7 @@ describe("tutorial", () => {
     advanceTutorial(g, "again");
     ({ r, v: rv } = sleep("sleep2"));
     const l2 = r.lambs[0]!;
-    expect([l2.phenotype["colour"], l2.phenotype["horns"]]).toEqual(["white", "horned"]);
+    expect([l2.phenotype["family"], l2.phenotype["horns"]]).toEqual(["white", "horned"]);
     expect(check(rv)).toContain("<b>horns</b>");
     const rep2 = renderPanel(g, rv);
     expect(rep2).toContain('class="dcard');
@@ -588,19 +596,21 @@ describe("tutorial", () => {
     withNums.unlocks.push("numbers");
     expect(mentorHtml(withNums, v)).toContain('<span class="p-let">P</span>');
     advanceTutorial(g, "punnet");
-    // 11–13: once more; the black lamb
+    // 11–13: once more; the coloured (red) lamb
     again();
     advanceTutorial(g, "again2");
     ({ r, v: rv } = sleep("sleep3"));
     const l3 = r.lambs[0]!;
-    expect(l3.phenotype["colour"]).toBe("black");
-    expect(check(rv)).toContain("<b>black</b>");
-    advanceTutorial(g, "black");
-    // 14: why black — the same square with the hidden colour copy
+    expect(l3.phenotype["family"]).toBe("red");
+    expect(check(rv)).toContain("<b>red</b>");
+    expect(check(rv)).not.toContain("black");
+    advanceTutorial(g, "colour");
+    // 14: where did the colour come from — the same square with the hidden colour copy, and the red paint
     const why = check(view());
     expect(why).toContain('data-gene="colour"');
     expect(why).toContain('data-dom="3" data-rec="1"');
     expect(why).toContain("colour copy");
+    expect(why).toContain("red paint");
     advanceTutorial(g, "why");
     // 15: the market
     v = view({ panel: "market" });
@@ -610,7 +620,8 @@ describe("tutorial", () => {
     advanceTutorial(g, "market");
     // 16: the goal, in plain words
     const goal = check(v);
-    expect(goal).toContain("dilute");
+    expect(goal).toContain("blue doses");
+    expect(goal).toContain("true blue");
     advanceTutorial(g, "goal");
     // 17: your flock — no neighbour, no extra sheep
     const done = check(v);

@@ -32,10 +32,12 @@ describe("facts and discoveries", () => {
       expect(f.certain).toBe(true);
       expect(f.genotype).toBe("p/p");
     }
-    const white = Object.values(g.sheep).find((s) => s.phenotype["colour"] === "white" && !s.dam);
+    const white = Object.values(g.sheep).find((s) => s.phenotype["white"] === "white" && !s.dam && g.market.includes(s.id));
     if (white) {
-      const f = factsFor(g, white.id).find((x) => x.locus === "D")!;
-      expect(f.certain).toBe(false);
+      for (const gene of ["W", "red", "yellow", "blue", "Dl"] as const) {
+        const f = factsFor(g, white.id).find((x) => x.locus === gene)!;
+        expect(f.certain, gene).toBe(false);
+      }
     }
   });
 

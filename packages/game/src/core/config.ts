@@ -16,11 +16,15 @@ export const MARKET_SIZE = 3;
 /** In the first year the market is quieter: one ewe and one ram, so a new farmer isn't flooded. */
 export const MARKET_SIZE_YEAR1 = 2;
 
-/** Wool price per kg by colour; blue is the prize. */
-export const WOOL_PRICE: Record<string, number> = { white: 0.8, black: 1.2, brown: 1.2, fawn: 1.8, blue: 2.4 };
-/** Breeding value on the market by colour (added to a base price). */
-export const COLOUR_VALUE: Record<string, number> = { white: 0, black: 6, brown: 6, fawn: 14, blue: 30 };
+/* Wool price per kg and breeding value by colour: core/colour.ts (`woolPricePerKg`, `colourValue`). */
 export const SHEEP_BASE_PRICE = 12;
+/**
+ * Blue "+" frequency at both blue genes for Farm sheep at the market (the breed's own is 0.10). A small tilt
+ * so a farm that buys in can find blue paint; tuned with scripts/blind.ts (DESIGN-v3 §15 item 19).
+ */
+export const MARKET_BLUE_FREQ = 0.15;
+/** The Farm breed's average fibre diameter (µm): prices, the fair and words are measured from here. */
+export const FINE_REF = 30;
 /** Lambs (not yet adult) sell for this fraction of an adult's value. */
 export const LAMB_PRICE_FACTOR = 0.5;
 /** The trader pays this share of a sheep's market worth in year 1, a little less each year after, down to the minimum… */
@@ -32,7 +36,8 @@ export const BUY_MARKUP = 1.8;
 
 export const VET_FEE = 12;
 export const VISITOR_FEE = 25;
-export const TEST_LOCI = ["A", "B", "D", "S", "P"] as const;
+/** Vet tests: hidden colour, one pigment colour (both its genes), pale, spots, horns. */
+export const TEST_LOCI = ["W", "red", "yellow", "blue", "Dl", "S", "P"] as const;
 
 // Farm improvements: one-time purchases at the market.
 export interface UpgradeDef {
@@ -146,7 +151,7 @@ export const ORDER_REP_BONUS_CAP = 6;
 export const FAIR_SEASON = 2; // autumn
 export const FAIR_CATEGORIES: FairCategory[] = ["fine", "heavy", "rare", "big"];
 export const FAIR_LABEL: Record<FairCategory, string> = {
-  fine: "Finest wool", heavy: "Heaviest fleece", rare: "Rarest colour", big: "Biggest sheep",
+  fine: "Finest wool", heavy: "Heaviest fleece", rare: "Most vivid colour", big: "Biggest sheep",
 };
 export const FAIR_RIVALS = 4;
 export const FAIR_JUDGE_SD = 0.5;
@@ -155,7 +160,6 @@ export const FAIR_FIELD_BASE = 1.1;
 export const FAIR_FIELD_GROWTH = 0.05; // per year
 export const FAIR_FIELD_MAX = 1.8;
 export const FAIR_PRIZES = [30, 15, 8];
-export const RARITY: Record<string, number> = { white: 0, black: 0.8, brown: 1.2, fawn: 2.2, blue: 3.0 };
 
 // Events
 export const FOX_GUARD_BOLDNESS = 7;
@@ -180,8 +184,8 @@ export const ACTS: ActDef[] = [
     goalText: "Plan a mating, then see your first lambs next season.", unlocks: [], flockCap: 10,
   },
   {
-    act: 1, title: "Hidden colours", line: "Hidden colours! Breed me a blue sheep.",
-    goalText: "Breed a blue lamb.", unlocks: ["cards", "orders", "vet", "farm", "dogs", "cat"], flockCap: 10,
+    act: 1, title: "Hidden colours", line: "Hidden colours! Breed me a true blue sheep.",
+    goalText: "Breed a true blue lamb.", unlocks: ["cards", "orders", "vet", "farm", "dogs", "cat"], flockCap: 10,
   },
   {
     act: 2, title: "The wool buyer", line: "I pay for fineness.",
@@ -193,13 +197,13 @@ export const ACTS: ActDef[] = [
   },
   {
     act: 4, title: "Your own breed", line: "Found your own breed.",
-    goalText: "Keep six blue sheep with fine wool (flock average 24 µm or finer) that are not too closely related.",
+    goalText: "Keep six blue sheep with fine wool (flock average 28 µm or finer) that are not too closely related.",
     unlocks: [], flockCap: 24,
   },
 ];
 
 export const REGISTRY_BLUES = 6;
-export const REGISTRY_MICRONS = 24;
+export const REGISTRY_MICRONS = 28;
 export const REGISTRY_MAX_INBREEDING = 0.125;
 export const ORDERS_FOR_ACT2 = 3;
 /** Orders filled before act 2 that count toward it (at most). */

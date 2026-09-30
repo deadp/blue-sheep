@@ -1,11 +1,12 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
-  ADULT_AGE, GOALS, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, isAdult, isIll, lambRoom, oddsLabel, ramLoad,
-  type CrossForecast, type GameState, type Goal, type Sheep,
+  ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, isAdult, isIll, lambRoom,
+  litterOf, oddsLabel, oddsText, pColour, ramLoad, woolOf,
+  type CrossForecast, type GameState, type Goal, type LambSwatch, type Sheep,
 } from "../core/index.js";
 import type { QuantForecast } from "@blue-sheep/inference";
 import {
-  esc, hex, learnMeter, learnWord, numbersOn, portrait, prop, sexMark, swatch,
+  esc, hex, learnMeter, learnWord, numbersOn, portrait, prop, sexMark, swatch, woolSwatch,
 } from "./util.js";
 import { btn, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
@@ -21,62 +22,72 @@ export function tenths(dist: Record<string, number>): { key: string; p: number; 
   return counts.map(({ key, p, n }) => ({ key, p, n }));
 }
 
-export interface LambLook { colour: string; pattern: string; horns: string }
+/** One forecast lamb: its colour class (words, shade, key), and whether it is horned or spotted. */
+export interface LambLook { key: string; word: string; wool: string; hidden: boolean; trueBlue: boolean; pattern: string; horns: string }
 
-/** The ten lambs of a forecast, most likely colour first. Horns and spots are spread across them in proportion. */
-export function litterLooks(f: Pick<CrossForecast, "colour" | "horns" | "pattern">): LambLook[] {
-  const counts = tenths(f.colour);
+type LitterForecast = Pick<CrossForecast, "swatches" | "horns" | "pattern" | "trueBlue">;
+
+/**
+ * The ten lambs of a forecast (the swatch litter, core `litterOf`), most likely colour first. Horns are spread
+ * across them in proportion; spots only on lambs that show colour.
+ */
+export function litterLooks(f: LitterForecast): LambLook[] {
+  const ten = litterOf(f.swatches);
   const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
-  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
-  const out: LambLook[] = [];
-  let k = 0;
-  for (const e of counts) for (let i = 0; i < e.n; i++, k++) {
-    out.push({ colour: e.key, horns: k < hornedN ? "horned" : "polled", pattern: 9 - k < spottedN ? "spotted" : "solid" });
-  }
+  let spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
+  const out: LambLook[] = ten.map((w, k) => ({ key: w.key, word: w.word, wool: w.hex, hidden: w.hidden, trueBlue: w.trueBlue, horns: k < hornedN ? "horned" : "polled", pattern: "solid" }));
+  for (let k = out.length - 1; k >= 0 && spottedN > 0; k--) if (!out[k]!.hidden) { out[k]!.pattern = "spotted"; spottedN--; }
   return out;
 }
 
 function lookWords(l: LambLook): string {
-  return `${l.colour}${l.pattern === "spotted" ? ", spotted" : ""}${l.horns === "horned" ? ", horned" : ""}`;
+  const base = l.hidden ? "white on top, colour underneath unknown" : `${l.word}${l.trueBlue ? " (true blue!)" : ""}`;
+  return `${base}${l.pattern === "spotted" ? ", spotted" : ""}${l.horns === "horned" ? ", horned" : ""}`;
 }
 
-/** One lamb tile: a rendered lamb portrait when the view can draw one, a wool-coloured blob otherwise. */
+/** One lamb tile: a rendered lamb portrait tinted with the class colour, or a wool-coloured blob. White lambs wear a "?". */
 export function lambTile(view: Pick<View, "lambArt"> | null, l: LambLook, i = 0, extra = "", d?: number): string {
   let src = "";
-  try { src = view?.lambArt?.(l) ?? ""; } catch { src = ""; }
-  const badges = `${l.horns === "horned" ? `<b class="lb horn" aria-hidden="true">${icon("horn")}</b>` : ""}${l.pattern === "spotted" ? `<b class="lb spot" aria-hidden="true"></b>` : ""}`;
-  return `<span class="lamb-tile ${src ? "art" : "blob"} ${extra}" style="--i:${i};${d !== undefined ? `--d:${d};` : ""}--wool:${hex(l.colour)}" title="${esc(lookWords(l))}">${src ? `<img src="${esc(src)}" alt="">` : `<span class="lamb ${l.pattern === "spotted" ? "spot" : ""}">${l.horns === "horned" ? "<i></i>" : ""}</span>`}${badges}</span>`;
+  try { src = view?.lambArt?.({ wool: l.wool, pattern: l.pattern, horns: l.horns }) ?? ""; } catch { src = ""; }
+  const badges = `${l.horns === "horned" ? `<b class="lb horn" aria-hidden="true">${icon("horn")}</b>` : ""}${l.pattern === "spotted" ? `<b class="lb spot" aria-hidden="true"></b>` : ""}${l.hidden ? `<b class="lb q" aria-hidden="true">?</b>` : ""}${l.trueBlue ? `<b class="lb tb" aria-hidden="true">${icon("heart")}</b>` : ""}`;
+  const cls = ["lamb-tile", src ? "art" : "blob", l.hidden ? "hidden" : "", extra].filter(Boolean).join(" ");
+  return `<span class="${cls}" data-wool="${esc(l.wool)}" data-key="${esc(l.key)}" style="--i:${i};${d !== undefined ? `--d:${d};` : ""}--wool:${esc(l.wool)}" title="${esc(lookWords(l))}">${src ? `<img src="${esc(src)}" alt="">` : `<span class="lamb ${l.pattern === "spotted" ? "spot" : ""}">${l.horns === "horned" ? "<i></i>" : ""}</span>`}${badges}</span>`;
 }
 
 /**
- * The litter: ten lamb portraits (one per "one in ten"), filling in one by one, a caption ("each lamb = one
- * chance in ten" and the horned/spotted share). `small` for inline use (report, market): tiles only.
- * The colour key (the words per colour, % with numbers) is `litterKey`, shown behind "more".
+ * The litter: ten lamb portraits (one per "one in ten") in a 5 × 2 grid, each tinted with its forecast wool
+ * colour, and a caption ("each lamb = one chance in ten" and the horned/spotted share). `small` for inline use
+ * (report, market): tiles only. The colour key (the words per colour, % with numbers) is `litterKey`.
  */
-export function litterRow(state: GameState, f: Pick<CrossForecast, "colour" | "horns" | "pattern">, small = false, view: Pick<View, "lambArt"> | null = null): string {
+export function litterRow(state: GameState, f: LitterForecast, small = false, view: Pick<View, "lambArt"> | null = null): string {
   const looks = litterLooks(f);
   const tiles = looks.map((l, i) => lambTile(view, l, i)).join("");
   const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
-  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
+  const spottedN = looks.filter((l) => l.pattern === "spotted").length;
   const extras: string[] = [];
   if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`)}</span>`);
   if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);
-  return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f.colour))}">${tiles}</div>
+  if (looks.some((l) => l.hidden)) extras.push(`<span class="xkey"><b class="lb q">?</b> white on top</span>`);
+  return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f))}">${tiles}</div>
     ${small ? "" : `<div class="litter-cap"><span class="each">Each lamb = one chance in ten</span>${extras.length ? `<span class="legend extras">${extras.join("")}</span>` : ""}</div>`}`;
 }
 
 /** The colour key for a litter: each colour's share in words ("3 in 10"), or % with numbers, and the rare ones. */
-export function litterKey(state: GameState, f: Pick<CrossForecast, "colour">, view: Pick<View, "lambArt"> | null = null): string {
-  const counts = tenths(f.colour);
+export function litterKey(state: GameState, f: Pick<CrossForecast, "swatches">, view: Pick<View, "lambArt"> | null = null): string {
+  const ten = litterOf(f.swatches);
   const nums = numbersOn(state);
-  const rare = counts.filter((e) => e.n === 0).map((e) => e.key);
-  const keyArt = (c: string) => {
+  const n = (key: string) => ten.filter((w) => w.key === key).length;
+  const rare = f.swatches.filter((w) => n(w.key) === 0 && w.p > 0.005).slice(0, 3).map((w) => w.word);
+  const keyArt = (w: LambSwatch) => {
     let src = "";
-    try { src = view?.lambArt?.({ colour: c, pattern: "solid", horns: "polled" }) ?? ""; } catch { src = ""; }
-    return src ? `<img class="k-art" src="${esc(src)}" alt="">` : `<b style="--wool:${hex(c)}"></b>`;
+    try { src = view?.lambArt?.({ wool: w.hex, pattern: "solid", horns: "polled" }) ?? ""; } catch { src = ""; }
+    return src ? `<img class="k-art" src="${esc(src)}" alt="">` : `<b style="--wool:${esc(w.hex)}"></b>`;
   };
-  const legend = counts.filter((e) => e.n > 0 || nums).map((e) =>
-    `<span class="key">${keyArt(e.key)}<span><span class="k-name">${esc(e.key)}</span> <span class="k-n">${nums ? `${e.p < 0.01 ? "<1" : Math.round(e.p * 100)}%` : e.n === 10 ? "every lamb" : `${e.n} in 10`}</span></span></span>`).join("");
+  const shown = f.swatches.filter((w) => n(w.key) > 0 || (nums && w.p >= 0.01));
+  const legend = shown.map((w) => {
+    const k = n(w.key);
+    return `<span class="key">${keyArt(w)}<span><span class="k-name">${esc(w.hidden ? "white (colour hidden)" : w.word)}</span> <span class="k-n">${nums ? `${w.p < 0.01 ? "<1" : Math.round(w.p * 100)}%` : k === 10 ? "every lamb" : `${k} in 10`}</span></span></span>`;
+  }).join("");
   const rareNote = rare.length && !nums ? `<div class="meta rare">A ${esc(orList(rare))} lamb could happen, but rarely.</div>` : "";
   return `<div class="legend">${legend}</div>${rareNote}`;
 }
@@ -85,17 +96,16 @@ function orList(xs: string[]): string {
   return xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}`;
 }
 
-/** "mostly white, about one in ten blue". Percentages only with numbers. */
-export function litterWords(state: GameState, colour: Record<string, number>): string {
-  const e = Object.entries(colour).filter(([, p]) => p > 0.005).sort((a, b) => b[1] - a[1]);
+/** "mostly snow-white, about one in ten bright red". Percentages only with numbers. */
+export function litterWords(state: GameState, f: Pick<CrossForecast, "swatches" | "trueBlue">): string {
+  const e = f.swatches.filter((w) => w.p > 0.005);
   if (!e.length) return "unknown";
   const nums = numbersOn(state);
   const w = (c: string, p: number) => nums ? `${Math.round(p * 100)}% ${c}` : p >= 0.95 ? `all ${c}` : `${fractionWords(p)} ${c}`;
   const [top, ...rest] = e;
-  const head = top![1] >= 0.95 ? (nums ? w(top![0], top![1]) : `all ${top![0]}`) : top![1] >= 0.6 ? `mostly ${top![0]}` : w(top![0], top![1]);
-  const tail = rest.slice(0, 2).map(([c, p]) => w(c, p));
-  const blue = rest.find(([c]) => c === "blue");
-  if (blue && !rest.slice(0, 2).includes(blue)) tail.push(w("blue", blue[1]));
+  const head = top!.p >= 0.95 ? (nums ? w(top!.word, top!.p) : `all ${top!.word}`) : top!.p >= 0.6 ? `mostly ${top!.word}` : w(top!.word, top!.p);
+  const tail = rest.slice(0, 2).map((x) => w(x.word, x.p));
+  if (f.trueBlue > 0.005 && !e.slice(0, 3).some((x) => x.trueBlue)) tail.push(w("true blue", f.trueBlue));
   return [head, ...tail].join(", ");
 }
 
@@ -160,16 +170,31 @@ function woolHint(state: GameState, f: CrossForecast): string {
   return `Wool: likely ${finW}, with ${fwW}.`;
 }
 
+/** The chance a goal tab is after, for one forecast. */
+function goalChance(f: CrossForecast, goal: Goal): number | null {
+  const c = goalColour(goal);
+  if (c) return c === "vivid" ? f.vivid : pColour(f, c, "bright");
+  return goal === "trueblue" ? f.trueBlue : null;
+}
+
+/** The goal's hint line in words. */
+function goalLine(f: CrossForecast, goal: Goal): string {
+  const c = goalColour(goal);
+  if (!c) return goal === "trueblue" ? f.blueText : f.colourText;
+  const p = goalChance(f, goal) ?? 0;
+  const what = c === "vivid" ? "a vivid colour" : `${c}, bright or better`;
+  return p <= 0 ? `No lambs ${what}, as far as you know. ${f.colourText}` : `${oddsText(p, "lamb").replace(/\.$/, "")} would be ${what}. ${f.colourText}`;
+}
+
 function hintFor(state: GameState, f: CrossForecast, goal: Goal): string {
   const nums = numbersOn(state);
+  const p = goalChance(f, goal);
+  if (p !== null) return nums ? `${Math.round(p * 100)}%` : p <= 0 ? "no" : oddsLabel(p).toLowerCase().replace("possible, but don't count on it", "possible");
   switch (goal) {
-    case "blue": {
-      const p = f.colour["blue"] ?? 0;
-      return nums ? `${Math.round(p * 100)}%` : p <= 0 ? "no" : oddsLabel(p).toLowerCase().replace("possible, but don't count on it", "possible");
-    }
     case "learn": return f.learnBits * 2 > 2 ? "loads" : f.learnBits * 2 > 1 ? "a lot" : f.learnBits > 0.02 ? "a little" : "—";
     case "fine": return nums ? `${f.fineness.mean.toFixed(1)} µm` : "";
     case "heavy": return nums ? `${f.fleeceWeight.mean.toFixed(1)} kg` : "";
+    default: return "";
   }
 }
 
@@ -182,9 +207,22 @@ export function forecastSubject(state: GameState, view: View): Sheep | null {
 }
 
 /** Short goal names with icons for the forecast's goal tabs. */
-const GOAL_TAB: Record<Goal, { label: string; icon: IconName }> = {
-  blue: { label: "Blue", icon: "heart" }, learn: { label: "Learn", icon: "lens" }, fine: { label: "Fine wool", icon: "yarn" }, heavy: { label: "Heavy fleece", icon: "scissors" },
-};
+function goalTab(id: Goal): { label: string; icon: IconName } {
+  if (goalColour(id)) return { label: "Colour", icon: "spots" };
+  return ({ trueblue: { label: "True blue", icon: "heart" }, learn: { label: "Learn", icon: "lens" }, fine: { label: "Fine wool", icon: "yarn" }, heavy: { label: "Heavy fleece", icon: "scissors" } } as Record<string, { label: string; icon: IconName }>)[id]!;
+}
+
+/** Colour chips under the Colour tab: any vivid colour, then the colours on the farm (and their lambs' likely ones). */
+function colourChips(state: GameState, goal: Goal): string {
+  const on = goalColour(goal);
+  if (!on) return "";
+  const seen = new Set<string>();
+  for (const id of state.flock) { const w = woolOf(state.sheep[id]!); if ((HUE_NAMES as readonly string[]).includes(w.name)) seen.add(w.name); }
+  for (const c of ["red", "orange", "purple"]) seen.add(c);
+  const names = [...(HUE_NAMES as readonly string[])].filter((n) => seen.has(n) || n === on);
+  const chip = (id: string, label: string, sw: string) => `<button class="chip cc ${on === id ? "on" : ""}" data-goal="colour:${esc(id)}" aria-pressed="${on === id}">${sw}<span>${esc(label)}</span></button>`;
+  return `<div class="colour-chips" role="group" aria-label="Which colour?">${chip("vivid", "any vivid", `<span class="swatch rainbow" aria-hidden="true"></span>`)}${names.map((n) => chip(n, n, swatch(hex(n)))).join("")}</div>`;
+}
 
 function parentCard(view: View, s: Sheep, cls = "", mate = false): string {
   const inner = `${portrait(view, s, "md")}<span class="par-name"><span class="nm">${esc(s.name)}</span>${sexMark(s)}</span>`;
@@ -205,8 +243,9 @@ export function forecastPanelHtml(state: GameState, view: View): string {
 
   const goal = view.goal;
   const ranked = rankCached(state, me.id, goal);
+  const isOn = (id: Goal) => id === goal || (!!goalColour(id) && !!goalColour(goal));
   const tabs = `<div class="tabs" role="tablist" aria-label="What are you breeding for?">${GOALS.map((g) =>
-    `<button class="tab ${g.id === goal ? "on" : ""}" role="tab" aria-selected="${g.id === goal}" data-goal="${g.id}" title="${esc(g.label)}">${icon(GOAL_TAB[g.id].icon)}<span>${esc(GOAL_TAB[g.id].label)}</span></button>`).join("")}</div>`;
+    `<button class="tab ${isOn(g.id) ? "on" : ""}" role="tab" aria-selected="${isOn(g.id)}" data-goal="${g.id}" title="${esc(g.label)}">${icon(goalTab(g.id).icon)}<span>${esc(goalTab(g.id).label)}</span></button>`).join("")}</div>${colourChips(state, goal)}`;
   if (!ranked.length) {
     const other = me.sex === "ewe" ? "ram" : "ewe";
     const g = growingText(state, other);
@@ -225,7 +264,7 @@ export function forecastPanelHtml(state: GameState, view: View): string {
     const elsewhere = me.sex === "ram" && state.plans[e] && state.plans[e] !== r ? state.sheep[state.plans[e]!]?.name : null;
     const sub = isVisitor ? "visiting — nothing known" : busy ? "busy this season" : elsewhere ? `planned with ${elsewhere}` : "";
     return `<button class="cand ${c.id === chosen.sheep.id ? "on" : ""} ${busy ? "busy" : ""} ${isVisitor ? "visitor" : ""}" data-mate="${esc(c.id)}" ${busy ? "disabled" : ""} ${sub ? `title="${esc(sub)}"` : ""}>
-      ${swatch(String(c.phenotype["colour"]))}
+      ${woolSwatch(c)}
       <span class="cname"><span class="cn nm" title="${esc(c.name)}">${esc(c.name)}${planned ? ` <span class="star" title="planned">${icon("star", "inl")}</span>` : ""}${c.rosettes.length ? icon("rosette", "inl") : ""}</span>${sub ? `<span class="csub">${esc(sub)}</span>` : ""}</span>
       <span class="hint">${esc(hintFor(state, f, goal))}</span></button>`;
   }).join("");
@@ -253,7 +292,7 @@ export function forecastPanelHtml(state: GameState, view: View): string {
   const room = lambRoom(state);
   const learnV = Math.min(1, f.learnBits * 0.8);
   // One hint line for the goal you picked.
-  const line = goal === "learn" ? { i: "lens" as IconName, t: f.learnText } : goal === "fine" || goal === "heavy" ? { i: "yarn" as IconName, t: woolHint(state, f) } : { i: "heart" as IconName, t: f.blueText };
+  const line = goal === "learn" ? { i: "lens" as IconName, t: f.learnText } : goal === "fine" || goal === "heavy" ? { i: "yarn" as IconName, t: woolHint(state, f) } : { i: (goal === "trueblue" ? "heart" : "spots") as IconName, t: goalLine(f, goal) };
   let commit: string;
   if (isVisitor && !hired) {
     commit = `${btn(`Hire ${esc(ram.name)} · ${state.visitingRam?.fee ?? 0}`, { kind: "primary", icon: "coin", data: { hire: "1" }, disabled: state.money < (state.visitingRam?.fee ?? 0), title: `${forecastVisitor(state).text} Here this season only.` })}`;
@@ -284,6 +323,7 @@ export function forecastPanelHtml(state: GameState, view: View): string {
       ${isVisitor ? `<p class="note-line visitor">${icon("ram", "inl")} Visiting: nothing known about his family, so this is a wide guess.</p>` : ""}
       ${rel.warn ? `<p class="note-line warn">${icon("warn", "inl")} ${esc(rel.warn)}</p>` : ""}
       <p class="blue-line">${icon(line.i)}<span>${esc(line.t)}</span></p>
+      ${goal === "trueblue" || goal === "learn" ? `<p class="colour-line meta">${esc(f.colourText)}</p>` : ""}
       <div class="row commit">${planned ? tag("planned", { icon: "star", tone: "butter", cls: "planned" }) : ""}${commit}</div>
       ${more("forecast-more", "Colours, wool, kinship, what you'd learn", details)}
     </div>

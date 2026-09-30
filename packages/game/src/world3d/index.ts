@@ -12,7 +12,7 @@ import { Bubble, Hearts, Puffs } from "./fx.js";
 import { Dog, type DogKind } from "./dog.js";
 import { Cat } from "./cat.js";
 import { BLEATS, LivePortrait, type PortraitStats } from "./portrait.js";
-import { NIGHT, PORTRAIT_BG, SEASONS, WOOL_HEX } from "./palette.js";
+import { NIGHT, PORTRAIT_BG, SEASONS, woolHex } from "./palette.js";
 import { hashString, mulberry32 } from "./rng.js";
 import { Grid } from "./grid.js";
 import { buildWalker, type Walker } from "./farmer.js";
@@ -502,7 +502,7 @@ export class WorldView {
       rt.texture.colorSpace = THREE.SRGBColorSpace;
       this.pRTs.set(px, rt);
     }
-    const bg = PORTRAIT_BG[sheep.colour] ?? "#dde8f0";
+    const bg = PORTRAIT_BG[sheep.family] ?? "#dde8f0";
     this.pScene.background = new THREE.Color(bg);
     const prev = this.renderer.getRenderTarget();
     const prevShadow = this.renderer.shadowMap.autoUpdate;
@@ -2000,7 +2000,7 @@ export class WorldView {
     if (this.mode === "pan" && now >= this.mmNext) {
       this.mmNext = now + 150;
       const view = ([[-1, 1], [1, 1], [1, -1], [-1, -1]] as const).map(([x, y]) => { const g = this.groundAt(new THREE.Vector2(x, y)); return g ? uvOf(g.x, g.z) : ([0, 0] as UV); });
-      this.chrome.drawMinimapLive(view, [...this.ents.values()].map((e) => ({ u: e.x, v: -e.z, hex: WOOL_HEX[e.ws.colour] ?? "#ffffff" })), null);
+      this.chrome.drawMinimapLive(view, [...this.ents.values()].map((e) => ({ u: e.x, v: -e.z, hex: woolHex(e.ws) })), null);
     }
     this.render();
   };

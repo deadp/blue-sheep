@@ -20,8 +20,8 @@ describe("Punnet square", () => {
     expect(share(["P", "p"], ["p", "p"])).toBe(0.5); // carrier × horned: half and half
     expect(share(["p", "p"], ["p", "p"])).toBe(1);
     expect(share(["P", "P"], ["P", "P"])).toBe(0);
-    expect(punnetSquare(C, ["Aw", "a"], ["Aw", "a"]).counts).toEqual({ white: 3, coloured: 1 });
-    expect(punnetLook(C, "a", "a")).toBe("coloured");
+    expect(punnetSquare(C, ["W", "w"], ["W", "w"]).counts).toEqual({ white: 3, coloured: 1 });
+    expect(punnetLook(C, "w", "w")).toBe("coloured");
   });
 
   it("matches real meiosis: two horn carriers have about one horned lamb in four", () => {
@@ -39,7 +39,7 @@ describe("Punnet square", () => {
     const [e] = g.flock;
     expect(knownCopies(g, e!, H)).toEqual(["P", "p"]);
     expect(knownCopies(g, e!, C)).toBeNull(); // hidden colour isn't proven yet
-    g.known[e!] = { ...g.known[e!], A: "a/Aw" };
-    expect(knownCopies(g, e!, C)).toEqual(["Aw", "a"]);
+    g.known[e!] = { ...g.known[e!], W: "w/W" };
+    expect(knownCopies(g, e!, C)).toEqual(["W", "w"]);
   });
 });

@@ -7,32 +7,32 @@ const flag = (k: string, d: boolean) => (q.has(k) ? q.get(k) === "1" : d);
 if (flag("noui", false)) document.body.classList.add("noui");
 
 const S = (id: string, name: string, o: Partial<WorldSheep>): WorldSheep => ({
-  id, name, sex: "ewe", adult: true, colour: "white", pattern: "solid", horns: "polled",
+  id, name, sex: "ewe", adult: true, wool: "#FAFAF7", family: "white", pattern: "solid", horns: "polled",
   size: 60, fleeceWeight: 4, fineness: 26, crimp: 5, zone: "paddock", marker: null, ...o,
 });
 
 const base: WorldSheep[] = [
-  S("s1", "Clover", { colour: "white", marker: "planned" }),
-  S("s2", "Bramble", { sex: "ram", colour: "black", horns: "horned", size: 76, fleeceWeight: 5 }),
-  S("s3", "Hazel", { colour: "brown", pattern: "spotted", crimp: 7 }),
-  S("s4", "Bluebell", { colour: "blue", fineness: 18, marker: "new" }),
-  S("s5", "Oat", { colour: "fawn", size: 48, fleeceWeight: 2.5, crimp: 2 }),
-  S("s6", "Pip", { adult: false, colour: "blue", marker: "new" }),
-  S("s7", "Moss", { adult: false, colour: "black", pattern: "spotted", horns: "horned", sex: "ram" }),
-  S("s8", "Rowan", { sex: "ram", colour: "white", horns: "horned", size: 72, marker: "rosette" }),
-  S("s9", "Nettle", { colour: "fawn", pattern: "spotted", zone: "paddock2", horns: "horned" }),
-  S("s10", "Sorrel", { colour: "brown", zone: "paddock2", marker: "ill", size: 44 }),
-  S("s11", "Thistle", { colour: "white", pattern: "spotted", zone: "barn", fleeceWeight: 6, crimp: 8 }),
-  S("s12", "Dusk", { colour: "black", zone: "barn", fineness: 34 }),
-  S("s13", "Wren", { colour: "fawn", zone: "market" }),
-  S("s14", "Juniper", { colour: "brown", zone: "market", sex: "ram", horns: "horned", size: 70 }),
-  S("s15", "Stranger", { colour: "blue", zone: "visitor", sex: "ram", horns: "horned", size: 78, pattern: "spotted" }),
+  S("s1", "Clover", { wool: "#FAFAF7", family: "white", marker: "planned" }),
+  S("s2", "Bramble", { sex: "ram", wool: "#2F5DA8", family: "blue", horns: "horned", size: 76, fleeceWeight: 5 }),
+  S("s3", "Hazel", { wool: "#C8322F", family: "red", pattern: "spotted", crimp: 7 }),
+  S("s4", "Bluebell", { wool: "#7FA0D8", family: "blue", fineness: 18, marker: "new" }),
+  S("s5", "Oat", { wool: "#E59A98", family: "red", size: 48, fleeceWeight: 2.5, crimp: 2 }),
+  S("s6", "Pip", { adult: false, wool: "#7FA0D8", family: "blue", marker: "new" }),
+  S("s7", "Moss", { adult: false, wool: "#2F5DA8", family: "blue", pattern: "spotted", horns: "horned", sex: "ram" }),
+  S("s8", "Rowan", { sex: "ram", wool: "#FAFAF7", family: "white", horns: "horned", size: 72, marker: "rosette" }),
+  S("s9", "Nettle", { wool: "#E59A98", family: "red", pattern: "spotted", zone: "paddock2", horns: "horned" }),
+  S("s10", "Sorrel", { wool: "#C8322F", family: "red", zone: "paddock2", marker: "ill", size: 44 }),
+  S("s11", "Thistle", { wool: "#FAFAF7", family: "white", pattern: "spotted", zone: "barn", fleeceWeight: 6, crimp: 8 }),
+  S("s12", "Dusk", { wool: "#2F5DA8", family: "blue", zone: "barn", fineness: 34 }),
+  S("s13", "Wren", { wool: "#E59A98", family: "red", zone: "market" }),
+  S("s14", "Juniper", { wool: "#C8322F", family: "red", zone: "market", sex: "ram", horns: "horned", size: 70 }),
+  S("s15", "Stranger", { wool: "#7FA0D8", family: "blue", zone: "visitor", sex: "ram", horns: "horned", size: 78, pattern: "spotted" }),
 ];
 const extra = Number(q.get("n") ?? 0);
-const colours = ["white", "black", "brown", "blue", "fawn"] as const;
+const colours: [string, string][] = [["#FAFAF7", "white"], ["#C8322F", "red"], ["#E59A98", "red"], ["#2F5DA8", "blue"], ["#E07A2A", "orange"], ["#EDE3CF", "oatmeal"], ["#3E8E4A", "green"], ["#B39BC2", "purple"]];
 for (let i = 0; i < extra; i++) {
   base.push(S(`x${i}`, `Extra ${i}`, {
-    colour: colours[i % 5]!, pattern: i % 3 ? "solid" : "spotted", horns: i % 4 ? "polled" : "horned",
+    wool: colours[i % colours.length]![0], family: colours[i % colours.length]![1], pattern: i % 3 ? "solid" : "spotted", horns: i % 4 ? "polled" : "horned",
     sex: i % 4 ? "ewe" : "ram", adult: i % 6 !== 0, size: 45 + ((i * 7) % 35),
     zone: i % 3 ? "paddock" : "paddock2",
   }));
@@ -76,7 +76,7 @@ btn("Sleep", () => { void world.sleepTransition().then(() => { info.textContent 
 btn("Dawn", () => { void world.dawn().then(() => { info.textContent = "day"; }); });
 let lambN = 0;
 btn("Add lamb", () => {
-  snap.sheep.push(S(`l${lambN}`, `Lamb ${lambN}`, { adult: false, colour: colours[lambN % 5]!, marker: "new" }));
+  snap.sheep.push(S(`l${lambN}`, `Lamb ${lambN}`, { adult: false, wool: colours[lambN % colours.length]![0], family: colours[lambN % colours.length]![1], marker: "new" }));
   lambN++;
   push();
 });
@@ -114,8 +114,8 @@ if (flag("gallery", false)) {
   g.id = "gallery";
   g.style.cssText = "position:absolute;inset:0;z-index:20;background:#f4efe4;display:flex;flex-wrap:wrap;gap:8px;padding:8px;align-content:flex-start;overflow:auto";
   const px = Number(q.get("px") ?? 180);
-  const lambs: WorldSheep[] = colours.map((c, i) => S(`gl${i}`, `Lamb ${c}`, {
-    adult: false, colour: c, sex: i % 2 ? "ram" : "ewe", horns: i === 3 ? "horned" : "polled", pattern: i === 2 ? "spotted" : "solid", size: 46, fleeceWeight: 3.8, crimp: 5,
+  const lambs: WorldSheep[] = colours.map((c, i) => S(`gl${i}`, `Lamb ${c[1]}`, {
+    adult: false, wool: c[0], family: c[1], sex: i % 2 ? "ram" : "ewe", horns: i === 3 ? "horned" : "polled", pattern: i === 2 ? "spotted" : "solid", size: 46, fleeceWeight: 3.8, crimp: 5,
   }));
   for (const s of [...base.slice(0, 11), ...lambs]) {
     const fig = document.createElement("figure");
@@ -123,7 +123,7 @@ if (flag("gallery", false)) {
     const img = document.createElement("img");
     img.src = world.portrait(s, px);
     img.style.cssText = `width:${px}px;height:${px}px;border-radius:14px;display:block`;
-    fig.append(img, Object.assign(document.createElement("figcaption"), { textContent: `${s.name} ${s.adult ? s.sex : "lamb"} ${s.colour}` }));
+    fig.append(img, Object.assign(document.createElement("figcaption"), { textContent: `${s.name} ${s.adult ? s.sex : "lamb"} ${s.family}` }));
     g.appendChild(fig);
   }
   const live = document.createElement("div");

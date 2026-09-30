@@ -14,47 +14,55 @@ import {
   acceptOrder, advanceSeason, buyPrice, buySheep, canBreed, currentAct, enterFair, fairScore, flockSheep,
   forecastOrder, isAdult, isEnding, lambRoom, markEndingShown, newGame, pedigreeOf, planMating, ramAvailable, RAM_CAPACITY,
   sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
-  ownedPets, fondnessOf, hasUpgrade, brushAnimal,
-  type GameState, type Sheep, type UpgradeId,
+  ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF,
+  type GameState, type Order, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
 
-export interface CrossDist { colour: Record<string, number>; horns: Record<string, number>; learnBits?: number }
-export interface Doses { d: number; a: number; B: number }
+export interface CrossDist {
+  /** Chance a lamb is true blue, and full (not pale) blue of any strength (the registry's blue). */
+  trueBlue: number;
+  blue: number;
+  /** Chance a lamb fits a colour order's colour. */
+  pOrder(o: Order): number;
+  horns: Record<string, number>;
+  learnBits?: number;
+}
+/** Expected copies (as the brain knows them): blue "+" (0..4), colour "w" (0..2), red + yellow "+" (0..8). */
+export interface Doses { blue: number; w: number; ry: number }
 
 export interface Brain {
   name: string;
   cross(g: GameState, ewe: string, ram: string): CrossDist;
-  /** Expected count (0..2) of the dilute, self-colour and black alleles. */
+  /** Expected copies of blue paint, hidden colour and red/yellow paint. */
   doses(g: GameState, s: Sheep): Doses;
   /** Optional: spend on vet tests. */
   vet?(g: GameState): void;
 }
 
-export interface RunResult { ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string }
+export interface RunResult { ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string; firstTrueBlue: number | null }
 
 const fin = (s: Sheep) => Number(s.phenotype["fineness"]);
 
+/** How much a sheep's genes help towards true blue: blue paint and hidden colour help; red and yellow paint muddy it. */
 function blueValue(d: Doses): number {
-  return d.d * 3 + d.a * 2 + Math.min(1, d.B) * 1;
+  return d.blue * 2 + d.w * 1.2 - d.ry * 0.5;
 }
 
-/**
- * True when no sheep in the flock can pass on black (B), as far as the farmer knows: blue is then impossible
- * until a black-carrier is brought in (e.g. a flock drifted to all fawn).
- */
-function flockLacksBlack(g: GameState, b: Brain): boolean {
-  return g.act <= 1 && flockSheep(g).every((x) => b.doses(g, x).B < 0.3);
+/** True when no sheep in the flock carries blue paint, as far as the farmer knows: bring a blue carrier in. */
+function flockLacksBlue(g: GameState, b: Brain): boolean {
+  return g.act <= 1 && flockSheep(g).every((x) => b.doses(g, x).blue < 0.3);
 }
 
 /** How much the farmer wants to keep a sheep. */
 function keepValue(g: GameState, b: Brain, s: Sheep): number {
   const act = g.act;
-  const colour = String(s.phenotype["colour"]);
+  const w = woolOf(s);
   const d = b.doses(g, s);
   let v = blueValue(d);
-  if (d.B >= 0.3 && flockLacksBlack(g, b)) v += 6;
-  if (colour === "blue") v += 8;
-  if (act >= 2) v += (26 - fin(s)) * (act >= 4 ? 1.2 : 0.6);
+  if (d.blue >= 0.3 && flockLacksBlue(g, b)) v += 6;
+  if (w.name === "blue") v += 6;
+  if (w.trueBlue) v += 4;
+  if (act >= 2) v += (FINE_REF - fin(s)) * (act >= 4 ? 1.2 : 0.6);
   if (act >= 4) v -= s.inbreeding * 30;
   if (act === 3 && g.fair.category !== "rare") v += fairScore(s, g.fair.category) * 1.5;
   if (s.rosettes.length) v += 1;
@@ -69,17 +77,16 @@ function matingScore(g: GameState, b: Brain, ewe: Sheep, ram: Sheep, cache: Map<
   let c = cache.get(key);
   if (!c) { c = b.cross(g, ewe.id, ram.id); cache.set(key, c); }
   const act = g.act;
-  const pBlue = c.colour["blue"] ?? 0;
   const F = pedigreeOf(g).offspringInbreeding(ewe.id, ram.id);
-  let v = pBlue * 10 + (blueValue(b.doses(g, ewe)) + blueValue(b.doses(g, ram))) / 2 * 0.5;
+  let v = (act <= 1 ? c.trueBlue * 10 : c.blue * 6 + c.trueBlue * 4) + (blueValue(b.doses(g, ewe)) + blueValue(b.doses(g, ram))) / 2 * 0.5;
   if (act <= 1 && c.learnBits) v += Math.min(2, c.learnBits);
-  if (act >= 2) v += (26 - (fin(ewe) + fin(ram)) / 2) * (act >= 4 ? 1.5 : 0.6);
+  if (act >= 2) v += (FINE_REF - (fin(ewe) + fin(ram)) / 2) * (act >= 4 ? 1.5 : 0.6);
   if (act >= 3) v -= F * (act >= 4 ? 60 : 20);
   for (const id of g.acceptedOrders) {
     const o = g.orders.find((x) => x.id === id);
     if (!o || o.kind === "wool") continue;
     let p = 1;
-    if (o.colour) p *= c.colour[o.colour] ?? 0;
+    if (o.colour) p *= c.pOrder(o);
     if (o.horns) p *= c.horns[o.horns] ?? 0;
     if (o.sex) p *= 0.5;
     v += p * 12;
@@ -215,6 +222,7 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
   const actSeason = [0, -1, -1, -1, -1];
   const money: number[] = [];
   let endSeason: number | null = null;
+  let firstTrueBlue: number | null = null;
   const ledger: Record<string, number> = {};
   for (let t = 0; t < maxSeasons; t++) {
     const cache = new Map<string, CrossDist>();
@@ -237,21 +245,23 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     money.push(g.money);
     if (process.env["MONEY"]) console.log(g.season, g.act, "money", g.money, "wool", r.income, "feed", r.feed, "orders", r.orderResults.reduce((t, o) => t + o.reward, 0), "fair", r.fairResult?.prize ?? 0, "auto", r.autoSold.reduce((t, a) => t + a.price, 0), "flock", g.flock.length, "log", g.log.filter((l) => l.season === g.season - 1 && l.text.startsWith("Sold")).map((l) => l.text.match(/(\d+) coins/)?.[1]).join(","));
     if (r.actAdvanced) actSeason[r.actAdvanced.act] = g.season;
+    if (firstTrueBlue === null && r.lambs.some((l) => woolOf(l).trueBlue)) firstTrueBlue = g.season;
     if (isEnding(g)) { endSeason = g.season; markEndingShown(g); break; }
   }
   const a = currentAct(g);
   if (process.env["FLOCK"]) {
     const { genotypeString } = await import("@blue-sheep/genetics");
     const { genomeOf, species } = await import("../src/core/index.js");
-    for (const s of flockSheep(g)) console.log(s.name, s.sex, g.season - s.born, s.phenotype["colour"], ["A", "B", "D"].map((l) => genotypeString(genomeOf(s), species.map, l)).join(" "), JSON.stringify(b.doses(g, s)), "F", s.inbreeding.toFixed(2));
-    console.log("market", g.market.map((id) => g.sheep[id]!).map((s) => `${s.sex} ${s.phenotype["colour"]} ${["A", "B", "D"].map((l) => genotypeString(genomeOf(s), species.map, l)).join(" ")}`).join(" | "), "money", g.money);
+    const LOCI = ["W", "U1", "U2", "R1", "R2", "Y1", "Y2", "Dl"];
+    for (const s of flockSheep(g)) console.log(s.name, s.sex, g.season - s.born, woolOf(s).word, LOCI.map((l) => genotypeString(genomeOf(s), species.map, l)).join(" "), JSON.stringify(b.doses(g, s)), "F", s.inbreeding.toFixed(2));
+    console.log("market", g.market.map((id) => g.sheep[id]!).map((s) => `${s.sex} ${woolOf(s).word} ${LOCI.map((l) => genotypeString(genomeOf(s), species.map, l)).join(" ")}`).join(" | "), "money", g.money);
   }
   if (process.env["ORDERS"]) {
     const h = g.orderHistory;
     const by = (st: string) => h.filter((o) => o.status === st);
     console.log(`seed ${seed}: posted ${g.nextOrderId - 1}, filled ${by("filled").length} [${by("filled").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}], failed ${by("failed").length} [${by("failed").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg + "kg<" + o.microns)).join(" ")}], expired ${by("expired").length} [${by("expired").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}]`);
   }
-  return { ledger, seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}` };
+  return { ledger, seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}`, firstTrueBlue };
 }
 
 export function summarise(label: string, results: RunResult[], maxSeasons: number): void {
@@ -262,6 +272,8 @@ export function summarise(label: string, results: RunResult[], maxSeasons: numbe
     const inAct = reached.map((r) => r.actSeason[act]! - r.actSeason[act - 1]!);
     console.log(`act ${act - 1}→${act}: reached ${reached.length}/${results.length}, median arrival season ${med(reached.map((r) => r.actSeason[act]!))}, median seasons spent in act ${act - 1}: ${med(inAct)}`);
   }
+  const tb = results.filter((r) => r.firstTrueBlue !== null).map((r) => r.firstTrueBlue!);
+  console.log(`first true blue lamb: ${tb.length}/${results.length} seeds, median season ${med(tb)} (p25 ${[...tb].sort((a, b) => a - b)[Math.floor(tb.length / 4)]}, p75 ${[...tb].sort((a, b) => a - b)[Math.floor((3 * tb.length) / 4)]})`);
   const done = results.filter((r) => r.endSeason !== null);
   const act4 = results.filter((r) => r.endSeason !== null).map((r) => r.endSeason! - r.actSeason[4]!);
   console.log(`ending: ${done.length}/${results.length} (${Math.round((100 * done.length) / results.length)}%), median season ${med(done.map((r) => r.endSeason!))}, median seasons in act 4: ${med(act4)}`);
@@ -270,7 +282,7 @@ export function summarise(label: string, results: RunResult[], maxSeasons: numbe
   console.log(`median money at end: ${med(ends)} (min ${ends[0]}, p10 ${pct(0.1)}, p90 ${pct(0.9)}), max money seen: ${Math.max(...results.flatMap((r) => r.money))}, min money seen: ${Math.min(...results.flatMap((r) => r.money))}`);
   const at = (t: number) => med(results.filter((r) => r.money.length > t).map((r) => r.money[t]!));
   console.log(`median money after season 8: ${at(7)}, 20 (year 5): ${at(19)}, 40: ${at(39)} (seeds still playing)`);
-  if (process.env["PERSEED"]) for (const r of results) console.log(`  seed ${r.seed}: end season ${r.endSeason ?? "-"}, money ${r.money[r.money.length - 1]}, acts at ${r.actSeason.join(",")}`);
+  if (process.env["PERSEED"]) for (const r of results) console.log(`  seed ${r.seed}: first true blue ${r.firstTrueBlue ?? "-"}, end season ${r.endSeason ?? "-"}, money ${r.money[r.money.length - 1]}, acts at ${r.actSeason.join(",")}`);
   if (process.env["LEDGER"]) {
     const keys = [...new Set(results.flatMap((r) => Object.keys(r.ledger)))];
     console.log("ledger (median over seeds, whole run):", keys.map((k) => `${k} ${med(results.map((r) => r.ledger[k] ?? 0))}`).join(", "));

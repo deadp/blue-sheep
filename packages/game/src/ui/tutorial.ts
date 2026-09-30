@@ -4,7 +4,7 @@
  * core `advanceTutorial` when `tutorialStepMet` says so. One idea per step, plain words, no genotypes.
  */
 import {
-  MENTOR, PUNNET_GENES, TUTORIAL_STEPS, cheapestMarketEwe, knownPunnet, lessonInfo, lessonSpeech, tutorialInfo, tutorialLambs, tutorialStep,
+  MENTOR, PUNNET_GENES, TUTORIAL_STEPS, cheapestMarketEwe, knownPunnet, lessonInfo, lessonSpeech, tutorialInfo, tutorialLambs, tutorialStep, woolOf,
   type GameState, type LessonPoint, type Sheep, type TutorialStepId,
 } from "../core/index.js";
 import { punnetHtml } from "./punnet.js";
@@ -51,7 +51,7 @@ export function tutorialStepMet(state: GameState, view: View): boolean {
     case "sleep": return lambCount(state) >= 1 && view.panel === "report";
     case "sleep2": return lambCount(state) >= 2 && view.panel === "report";
     case "sleep3": return lambCount(state) >= 3 && view.panel === "report";
-    case "lamb1": case "horns": case "black": return view.panel !== "report";
+    case "lamb1": case "horns": case "colour": return view.panel !== "report";
     case "market": return state.flock.some((sid) => { const s = state.sheep[sid]!; return s.origin === "market" && s.sex === "ewe"; });
     case "punnet": case "why": case "goal": case "done": return false; // "Got it" buttons
   }
@@ -83,7 +83,7 @@ export function tutorialTarget(state: GameState, view: View): TutorialTarget {
     case "plan": case "again": case "again2": return againTarget(state, view);
     case "sleep": case "sleep2": case "sleep3": return { kind: "html", selectors: ["#hud [data-sleep]"] };
     case "lamb1": return revealTarget(view, false);
-    case "horns": case "black": return revealTarget(view, true);
+    case "horns": case "colour": return revealTarget(view, true);
     case "punnet": { const l = tutorialLamb(state, 1); return l && !view.panel ? { kind: "sheep", id: l.id } : null; }
     case "why": { const l = tutorialLamb(state, 2); return l && !view.panel ? { kind: "sheep", id: l.id, rings: ["#hud [data-open=codex]"] } : null; }
     case "market": {
@@ -164,19 +164,24 @@ function speech(state: GameState, view: View, id: TutorialStepId): Speech[] {
     }
     case "again2":
       return [tom(["Once more: two white parents can hide more than horns.", how])];
-    case "black":
+    case "colour": {
+      const l = tutorialLamb(state, 2);
+      const word = esc(l ? woolOf(l).name : "coloured");
       return [tom(onFarm ? ["Close this to get back to the farm."] : [
-        `Well I never! <b>${name(2)}</b> is <b>black</b>, from two white parents!`,
+        `Well I never! <b>${name(2)}</b> is <b>${word}</b>, from two white parents!`,
         "Press <b>Back to the farm</b> and I'll show you how.",
       ])];
+    }
     case "why": {
-      const colour = String(tutorialLamb(state, 2)?.phenotype["colour"] ?? "black");
+      const l = tutorialLamb(state, 2);
+      const colour = l ? woolOf(l).hex : "#C8322F";
+      const word = esc(l ? woolOf(l).name : "red");
       const sq = knownPunnet(state, PUNNET_GENES.colour, t.ewe, t.ram);
-      const figure = sq ? punnetHtml({ square: sq, damName: sheepOf(state, t.ewe)?.name ?? "Ewe", sireName: sheepOf(state, t.ram)?.name ?? "Ram", letters: numbersOn(state), lambColour: colour, id: "tut-colour" }) : "";
+      const figure = sq ? punnetHtml({ square: sq, damName: sheepOf(state, t.ewe)?.name ?? "Ewe", sireName: sheepOf(state, t.ram)?.name ?? "Ram", letters: numbersOn(state), lambColour: colour, lambWord: l ? woolOf(l).name : "coloured", id: "tut-colour" }) : "";
       return [{ who: MENTOR, lines: [
         `The same square! ${E} and ${R} each hide a <b>colour copy</b> under a <b>white copy</b>.`,
       ], figure, after: [
-        `<b>${name(2)}</b> got the colour copy from both: one lamb in four. The square is in your codex (📖).`,
+        `<b>${name(2)}</b> got the colour copy from both: one lamb in four. Underneath the white, both parents carry ${word} paint, so the colour came out ${word}. The square is in your codex (📖).`,
       ], button: "Got it" }];
     }
     case "market": {
@@ -187,8 +192,8 @@ function speech(state: GameState, view: View, id: TutorialStepId): Speech[] {
     }
     case "goal":
       return [tom([
-        "Now, the big dream: a <b>blue sheep</b>.",
-        "Blue needs a coloured sheep with two hidden <b>dilute</b> copies: the same square again. Your goal stays up top.",
+        "Now, the big dream: a <b>true blue sheep</b>.",
+        "Blue paint comes in doses, like the red: stack up <b>blue doses</b>, keep the white off the top, and keep red and yellow out. Your goal stays up top.",
       ], "Got it")];
     case "done": {
       const flock = state.flock.map((sid) => state.sheep[sid]!).map((s) => esc(s.name));

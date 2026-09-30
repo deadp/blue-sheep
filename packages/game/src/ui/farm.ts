@@ -1,24 +1,24 @@
 /** Market (buy, sell, visiting ram), vet and fair panels. */
 import {
   lambRoom, FAIR_LABEL, FAIR_PRIZES, PET_NAME, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, fondnessOf, forecastUpgrade, hasUpgrade, isPetId, upgradeBlocked, upgradeOffered, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
-  isAdult, oddsLabel, seasonLabel, sheepValue, yearOf,
+  isAdult, oddsLabel, seasonLabel, sheepValue, wasTested, woolOf, yearOf,
   type CrossForecast, type GameState, type Sheep,
 } from "../core/index.js";
 import { litterRow, litterWords } from "./forecast.js";
-import { ageWords, chip, dot, esc, has, heartMeter, learnMeter, learnWord, oddsScale, pips, portrait, sexMark, swatch, traitWords, LEARN_SCALE, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, chip, dot, esc, has, heartMeter, learnMeter, learnWord, oddsScale, pigmentDots, pips, portrait, sexMark, swatch, traitWords, woolSwatch, LEARN_SCALE, LOCUS_FRIENDLY } from "./util.js";
 import { btn, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 import { crossCached } from "./cache.js";
 import { petForecastHtml } from "./pets.js";
 
-/** Best pairing of an outside sheep with the flock, by blue chance then learning. */
+/** Best pairing of an outside sheep with the flock, by true blue chance, then vivid colour, then learning. */
 function bestMatch(state: GameState, s: Sheep): { mate: Sheep; f: CrossForecast } | null {
   const mates = state.flock.map((id) => state.sheep[id]!).filter((m) => m.sex !== s.sex && canBreed(m, state.season));
   let best: { mate: Sheep; f: CrossForecast; score: number } | null = null;
   for (const m of mates.slice(0, 12)) {
     let f: CrossForecast;
     try { f = s.sex === "ram" ? crossCached(state, m.id, s.id) : crossCached(state, s.id, m.id); } catch { continue; }
-    const score = (f.colour["blue"] ?? 0) * 10 + f.learnBits * 0.1 - f.inbreeding;
+    const score = f.trueBlue * 10 + f.vivid * 2 + f.learnBits * 0.1 - f.inbreeding;
     if (!best || score > best.score) best = { mate: m, f, score };
   }
   return best;
@@ -27,7 +27,7 @@ function bestMatch(state: GameState, s: Sheep): { mate: Sheep; f: CrossForecast 
 function wouldAdd(state: GameState, view: View, s: Sheep): string {
   const b = bestMatch(state, s);
   if (!b) return `<div class="adds meta">No ${s.sex === "ram" ? "ewes" : "rams"} in your flock to pair with yet.</div>`;
-  return `<div class="adds" title="${esc(litterWords(state, b.f.colour))}"><span class="meta">Best pairing: ${nm(esc(b.mate.name))}</span>${litterRow(state, b.f, true, view)}</div>`;
+  return `<div class="adds" title="${esc(litterWords(state, b.f))}"><span class="meta">Best pairing: ${nm(esc(b.mate.name))}</span>${litterRow(state, b.f, true, view)}</div>`;
 }
 
 function marketCard(state: GameState, view: View, s: Sheep): string {
@@ -38,7 +38,7 @@ function marketCard(state: GameState, view: View, s: Sheep): string {
   return `<div class="mcard">
     ${portrait(view, s, "md")}
     <div class="m-body">
-      <div class="m-name">${nm(esc(s.name))} ${sexMark(s)} ${tag(`${swatch(String(s.phenotype["colour"]))}${esc(String(s.phenotype["colour"]))}`, { cls: "sw" })} ${s.phenotype["horns"] === "horned" ? icon("horn", "inl") : ""}</div>
+      <div class="m-name">${nm(esc(s.name))} ${sexMark(s)} ${tag(`${woolSwatch(s)}${esc(woolOf(s).word)}`, { cls: "sw" })} ${s.phenotype["horns"] === "horned" ? icon("horn", "inl") : ""}</div>
       ${wouldAdd(state, view, s)}
       ${more(`buy-${s.id}`, "More", `<div class="meta">${esc(traits)} · ${esc(ageWords(state, s))}</div><div class="meta">What we know: nothing but looks — bought in, no pedigree.</div>`, { cls: "mini" })}
     </div>
@@ -102,7 +102,7 @@ export function marketHtml(state: GameState, view: View): string {
     const hired = state.hiredRam === vr.id;
     visitor = `${head("ram", "Visiting ram")}
       <div class="mcard visitor">${portrait(view, vr, "md")}
-        <div class="m-body"><div class="m-name">${nm(esc(vr.name))} ${sexMark(vr)} ${tag(`${swatch(String(vr.phenotype["colour"]))}${esc(String(vr.phenotype["colour"]))}`)}</div>
+        <div class="m-body"><div class="m-name">${nm(esc(vr.name))} ${sexMark(vr)} ${tag(`${woolSwatch(vr)}${esc(woolOf(vr).word)}`)}</div>
           <div class="visitor-fore">${esc(forecastVisitor(state).text)}</div>
           ${wouldAdd(state, view, vr)}
           ${more("visitor-more", "About him", `<div class="meta">From over the hills, here this season only. Nothing is known about his family, so forecasts with him are wide — fresh blood, though, and no shared kin.</div>`, { cls: "mini" })}</div>
@@ -133,26 +133,32 @@ export function vetHtml(state: GameState, view: View): string {
   const v = state.visitingRam && state.visitingRam.season === state.season ? state.sheep[state.visitingRam.id] : undefined;
   if (v) pool.push(v);
   const chosen = (view.tab && pool.find((s) => s.id === view.tab)) || (view.sheepId && pool.find((s) => s.id === view.sheepId)) || pool[0];
-  const picker = pool.map((s) => `<button class="chip ${s.id === chosen?.id ? "on" : ""}" data-tab="${esc(s.id)}" role="tab" aria-selected="${s.id === chosen?.id}">${swatch(String(s.phenotype["colour"]))}<span class="nm">${esc(s.name)}</span></button>`).join("");
+  const picker = pool.map((s) => `<button class="chip ${s.id === chosen?.id ? "on" : ""}" data-tab="${esc(s.id)}" role="tab" aria-selected="${s.id === chosen?.id}">${woolSwatch(s)}<span class="nm">${esc(s.name)}</span></button>`).join("");
   if (!chosen) return `${head("vet", "Vet", 2)}<p>No sheep to test.</p>`;
   const facts = new Map(factsFor(state, chosen.id).map((f) => [f.locus, f]));
   const fvs = new Map(TEST_LOCI.map((l) => { let fv = { gainBits: 0, text: "" }; try { fv = forecastVet(state, chosen.id, l); } catch { /* skip */ } return [l, fv] as const; }));
   // One felt primary: the test that would teach you the most; the others are plain felt.
-  const best = TEST_LOCI.filter((l) => !chosen.tested[l]).sort((a, b) => fvs.get(b)!.gainBits - fvs.get(a)!.gainBits)[0];
-  const rows = TEST_LOCI.map((l) => {
+  const best = TEST_LOCI.filter((l) => !wasTested(chosen, l)).sort((a, b) => fvs.get(b)!.gainBits - fvs.get(a)!.gainBits)[0];
+  // A coloured sheep's hidden-colour test can teach nothing (its colour shows): leave it out.
+  const coloured = chosen.phenotype["white"] !== "white";
+  const tests = TEST_LOCI.filter((l) => !(l === "W" && coloured));
+  const rows = tests.map((l) => {
     const fv = fvs.get(l)!;
     const fact = facts.get(l);
-    const tested = !!chosen.tested[l];
+    const tested = wasTested(chosen, l);
     const val = Math.min(1, fv.gainBits * 0.64);
-    return `<div class="vet-row ${tested ? "done" : ""}">
-      <div class="v-label"><b>${esc(LOCUS_FRIENDLY[l] ?? l)}</b>${fact ? `<div class="meta">${dot(fact.confidence, fact.certain)} ${esc(fact.text.replace(/^[^:]+: /, ""))}</div>` : ""}</div>
+    const pig = l === "red" || l === "yellow" || l === "blue";
+    // The words of what a test would teach: on the recommended test only (the rest keep them as a tooltip).
+    const q = l === best && fv.gainBits > 0.02 && !tested ? `<div class="meta v-q">${esc(fv.text)}</div>` : "";
+    return `<div class="vet-row ${tested ? "done" : ""} ${pig ? `pigtest ${l}` : ""}" data-test-row="${esc(l)}">
+      <div class="v-label"><b>${pig ? `<span class="v-pig ${l}" aria-hidden="true"></span>` : ""}${esc(LOCUS_FRIENDLY[l] ?? l)}</b>${fact ? `<div class="meta">${dot(fact.confidence, fact.certain)} ${esc(fact.text.replace(/^[^:]+: /, ""))}</div>` : ""}${q}</div>
       <div class="v-fore" title="${esc(fv.text)}">${learnMeter(val, learnWord(val), { label: "how much you'd learn", compact: true })}</div>
       <div class="v-act">${tested ? tag(`Tested ${icon("check", "sm")}`, { tone: "sage", cls: "ok" }) : btn(`Test · ${VET_FEE}`, { kind: l === best && fv.gainBits > 0.02 ? "primary" : "secondary", icon: "vet", data: { test: `${chosen.id}:${l}` }, disabled: state.money < VET_FEE, title: fv.text })}</div>
     </div>`;
   }).join("");
   return `<div class="panel-head">${head("vet", "Vet", 2)}<div class="tags">${tag(`${VET_FEE} a test`, { icon: "coin", tone: "butter" })}</div></div>
     <div class="chips" role="tablist" aria-label="Which sheep?">${picker}</div>
-    <div class="vet-sheep">${portrait(view, chosen, "sm")}<div>${nm(esc(chosen.name))} ${sexMark(chosen)} <span class="meta">${esc(String(chosen.phenotype["colour"]))}, ${esc(String(chosen.phenotype["pattern"]))}, ${esc(String(chosen.phenotype["horns"]))}</span></div></div>
+    <div class="vet-sheep">${portrait(view, chosen, "sm")}<div>${nm(esc(chosen.name))} ${sexMark(chosen)} <span class="meta">${esc(woolOf(chosen).word)}${chosen.phenotype["pattern"] === "spotted" ? ", spotted" : ""}, ${esc(String(chosen.phenotype["horns"]))}</span></div>${pigmentDots(chosen)}</div>
     <div class="vet-scale meta">${icon("lens", "inl")} How much a test would teach you: <span class="m-scale learn solo"><span class="w0">${LEARN_SCALE[0]}</span><span class="w2">${LEARN_SCALE[1]}</span></span></div>
     <div class="vet-rows">${rows}</div>`;
 }
@@ -168,7 +174,7 @@ export function fairHtml(state: GameState, view: View): string {
   const entry = state.fair.entry ? state.sheep[state.fair.entry] : undefined;
   const row = ({ s, f }: (typeof scored)[number], i: number) => {
     const on = entry?.id === s.id;
-    const trait = traitWords(state, s).find((t) => (cat === "fine" ? t.label === "Wool" : cat === "heavy" ? t.label === "Fleece" : cat === "big" ? t.label === "Build" : false))?.text ?? `${s.phenotype["colour"]}${s.phenotype["pattern"] === "spotted" ? ", spotted" : ""}`;
+    const trait = traitWords(state, s).find((t) => (cat === "fine" ? t.label === "Wool" : cat === "heavy" ? t.label === "Fleece" : cat === "big" ? t.label === "Build" : false))?.text ?? `${woolOf(s).word}${s.phenotype["pattern"] === "spotted" ? ", spotted" : ""}`;
     return `<div class="fair-row ${on ? "on" : ""}" title="${esc(f.text)}">
       ${portrait(view, s, "sm")}
       <div class="f-name">${chip(state, s)}<div class="meta">${esc(trait)}</div></div>

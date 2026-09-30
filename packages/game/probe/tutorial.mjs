@@ -5,8 +5,9 @@
 // (no Punnet square yet), plan, sleep → lamb 1 is white and polled, with no card and no codex; season 2: the
 // same pair again → lamb 2 is horned (still white) with the first discovery card and the codex, and only then
 // the Punnet square shows 3 polled : 1 horned with no allele letters (hover and click light the right copies
-// and cells; it fits at 1280×800 and 1024×768); season 3: again → lamb 3 is black, both parents get
-// hidden-colour cards and the colour square follows; the market step buys a ewe; no handover (the end flock is
+// and cells; it fits at 1280×800 and 1024×768); season 3: again → lamb 3 is a clear red (two red doses, never
+// true blue) whose report tile and Old Tom's line use its real colour, both parents get hidden-colour cards and the
+// colour square follows (its coloured lambs drawn in that red); the market step buys a ewe; no handover (the end flock is
 // the pair, their three lambs and the bought ewe); the letters (a horns letter) arrive the moment the tutorial
 // ends, with their lesson; the codex keeps the Punnet card; the next season (Year 2 Spring) brings the vet
 // alone; skipping keeps two sheep and brings the letters; ?seed without ?tutorial has no tutorial.
@@ -147,7 +148,7 @@ export const tutorial = {
     const t0 = await tut(g);
     if (t0?.step !== 1 || t0.id !== "ewe" || t0.done) throw new ProbeError(`tutorial should start at step 1 "ewe", got ${JSON.stringify(t0)}`);
     const start = s0.flock.map((/** @type {string} */ id) => s0.sheep[id]);
-    if (start.length !== 2 || start[0].sex !== "ewe" || start[1].sex !== "ram" || start.some((/** @type {any} */ s) => s.phenotype.colour !== "white")) {
+    if (start.length !== 2 || start[0].sex !== "ewe" || start[1].sex !== "ram" || start.some((/** @type {any} */ s) => s.phenotype.family !== "white")) {
       throw new ProbeError(`the tutorial farm should start with one white ewe and one white ram, got ${start.map((/** @type {any} */ s) => `${s.name} ${s.sex} ${s.phenotype.colour}`).join(", ")}`);
     }
     const shot = async (/** @type {string} */ name) => { await assertLayout(g, name); ctx.artifact(await g.screenshot(name)); };
@@ -201,10 +202,10 @@ export const tutorial = {
     await waitStep(g, 5, "after planning");
     await shot("tut-05");
     const one = await sleepFor(0, 6);
-    if (one.lamb.phenotype.colour !== "white" || one.lamb.phenotype.horns !== "polled") throw new ProbeError(`lamb 1 should be white and polled, it is ${one.lamb.phenotype.colour}, ${one.lamb.phenotype.horns}`);
+    if (one.lamb.phenotype.family !== "white" || one.lamb.phenotype.horns !== "polled") throw new ProbeError(`lamb 1 should be white and polled, it is ${one.lamb.phenotype.colour}, ${one.lamb.phenotype.horns}`);
     if (await g.page.locator("#overlay .dcard").count()) throw new ProbeError("the plain first lamb should bring no discovery card");
     if (one.st.unlocks.length) throw new ProbeError(`nothing new should arrive with the first lamb, unlocks: ${JSON.stringify(one.st.unlocks)}`);
-    if (one.st.act !== 0) throw new ProbeError(`the story's first act should wait for the black lamb, act is ${one.st.act} after lamb 1`);
+    if (one.st.act !== 0) throw new ProbeError(`the story's first act should wait for the coloured lamb, act is ${one.st.act} after lamb 1`);
     await noSquare("step 6");
     await shot("tut-06");
     await click(g, "#overlay .row [data-close].primary", "back to the farm");
@@ -216,7 +217,7 @@ export const tutorial = {
     await planAgain(8);
     await shot("tut-08");
     const two = await sleepFor(1, 9);
-    if (two.lamb.phenotype.colour !== "white" || two.lamb.phenotype.horns !== "horned") throw new ProbeError(`lamb 2 should be white and horned, it is ${two.lamb.phenotype.colour}, ${two.lamb.phenotype.horns}`);
+    if (two.lamb.phenotype.family !== "white" || two.lamb.phenotype.horns !== "horned") throw new ProbeError(`lamb 2 should be white and horned, it is ${two.lamb.phenotype.colour}, ${two.lamb.phenotype.horns}`);
     if (!(await g.page.locator("#overlay .dcard").count())) throw new ProbeError("the horned lamb should bring the first discovery card");
     if (JSON.stringify(two.st.unlocks) !== JSON.stringify(["cards"])) throw new ProbeError(`only the codex should arrive with the horned lamb, unlocks: ${JSON.stringify(two.st.unlocks)}`);
     if ((two.st.orders ?? []).length) throw new ProbeError("no orders should arrive during the tutorial");
@@ -252,25 +253,34 @@ export const tutorial = {
     await assertMentorFits(g, "step 10 at 1280×800");
     await click(g, "#mentor [data-tutorial=ack]", "got it (Punnet square)");
 
-    // ---- Season 3: once more → a black lamb, the colour square, the market, the goal.
+    // ---- Season 3: once more → a red lamb, the colour square, the market, the goal.
     await waitStep(g, 11, "after the Punnet square");
     await shot("tut-11");
     await planAgain(12);
     await shot("tut-12");
     const three = await sleepFor(2, 13);
-    if (three.lamb.phenotype.colour !== "black") throw new ProbeError(`lamb 3 should be black, it is ${three.lamb.phenotype.colour}`);
-    if (three.st.act !== 1) throw new ProbeError(`the black lamb should start the story's first act (hidden colours), act is ${three.st.act}`);
-    const cards = three.st.discoveries.filter((/** @type {any} */ d) => (d.sheep === T.ewe || d.sheep === T.ram) && (d.loci ?? [d.locus]).includes("A"));
-    if (cards.length !== 2) throw new ProbeError(`the black lamb should earn a hidden-colour card for each parent, got ${cards.length}`);
+    const p3 = three.lamb.phenotype;
+    // Rule: two white hidden-colour carriers give a coloured lamb; the pair's red breeds true, so it is red
+    // (two red doses, no blue: never true blue), clearly visible (bright or better).
+    if (p3.white !== "coloured" || p3.family !== "red" || p3.red !== "2" || p3.blue !== "0" || !(p3.intensity >= 0.3)) {
+      throw new ProbeError(`lamb 3 should be a clear red (two red doses, no blue), it is ${JSON.stringify({ white: p3.white, family: p3.family, red: p3.red, blue: p3.blue, intensity: p3.intensity })}`);
+    }
+    if (three.st.act !== 1) throw new ProbeError(`the coloured lamb should start the story's first act (hidden colours), act is ${three.st.act}`);
+    const cards = three.st.discoveries.filter((/** @type {any} */ d) => (d.sheep === T.ewe || d.sheep === T.ram) && (d.loci ?? [d.locus]).includes("W"));
+    if (cards.length !== 2) throw new ProbeError(`the coloured lamb should earn a hidden-colour card for each parent, got ${cards.length}`);
+    const said = (await g.page.locator("#mentor").textContent()) ?? "";
+    if (!new RegExp(`\\b${p3.colour}\\b`).test(said) || /black/i.test(said)) throw new ProbeError(`Old Tom should name the lamb's real colour (${p3.colour}), he says "${said}"`);
+    const born = await g.page.evaluate(() => /** @type {HTMLElement | null} */ (document.querySelector("#overlay .born.flip"))?.dataset.wool ?? "");
+    if (born.toUpperCase() !== String(p3.wool).toUpperCase()) throw new ProbeError(`the report's lamb card should wear the lamb's wool colour ${p3.wool}, has "${born}"`);
     await shot("tut-13");
     await click(g, "#overlay .row [data-close].primary", "back to the farm");
-    await waitStep(g, 14, "after closing the black lamb's report");
+    await waitStep(g, 14, "after closing the coloured lamb's report");
     const cq = await punnetFacts(g);
     if (!cq.found || cq.gene !== "colour" || cq.dom !== 3 || cq.rec !== 1) throw new ProbeError(`step 14 should show the colour square (3 white : 1 coloured), got ${JSON.stringify(cq)}`);
     if (cq.letters || cq.genotype) throw new ProbeError("no allele letters in the colour square before the numbers unlock");
     await shot("tut-14");
     await assertMentorFits(g, "step 14");
-    await click(g, "#mentor [data-tutorial=ack]", "got it (why black)");
+    await click(g, "#mentor [data-tutorial=ack]", "got it (where the colour came from)");
     await waitStep(g, 15, "after the colour square");
     await click(g, "#hud [data-open=market]", "market");
     await g.waitPanel("market");
@@ -314,7 +324,7 @@ export const tutorial = {
     await g.page.waitForTimeout(150);
     const hud = await g.page.evaluate(() => ({ mentor: !(/** @type {HTMLElement} */ (document.querySelector("#mentor"))).hidden, goal: document.querySelector("#hud .pill.goal")?.textContent ?? "", arrow: !(/** @type {HTMLElement} */ (document.querySelector("#tut-arrow"))).hidden }));
     if (hud.mentor || hud.arrow) throw new ProbeError(`after the tutorial and its lesson the mentor and arrow should be gone: ${JSON.stringify(hud)}`);
-    if (!/blue lamb/i.test(hud.goal)) throw new ProbeError(`after the tutorial the HUD should show the act goal, shows "${hud.goal}"`);
+    if (!/true blue/i.test(hud.goal)) throw new ProbeError(`after the tutorial the HUD should show the act goal, shows "${hud.goal}"`);
     // The codex keeps the Punnet square as a concept card.
     await click(g, "#hud [data-open=codex]", "codex");
     await g.waitPanel("codex");
@@ -335,7 +345,7 @@ export const tutorial = {
     if (JSON.stringify(sa.unlocks) !== JSON.stringify(["cards", "orders", "vet"]) || sa.season !== 4) throw new ProbeError(`Year 2 Spring should bring the vet alone, unlocks: ${JSON.stringify(sa.unlocks)} (season ${sa.season})`);
     ctx.artifact(await g.screenshot("tut-after"));
     g.assertNoErrors("during the tutorial");
-    ctx.note(`seed ${s0.seed}: steps 1–17 advanced on their actions (${how.join(", ")}); lambs: white polled, horned, black; Punnet 3:1 only after the horned lamb (hover and pick work), colour square 3:1; no handover; letters + lesson at the tutorial's end (Year 1 Winter); Year 2 Spring brings only the vet`);
+    ctx.note(`seed ${s0.seed}: steps 1–17 advanced on their actions (${how.join(", ")}); lambs: white polled, horned, ${p3.colour} (${p3.wool}); Punnet 3:1 only after the horned lamb (hover and pick work), colour square 3:1; no handover; letters + lesson at the tutorial's end (Year 1 Winter); Year 2 Spring brings only the vet`);
     await g.close();
 
     // Skipping: from the mentor card; the two-sheep farm stays and the letters come at once.

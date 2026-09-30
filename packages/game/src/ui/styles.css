@@ -619,3 +619,45 @@ body.gallery-mode #hud { position: sticky; top: 0; height: 110px; }
 /* a price tag's "Open this land" points at its improvement in the market */
 .mcard.upgrade.flash { animation: card-flash 1.5s ease-out; }
 @keyframes card-flash { 0%, 40% { box-shadow: 0 0 0 4px var(--btn-butter), var(--lift); } 100% { box-shadow: var(--lift-sm); } }
+
+/* ---- v3 pigment colours (DESIGN-v3 §2, §12) ------------------------------------------------------------- */
+/* Forecast lambs: a ring in the lamb's forecast wool so pastel vs vivid reads even at small sizes. */
+.lamb-tile.art { box-shadow: 0 2px 0 rgba(90, 110, 80, .18), 0 0 0 3px var(--wool, #fff), 0 0 0 4px rgba(80, 60, 50, .25); }
+.litter.small .lamb-tile.art { box-shadow: 0 0 0 2px var(--wool, #fff), 0 0 0 3px rgba(80, 60, 50, .25); }
+.lamb-tile .lb.q { right: auto; left: -4px; top: auto; bottom: -4px; font: 900 13px/1 var(--f-ui); color: #6a7fa0; background: #f4f7fb; }
+.litter.small .lamb-tile .lb.q { width: 12px; height: 12px; font-size: 9px; left: -3px; bottom: -3px; }
+.lamb-tile .lb.tb { right: auto; left: 50%; top: -9px; transform: translateX(-50%); background: #dce7fb; }
+.lamb-tile .lb.tb .ic { --i1: #2f5da8; }
+.xkey .lb.q { font: 900 13px/1 var(--f-ui); color: #6a7fa0; background: #f4f7fb; }
+/* The Colour goal's chips: which colour to breed for. */
+.colour-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: -2px 8px 0 0; }
+.colour-chips .chip.cc { min-height: 28px; padding: 3px 10px 3px 5px; font: 800 12.5px/1 var(--f-ui); }
+.colour-chips .chip.cc.on { --btn: var(--felt-butter); box-shadow: var(--lift-sm); }
+.swatch.rainbow { background: conic-gradient(#c8322f, #e07a2a, #f2c230, #3e8e4a, #2f5da8, #6e3a8e, #c8322f) !important; }
+/* Pigment dots: three rows of four felt dots (red, yellow, blue doses), a pale/full chip and the strength bar. */
+.pig { display: inline-grid; grid-template-columns: auto auto; gap: 2px 6px; align-items: center; padding: 5px 10px; border-radius: 14px; background: var(--felt-hi); box-shadow: 0 1px 0 rgba(120, 95, 80, .12); font: 800 11.5px/1 var(--f-ui); color: var(--ink-soft); }
+.pig-row { display: contents; }
+.pig-row .pig-l { text-align: right; text-transform: lowercase; }
+.pig-d { display: inline-flex; gap: 3px; }
+.pig-d i { width: 11px; height: 11px; border-radius: 50%; background: #efe7da; box-shadow: inset 0 0 0 1.5px rgba(90, 70, 60, .28); }
+.pig-row.red .pig-d i.on { background: #c8322f; box-shadow: inset 0 -2px 2px rgba(0, 0, 0, .2); }
+.pig-row.yellow .pig-d i.on { background: #f2c230; box-shadow: inset 0 -2px 2px rgba(0, 0, 0, .15); }
+.pig-row.blue .pig-d i.on { background: #2f5da8; box-shadow: inset 0 -2px 2px rgba(0, 0, 0, .2); }
+.pig-row.extra { display: flex; grid-column: 1 / -1; gap: 6px; align-items: center; justify-content: center; margin-top: 2px; }
+.pig-chip { padding: 2px 7px; border-radius: 99px; background: #fffaf0; box-shadow: inset 0 0 0 1.5px rgba(90, 70, 60, .2); }
+.pig-chip.pale { background: #f7eef6; }
+.pig-str { position: relative; width: 52px; height: 7px; border-radius: 99px; background: linear-gradient(90deg, #e9e2d6, var(--wool, #999)); box-shadow: inset 0 0 0 1px rgba(90, 70, 60, .2); }
+.pig-str span { position: absolute; top: -3px; left: calc(var(--s) * 100% - 3px); width: 6px; height: 13px; border-radius: 3px; background: var(--ink-soft); }
+.pig.hidden { display: inline-flex; gap: 8px; }
+.pig.hidden .pig-row { display: inline-flex; gap: 2px; align-items: center; }
+.pig.hidden .pig-q { font: 900 13px/1 var(--f-ui); color: #6a7fa0; }
+.pig.hidden .pig-h { color: var(--muted); }
+.sc-know .v-pig { margin: 0 0 0 -1px; }
+.colour-line { margin: -4px 0 0 30px; }
+.sc-colour { display: flex; justify-content: center; margin: 0 0 4px; }
+.vet-sheep .pig { margin-left: auto; transform: scale(.9); transform-origin: right center; }
+.v-pig { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+.v-pig.red { background: #c8322f; } .v-pig.yellow { background: #f2c230; } .v-pig.blue { background: #2f5da8; }
+.vet-row .v-q { font-size: 11.5px; margin-top: 2px; }
+.born.flip .swatch { box-shadow: inset 0 0 0 2px rgba(80, 60, 50, .3); }
+.title .new-season { margin: 4px auto 0; padding: 6px 14px; border-radius: 99px; background: var(--felt-butter); font: 800 14px/1.2 var(--f-ui); display: inline-flex; gap: 6px; align-items: center; max-width: 520px; }

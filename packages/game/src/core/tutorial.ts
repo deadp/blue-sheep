@@ -5,16 +5,17 @@
  * 2026-09-27):
  *   1. a plain white, polled lamb — what breeding is (meet, forecast, plan, sleep);
  *   2. a horned lamb from two polled parents — the one-in-four outcome, explained with the Punnet square;
- *   3. a black lamb from two white parents — the same square for hidden colour; then the market and the goal.
+ *   3. a coloured lamb from two white parents — the same square for hidden colour (both parents carry red paint
+ *      under the white that breeds true, so the lamb is red, never blue); then the market and the goal.
  * The lambs are drawn with the game RNG (rerolled until they show that look, so it is deterministic). The
  * controller decides when a step's action has happened (ui/tutorial.ts) and calls `advanceTutorial`. There is
  * no handover: the player keeps the tutorial flock and grows it themselves. New systems arrive later, one at a
  * time (core/pacing.ts); the letters come the moment the tutorial ends (`tutorialOver`).
  *
  * The tutorial is act 0, and the story's first act ("Hidden colours! Breed me a blue sheep") waits for the
- * black lamb, the third lambing (core/acts.ts); in a normal game it begins with the first lamb.
+ * coloured lamb, the third lambing (core/acts.ts); in a normal game it begins with the first lamb.
  */
-import { discretePhenotype, sheep as sheepDefs, type Genome } from "@blue-sheep/genetics";
+import { discretePhenotype, sheep3, type Genome } from "@blue-sheep/genetics";
 import { buyPrice } from "./economy.js";
 import { addLog, newGame, species } from "./state.js";
 import type { Discovery, GameState, Sheep } from "./types.js";
@@ -22,7 +23,7 @@ import type { Discovery, GameState, Sheep } from "./types.js";
 export type TutorialStepId =
   | "ewe" | "ram" | "forecast" | "plan" | "sleep" | "lamb1"
   | "again" | "sleep2" | "horns" | "punnet"
-  | "again2" | "sleep3" | "black" | "why" | "market" | "goal" | "done";
+  | "again2" | "sleep3" | "colour" | "why" | "market" | "goal" | "done";
 
 export interface TutorialStepDef {
   id: TutorialStepId;
@@ -45,8 +46,8 @@ export const TUTORIAL_STEPS: readonly TutorialStepDef[] = [
   { id: "punnet", title: "Two copies of everything", ack: true },
   { id: "again2", title: "Once more", ack: false },
   { id: "sleep3", title: "Next season", ack: false },
-  { id: "black", title: "A black lamb", ack: false },
-  { id: "why", title: "Why black?", ack: true },
+  { id: "colour", title: "A coloured lamb", ack: false },
+  { id: "why", title: "Where did the colour come from?", ack: true },
   { id: "market", title: "The market", ack: false },
   { id: "goal", title: "The goal", ack: true },
   { id: "done", title: "Your flock", ack: true },
@@ -126,8 +127,8 @@ function ensureAffordableEwe(state: GameState): void {
   addLog(state, `${MENTOR.name} presses ${short} coins into your hand: “For your first ewe.”`);
 }
 
-/** The three looks, in order: white and polled; white and horned; black. */
-export const TUTORIAL_LAMBS = ["white polled", "horned", "black"] as const;
+/** The three looks, in order: white and polled; white and horned; coloured (red). */
+export const TUTORIAL_LAMBS = ["white polled", "horned", "coloured"] as const;
 
 /** The tutorial pair's lambs so far (born on the farm, in order). */
 export function tutorialLambs(state: GameState): Sheep[] {
@@ -152,29 +153,35 @@ export function isTutorialFirstMating(state: GameState, eweId: string, ramId: st
   return tutorialLambIndex(state, eweId, ramId) === 0;
 }
 
+/** "white" or "coloured" (the W mask), read from a genome (the sim only). */
 export function colourOf(g: Genome): string {
-  return discretePhenotype(g, species.map, sheepDefs.colour);
+  return discretePhenotype(g, species.map, sheep3.white);
 }
 
 export function hornsOf(g: Genome): string {
-  return discretePhenotype(g, species.map, sheepDefs.horns);
+  return discretePhenotype(g, species.map, sheep3.horns);
+}
+
+function doseOf(g: Genome, trait: "red" | "yellow" | "blue"): number {
+  return Number(discretePhenotype(g, species.map, sheep3[trait]));
 }
 
 /**
  * Draw tutorial lamb `index` (see TUTORIAL_LAMBS). `draw` is one meiosis with the game RNG; rerolled until the
- * lamb has its look (the pair can always give it). The black lamb is polled if it can be, so it brings one
- * idea only.
+ * lamb has its look (the pair can always give it). The coloured lamb is polled and has no blue paint, so it
+ * is a clear red (two red doses from the pair's true-breeding red) and brings one idea only; it is never
+ * true blue.
  */
 export function tutorialLambGenome(draw: () => Genome, index = 2): Genome {
   const ok = [
     (g: Genome) => colourOf(g) === "white" && hornsOf(g) === "polled",
     (g: Genome) => colourOf(g) === "white" && hornsOf(g) === "horned",
-    (g: Genome) => colourOf(g) === "black" && hornsOf(g) === "polled",
+    (g: Genome) => colourOf(g) === "coloured" && hornsOf(g) === "polled" && doseOf(g, "blue") === 0 && doseOf(g, "red") >= 2,
   ][Math.max(0, Math.min(2, index))]!;
-  const fallback = (g: Genome) => (index === 2 ? colourOf(g) !== "white" && colourOf(g) !== "blue" : ok(g));
+  const fallback = (g: Genome) => (index === 2 ? colourOf(g) === "coloured" && doseOf(g, "blue") < 2 : ok(g));
   let g = draw();
   let best: Genome | null = null;
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < 3000; i++) {
     if (ok(g)) return g;
     if (!best && fallback(g)) best = g;
     g = draw();

@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { GeoBatch, mat, type V3 } from "./builder.js";
 import { hashString, mulberry32 } from "./rng.js";
-import { WOOL_HEX } from "./palette.js";
+import { woolHex } from "./palette.js";
 import type { WorldSheep } from "./types.js";
 
 export interface SheepDims {
@@ -64,7 +64,7 @@ export function setSheepDetail(d: "full" | "lite"): void { LOCKS = d === "lite" 
 
 export function sheepKey(w: WorldSheep): string {
   return [
-    w.id, w.colour, w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
+    w.id, woolHex(w), w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
     Math.round(num(w.size, 60)), Math.round(num(w.fleeceWeight, 4) * 4), Math.round(num(w.crimp, 5) * 2),
   ].join("|");
 }
@@ -89,8 +89,8 @@ export function sheepDims(w: WorldSheep): SheepDims {
 
 /** Face and leg colour: cream on white sheep, a warm dark brown (faintly tinted by the fleece) otherwise. */
 export function faceHex(w: WorldSheep): string {
-  if (w.colour === "white") return "#eadfce";
-  const c = new THREE.Color("#6a564d").lerp(new THREE.Color(WOOL_HEX[w.colour] ?? "#ffffff"), 0.14);
+  if (w.family === "white" || w.family === "oatmeal") return "#eadfce";
+  const c = new THREE.Color("#6a564d").lerp(new THREE.Color(woolHex(w)), 0.14);
   return `#${c.getHexString()}`;
 }
 
@@ -139,10 +139,10 @@ function headPoint(x: number, y: number, z: number, hs: number): V3 {
 export function buildSheepGeos(w: WorldSheep): SheepGeos {
   const d = sheepDims(w);
   const rng = mulberry32(hashString(w.id) ^ 0x5eed);
-  const wool = new THREE.Color(WOOL_HEX[w.colour] ?? WOOL_HEX.white);
+  const wool = new THREE.Color(woolHex(w));
   const face = faceHex(w);
   const faceC = new THREE.Color(face);
-  const spotHex = w.colour === "white" ? "#6b5646" : "#f6f1e6";
+  const spotHex = w.family === "white" ? "#6b5646" : "#f6f1e6";
   const { L, H, W } = d;
 
   // ---- fleece: a barrel covered in small locks (crimp → more, smaller locks; fleece weight → a fuller barrel)
@@ -184,7 +184,7 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   hico(face, 1, 2, [0.08, 0, 0], [0.18, 0.145, 0.125]);
   hico(face, 1, 2, [0.07, 0.01, 0], [0.19, 0.155, 0.14]);
   hico(face, 1, 2, [0.2, -0.045, 0], [0.13, 0.092, 0.095]);
-  const nose = faceC.clone().lerp(new THREE.Color("#c99a90"), w.colour === "white" ? 0.5 : 0.3);
+  const nose = faceC.clone().lerp(new THREE.Color("#c99a90"), w.family === "white" || w.family === "oatmeal" ? 0.5 : 0.3);
   hico(nose, 1, 1, [0.31, -0.055, 0], [0.035, 0.055, 0.065]);
   // wool topknot and fleece behind the face
   hico(wool, 0.1, 1, [0.02, 0.1, 0], [1.1, 0.85, 1.15]);

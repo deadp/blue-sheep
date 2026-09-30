@@ -1,8 +1,9 @@
 /** The village fair: one autumn show a year, a rotating category, a field that improves every year. */
 import type { Rng } from "@blue-sheep/genetics";
 import {
-  FAIR_FIELD_BASE, FAIR_FIELD_GROWTH, FAIR_FIELD_MAX, FAIR_FIELD_SD, FAIR_JUDGE_SD, FAIR_LABEL, FAIR_PRIZES, FAIR_RIVALS, RARITY,
+  FAIR_FIELD_BASE, FAIR_FIELD_GROWTH, FAIR_FIELD_MAX, FAIR_FIELD_SD, FAIR_JUDGE_SD, FAIR_LABEL, FAIR_PRIZES, FAIR_RIVALS, FINE_REF,
 } from "./config.js";
+import { colourShowScore, woolOf } from "./colour.js";
 import { RIVAL_SHEEP, VILLAGERS } from "./names.js";
 import { addLog, fairCategoryFor, isAdult, yearOf } from "./state.js";
 import { fractionWords } from "./words.js";
@@ -12,10 +13,10 @@ import type { FairCategory, FairResult, FairRival, GameState, Sheep } from "./ty
 export function fairScore(s: Sheep, category: FairCategory): number {
   const ph = s.phenotype;
   switch (category) {
-    case "fine": return (26 - Number(ph["fineness"])) / 2.5;
+    case "fine": return (FINE_REF - Number(ph["fineness"])) / 2.5;
     case "heavy": return (Number(ph["fleeceWeight"]) - 4) / 0.8;
     case "big": return (Number(ph["size"]) - 60) / 7;
-    case "rare": return (RARITY[String(ph["colour"])] ?? 0) + (ph["pattern"] === "spotted" ? 0.3 : 0);
+    case "rare": return colourShowScore(woolOf(s));
   }
 }
 

@@ -6,7 +6,7 @@ import {
 import { myAnimalsHtml } from "./pets.js";
 import { litterWords } from "./forecast.js";
 import { crossCached } from "./cache.js";
-import { dueWords, esc, has, pips, prop, stars, swatch } from "./util.js";
+import { dueWords, esc, has, hex, pips, prop, stars, swatch } from "./util.js";
 import { btn, head, icon, iconBtn, iconize, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 import { actTrack } from "./track.js";
@@ -51,7 +51,7 @@ export function boardHtml(state: GameState, _view: View): string {
     const ewe = state.sheep[e], ram = state.sheep[r];
     if (!ewe || !ram) return "";
     let words = "";
-    try { words = litterWords(state, crossCached(state, e, r).colour); } catch { words = ""; }
+    try { words = litterWords(state, crossCached(state, e, r)); } catch { words = ""; }
     return `<li><button class="link pair" data-findmate="${esc(e)}" title="${esc(words)}">${nm(esc(ewe.name))} ${icon("heart", "sm")} ${nm(esc(ram.name))}</button>
       ${iconBtn("close", `Cancel ${ewe.name} × ${ram.name}`, { plan: `${e}:${r}` }, { cls: "tiny" })}</li>`;
   }).join("");
@@ -88,7 +88,7 @@ export function boardHtml(state: GameState, _view: View): string {
 function orderIcon(o: Order): string {
   if (o.kind === "wool") return `<span class="o-icon">${icon("yarn", "lg")}</span>`;
   if (o.kind === "horns") return `<span class="o-icon">${icon("ram", "lg")}</span>`;
-  return `<span class="o-icon">${swatch(o.colour ?? "white", "big")}</span>`;
+  return `<span class="o-icon" data-order-colour="${esc(o.colour ?? "")}">${swatch(hex(o.colour ?? "white"), `big ${o.band ?? ""}`)}</span>`;
 }
 
 function orderCard(state: GameState, o: Order, mode: "open" | "accepted"): string {

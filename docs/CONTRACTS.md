@@ -29,15 +29,17 @@ then endless mode.
 | Act | Hook / villager line | Goal to advance | Concepts that open during it (one at a time, see Pacing) |
 |-----|----------------------|-----------------|------------------|
 | 0 | "The old farm is yours. Let's see what the flock gives us." | First lambs born (any planned mating produces a lamb) | Forecast panel (icons only), notebook facts |
-| 1 | Surprise lamb → "Hidden colours! Breed me a **blue** sheep." | A blue lamb is born | `cards`, `orders`, `vet`, `farm`, `dogs`, `cat` |
+| 1 | Surprise lamb → "Hidden colours! Breed me a **true blue** sheep." | A true blue lamb is born (family blue, intensity ≥ 0.6, not pale) | `cards`, `orders`, `vet`, `farm`, `dogs`, `cat` |
 | 2 | Wool buyer: "I pay for fineness." | Fulfil 3 wool/colour orders (any); up to 2 filled before act 2 count, so at least one is filled in act 2 (`ORDERS_CARRIED`) | `numbers` (percentages, range bars), `fair` |
 | 3 | Small inbred lambs → "Blood too close. Bring in fresh rams." | Win a village fair (1st place, any category) | `tree`, `visitor`; flock cap 16 |
 | 4 | "Found your own breed." | Registry: ≥6 living blue sheep, flock mean fineness ≤ 24 µm, mean inbreeding of those six < 0.125 | Ending screen, endless mode, flock cap 24 |
 
 **Start (every farm, tutorial or not; `newGame(seed)`, `addStarterPair`):** one white adult ewe and one
 white adult ram, `START_MONEY` (50) coins, an empty act-0 `unlocks`, and a first-year market of one ewe and
-one ram (`MARKET_SIZE_YEAR1`; `MARKET_SIZE` 3 from year 2). The pair: both `a/Aw` (white, carry hidden
-colour, black underneath), both `B/B`, the ewe `d/D` and the ram `D/D` (no lamb of the pair is blue), both
+one ram (`MARKET_SIZE_YEAR1`; `MARKET_SIZE` 3 from year 2). The pair (v3, `setStarterColour`): both `w/W` (white, carry hidden
+colour); red that passes one dose to every lamb (ewe `R1 +/+ R2 -/-`, ram `R1 -/- R2 +/+`, so a coloured lamb
+has two red doses but single copies); no yellow; one blue copy on each blue gene (`U1 -/+`, `U2 -/+`; no lamb of
+the pair can be true blue, its red always muddies the blue); the ewe `d/D` and the ram `D/D` (no pale lamb), both
 polled horn carriers `p/P`, and both (and their mothers) solid `S/S`, so no spotting fact surprises the
 tutorial's first lamb. Their mothers (white, horned `p/p`, origin founder, never in the flock) are on
 record as the pair's dams, so the farm proves from day one that each carries one horns copy
@@ -183,7 +185,8 @@ Other systems (all pure TS in `packages/game/src/core`, all tested):
   codex; lambs take two seasons to grow) · season 2 `again` (plan the pair again) → `sleep2` → `horns` (a
   white, horned lamb and the first discovery card, `tutorialHornsCard`; `cards` arrives) → `punnet` (ack:
   the 2×2 square for horns, 3 polled : 1 horned, "about one lamb in four, just as the forecast showed") ·
-  season 3 `again2` → `sleep3` → `black` (a black lamb; hidden-colour cards for both parents; act 1 begins
+  season 3 `again2` → `sleep3` → `colour` (a coloured lamb: a clear red, two red doses, polled, no blue, never
+  true blue; Old Tom names its real colour; hidden-colour cards for both parents; act 1 begins
   now: in the tutorial act 0's goal waits for the third lamb) → `why` (ack: the colour square) → `market`
   (buy a ewe, "nothing known"; `gift` tops up coins only if needed) → `goal` (ack) → `done` (ack, "Let's
   farm!"; no handover). While the tutorial runs the pair's first three matings give one lamb each
@@ -348,7 +351,8 @@ export interface LandInfo {
 }
 export interface WorldSheep {
   id: string; name: string; sex: "ewe" | "ram"; adult: boolean;
-  colour: "white" | "black" | "brown" | "blue" | "fawn";
+  wool: string;     // wool hex from the colour model (core/colour.ts), e.g. "#FAFAF7" snow-white
+  family: string;   // colour family: white oatmeal taupe charcoal brown red orange yellow green blue purple
   pattern: "solid" | "spotted"; horns: "polled" | "horned";
   size: number; fleeceWeight: number; fineness: number; crimp: number;
   zone: Zone;
@@ -500,8 +504,9 @@ woolly barrel covered in small locks (crimp → more, smaller locks; fleece weig
 scale; spots colour whole locks), rump, breast and a woolly neck carrying a natural head forward; a rounder
 skull, a short soft muzzle, a pale patch round each big soft eye (dark eye, warm iris, two catch-lights; one
 instanced geometry in the world, a movable iris in the live portrait), ears held out to the side, slim legs
-with darker hooves, a short docked tail; horns curl from the poll (bigger on rams). Wool colour still uses
-the v2 mapping (`WOOL_HEX`) until pigment colours arrive. Legs, ears and eyes stay instanced flock-wide.
+with darker hooves, a short docked tail; horns curl from the poll (bigger on rams). Wool colour is the
+sheep's own hex (`WorldSheep.wool`, `palette.ts woolHex`); faces stay cream on white and oatmeal sheep;
+portrait backgrounds (`PORTRAIT_BG`) and minimap dots use the family and the hex. Legs, ears and eyes stay instanced flock-wide.
 
 ## 5. UI panels (Stream C) — `packages/game/src/ui/`
 
@@ -642,8 +647,11 @@ discovery/concept cards.
 
 ## 6. Controller (Stream D) — `packages/game/src/app.ts`
 
-- Boots: reads URL params, loads save (localStorage `blue-sheep-save-v2`) or
-  shows title. Builds `WorldView`, renders HUD, subscribes clicks.
+- Boots: reads URL params, loads save (localStorage `blue-sheep-save-v3`; v1/v2 keys are never loaded
+  or touched — DESIGN-v3 §15 item 5 — and a returning player's title says "A new season at Kōwhai Creek"
+  once, `view.oldSave`, remembered by `blue-sheep-v3-hello`) or shows title. Auto detail remembers a lite
+  decision (`autolite.ts`, key `blue-sheep-autolite`): the next boots start lite, and it re-checks on the
+  10th remembered boot or after 7 days (choosing Auto in Settings forgets it; URL-pinned detail ignores it). Builds `WorldView`, renders HUD, subscribes clicks.
 - **Deep links** (needed by probes and screenshots):
   `?seed=N` new game with seed (ignores save, does not overwrite it until the
   player acts), `?tutorial=1` a new tutorial game (with `?seed=N` if given; not saved until the player
@@ -767,7 +775,8 @@ headless Chrome (`/usr/bin/google-chrome`, `--use-gl=swiftshader`), and:
    panel's primary button; lamb 1 is white and polled with no card, no codex and act 0 still; lamb 2 is
    white and horned with the first card and only `cards`; the Punnet square appears only after lamb 2 (3
    polled : 1 horned, no letters, "about one lamb in four"; hover/pick; fits at 1280×800 and 1024×768); lamb
-   3 is black, both parents get hidden-colour cards and act 1 begins; the colour square follows; the market
+   3 is a clear red (two red doses, no blue, bright or better; Old Tom and the report card use its real colour),
+   both parents get hidden-colour cards and act 1 begins; the colour square follows; the market
    step buys a ewe; the end flock is the pair, their three lambs and the bought ewe; "Let's farm!" brings the
    letters (a horns letter) with their lesson at once in Year 1; the codex has the Punnet card; the next
    season (Year 2 Spring) brings only the vet; skipping keeps two sheep and brings the letters; `?seed` alone
@@ -817,8 +826,8 @@ Exit code non-zero on any failure; prints a one-screen summary. Artifacts in
 
 ## 9. Genetics v3 library (DESIGN-v3 Phase 1) — `@blue-sheep/genetics`, `@blue-sheep/inference`
 
-The v2 species (`sheep.sheep`, A/B/D colour) is unchanged and still drives the game. The v3
-library sits beside it until Phase 2 switches the game over. Everything here is pure and
+Since Phase 2 the game runs on `sheep3` (§10); the v2 species (`sheep.sheep`, A/B/D colour) stays in the
+library for reference only. Everything here is pure and
 rng-driven through `createRng`.
 
 **Species `sheep3.sheep3`** (`genetics/src/sheep3.ts`, exported as the namespace `sheep3`): six
@@ -891,3 +900,46 @@ classify as Crossbred.
 **Dev palette:** `npx vite-node packages/genetics/scripts/palette.ts [--png] [--seed N]` writes
 `packages/genetics/out/palette.html` (and `palette.png`, `palette-cube.png`; `out/` is gitignored). It
 prints the breed table, the founder colour families per breed, and a selective-breeding sim.
+
+## 10. Pigment colours in the game (DESIGN-v3 Phase 2)
+
+- **Species and saves.** `core/state.ts species = sheep3.sheep3`; `GameState.version: 3`; `deserialize`
+  accepts v3 only and throws `OldSaveError` for v1/v2 (the controller then starts fresh). `migrateV1` is gone.
+- **Phenotype.** `computePhenotype` = `observePhenotypes` (masked traits left out: a white sheep has no
+  `red`/`yellow`/`blue`/`dilute`/`pattern`) plus derived fields `colour` (the colour name: family, pastel
+  name, `slate`, `olive`, `gold` or `snow-white`), `family`, `wool` (hex), `intensity`.
+- **`core/colour.ts`.** `woolOf(sheep) → Wool` (woolColour + `band` soft/bright/vivid, `word` "soft pink",
+  `key` "pink:soft"), `isTrueBlue`, `ColourTarget {colour, min}` + `woolMatches` (names match the display
+  name; `"true blue"`, `"vivid"`, `"white"` special), `targetWords`, `woolPricePerKg`, `colourValue`,
+  `colourShowScore`, `setColour` (tests/fixtures), `HUE_NAMES`. genetics `colour.ts` adds `mutedName`:
+  muted cool hues (min ≥ 0.25, C ≤ 0.5) are named `slate` (blue) and `olive` (green).
+- **Knowledge.** `DISCRETE_TRAITS` = white, red, yellow, blue, dilute, pattern, horns. Facts are per gene id
+  `W | red | yellow | blue | Dl | S | P`; a pigment channel's fact reads its two genes as a class ("passes one
+  red dose to every lamb", "passes up to two…", "hides red paint under the white", "two red doses; how they
+  pass on is unknown"). `geneDist(state, id, gene)`, `lambOutcomesBySample`. `state.known[id][gene]` holds
+  genotype strings or channel classes (internal). No digits or genotype strings in fact text.
+- **Forecast.** `CrossForecast` gains `swatches: LambSwatch[]` (classes by name + band, white "hidden"),
+  `families`, `white`, `trueBlue`, `vivid`, `depth`, `colourText`; `colour` is keyed by class key.
+  `colourClasses` (product of per-trait lamb outcomes, colour strength at mean ± sd), `litterOf` (ten by
+  largest remainder), `pColour(f, colour, min)`. Goals: `trueblue | colour:<name|vivid> | learn | fine |
+  heavy`; the Colour tab shows chips (any vivid, then colours on the farm) and scores P(colour, bright or
+  better). Colour strength forecasts use only sheep that show colour.
+- **Vet.** `TEST_LOCI = W, red, yellow, blue, Dl, S, P`; a pigment test sets `tested` for both loci (R1+R2 …);
+  `wasTested`; `forecastVet` gain = entropy of the gene's class distribution, text names the question
+  ("what blue paint X hides under the white, and how it passes on").
+- **Orders, fair, economy, events.** Colour orders carry `colour` (a name) + `band` (lowest band, or null),
+  asked from `COLOUR_ASKS` by act (naturals and pastels early, slate/olive from act 2, vivid from act 3, true
+  blue at act 4); P(fill) from per-sample colour chances. Fair "rare" is "Most vivid colour"
+  (`colourShowScore`). Wool price and market value by intensity (true blue ×1.25). Wool boom by family.
+  `FINE_REF` 30 µm (Farm average) replaces the v2 26 µm reference; registry needs flock ≤ 28 µm and six
+  full blue (name `blue`) sheep. Market Farm sheep use blue "+" frequency `MARKET_BLUE_FREQ` 0.15 (breed
+  0.10) and are never true blue; visiting rams show colour and carry blue.
+- **UI.** Swatch litter (tiles carry `data-wool`, `data-key`; white lambs a "?"; true blue a heart); sheep card
+  colour words and pigment dots (`pigmentDots`: dose dots, pale/full chip, strength bar; hidden on white
+  sheep); vet pigment rows; report cards carry `data-wool`/`data-family`; surprises judged by family chance.
+  `View.lambArt({wool, pattern, horns})`, `View.oldSave`.
+- **Probes.** `panels.mjs assertSwatches` (ten swatches, valid hexes, equal to the core litter of the
+  forecast's classes); play asserts every born lamb has a family and a valid hex and hides doses when white;
+  new `colour.mjs` (world snapshot wool = phenotype, pigment dots = doses, pigment test pins both genes,
+  report card wool = lamb wool; shots `colour-*`).
+

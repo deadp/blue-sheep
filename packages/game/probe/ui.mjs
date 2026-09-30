@@ -107,7 +107,7 @@ export const ui = {
         }
       }
       // ---- every panel
-      for (const p of [...PANELS.filter((x) => !x.scrollTo), ...EXTRA]) {
+      for (const p of [...PANELS.filter((x) => !x.scrollTo && !x.noUi), ...EXTRA]) {
         const name = `${p.shot ?? p.name}-${w}`;
         try {
           await g.boot(`?seed=7&fresh=1&nomotion=1${p.act !== undefined ? `&act=${p.act}` : ""}&panel=${p.name}`);
