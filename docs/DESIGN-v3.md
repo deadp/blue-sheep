@@ -1113,3 +1113,11 @@ and tuning is a separate commit only if a target is badly missed.
     with a sparkle. Coordinator note: the forecast headline can say "A long
     shot — about one lamb in ten would be true blue" while the hint line calls
     it a long shot too; headline and hint wording should agree.
+31. **Breed looks feedback (user, 2026-10-04):** visiting rams stay Farm until
+    Phase 4 draws them from breed stock; keep the forecast wording bands (very
+    long shot <5%, long shot <8%, "Unlikely, but it happens" 8–15%); Merino neck
+    folds read as a lump on the back — shrink them and keep them at the neck in
+    the next pass. Coordinator note: the long-shot marker can name colours
+    ("vivid blue, soft purple, vivid purple") that differ from the hint line
+    ("a long shot at soft purple, a long shot at true blue"); both should list
+    the same long shots by the same names.
