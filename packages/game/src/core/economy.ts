@@ -1,5 +1,6 @@
 /** Prices, wool income, buying and selling, and the money floor. */
-import { BUY_MARKUP, FINE_REF, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE } from "./config.js";
+import { BREED_STOCK, BUY_MARKUP, FINE_REF, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE } from "./config.js";
+import { breedOf } from "./breeds.js";
 import { colourValue, woolOf, woolPricePerKg } from "./colour.js";
 import { addLog, flockSheep, isAdult } from "./state.js";
 import type { GameState, Sheep } from "./types.js";
@@ -26,9 +27,9 @@ export function sheepValue(s: Sheep, season?: number): number {
   return Math.max(4, Math.round(marketWorth(s) * cut * lamb));
 }
 
-/** What the trader asks for a sheep on the market. */
+/** What the trader asks for a sheep on the market: its worth, times the breed's price (config `BREED_STOCK`). */
 export function buyPrice(s: Sheep): number {
-  return Math.round(marketWorth(s) * BUY_MARKUP) + (s.sex === "ram" ? 10 : 0);
+  return Math.round(marketWorth(s) * BUY_MARKUP * BREED_STOCK[breedOf(s)].price) + (s.sex === "ram" ? 10 : 0);
 }
 
 /** @deprecated v1 name; use buyPrice. */

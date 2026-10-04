@@ -1,11 +1,11 @@
 /** Market (buy, sell, visiting ram), vet and fair panels. */
 import {
   lambRoom, FAIR_LABEL, FAIR_PRIZES, PET_NAME, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, fondnessOf, forecastUpgrade, hasUpgrade, isPetId, upgradeBlocked, upgradeOffered, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
-  isAdult, oddsLabel, seasonLabel, sheepValue, wasTested, woolOf, yearOf,
+  fleeceWords, isAdult, oddsLabel, seasonLabel, sheepValue, wasTested, woolOf, yearOf,
   type CrossForecast, type GameState, type Sheep,
 } from "../core/index.js";
 import { litterRow, litterWords } from "./forecast.js";
-import { ageWords, chip, dot, esc, has, heartMeter, learnMeter, learnWord, oddsScale, pigmentDots, pips, portrait, sexMark, swatch, traitWords, woolSwatch, LEARN_SCALE, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, breedWords, woolTypeTag, chip, dot, esc, has, heartMeter, learnMeter, learnWord, numbersOn, oddsScale, pigmentDots, pips, portrait, sexMark, swatch, traitWords, woolSwatch, LEARN_SCALE, LOCUS_FRIENDLY } from "./util.js";
 import { btn, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 import { crossCached } from "./cache.js";
@@ -39,6 +39,8 @@ function marketCard(state: GameState, view: View, s: Sheep): string {
     ${portrait(view, s, "md")}
     <div class="m-body">
       <div class="m-name">${nm(esc(s.name))} ${sexMark(s)} ${tag(`${woolSwatch(s)}${esc(woolOf(s).word)}`, { cls: "sw" })} ${s.phenotype["horns"] === "horned" ? icon("horn", "inl") : ""}</div>
+      <div class="m-breed" data-breed="${esc(s.breed ?? "farm")}"><b>${esc(breedWords(state, s))}</b> ${woolTypeTag(state, s)}</div>
+      <div class="meta">${esc(fleeceWords(s, numbersOn(state)).short)}</div>
       ${wouldAdd(state, view, s)}
       ${more(`buy-${s.id}`, "More", `<div class="meta">${esc(traits)} · ${esc(ageWords(state, s))}</div><div class="meta">What we know: nothing but looks — bought in, no pedigree.</div>`, { cls: "mini" })}
     </div>

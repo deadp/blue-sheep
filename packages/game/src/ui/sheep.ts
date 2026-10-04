@@ -1,10 +1,10 @@
 /** Sheep card and family tree. */
 import {
   FAIR_LABEL, PERSONALITY_WORD, TREAT_COST, ageOf, fondnessWord, type Personality, brushedThisSeason, forecastBrush, isPetId, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
-  forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason, woolOf,
+  fleeceWords, forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason, woolOf,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
-import { ageWords, chip, dot, esc, has, heartMeter, numbersOn, pigmentDots, portrait, sexMark, swatch, traitWords, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, chip, dot, esc, has, heartMeter, numbersOn, breedWords, pigmentDots, portrait, sexMark, swatch, traitWords, woolTypeTag, LOCUS_FRIENDLY } from "./util.js";
 import { btn, fact, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 
@@ -123,6 +123,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
   if (has(state, "tree")) small.push(btn("Family", { kind: "ghost", cls: "small", icon: "family", data: { open: "tree", "sheep-id": s.id }, title: "Family tree" }));
   if (own) small.push(btn(`Sell · ${sheepValue(s, state.season)}`, { kind: "ghost", cls: "small", icon: "tag", data: { sell: s.id }, title: `Sell for ${sheepValue(s, state.season)} coins` }));
   const status = [
+    isAdult(s, state.season) ? woolTypeTag(state, s) : "",
     isIll(s, state.season) ? tag("poorly — resting", { icon: "warn", tone: "rose", cls: "warn" }) : "",
     visitor ? tag("visiting ram", { icon: "ram", tone: "sky" }) : "",
     forSale ? tag("for sale", { icon: "tag", tone: "butter" }) : "",
@@ -134,6 +135,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
   const colour = w.word;
   const pattern = String(s.phenotype["pattern"] ?? "solid"), horns = String(s.phenotype["horns"]);
   const young = !isAdult(s, state.season);
+  const fleece = fleeceWords(s, numbersOn(state));
   const wool = traitWords(state, s)[0]!.text.replace(/ \(.*\)$/, "");
   const [ageN, ageW] = ageFact(state, s);
   const looks = [pattern === "spotted" ? "spotted" : "", horns === "horned" ? "horned" : ""].filter(Boolean).join(", ");
@@ -156,9 +158,11 @@ export function sheepCardHtml(state: GameState, view: View): string {
       <div class="sc-hello" aria-hidden="true">click to say hello</div>
     </div>
     <div class="sc-name"><h2 class="nm">${esc(s.name)}</h2>${sexMark(s)}${own ? `<button class="icon ghost tiny" data-rename="${esc(s.id)}" title="Rename" aria-label="Rename ${esc(s.name)}">${icon("pencil")}</button>` : ""}</div>
+    <div class="sc-breed" data-breed="${esc(s.breed ?? "farm")}">${esc(breedWords(state, s))}</div>
     <div class="sc-persona"><span class="persona ${pers}">${icon(PERSONA_ICON[pers])}${esc(PERSONALITY_WORD[pers].toLowerCase())} ${esc(s.sex)}</span>${flav.slice(0, 1).map((f) => `<span class="sc-flav">${icon(FLAVOUR_ICON[f] ?? "sparkle")}${esc(f)}</span>`).join("")}</div>
     ${status || planTag || rosettes ? `<div class="tags">${status}${planTag}${rosettes}</div>` : ""}
     ${own ? careHtml(state, s.id) : ""}
+    ${young ? "" : `<p class="sc-wool" data-wool-type="${esc(fleece.type)}">${esc(fleece.line)}${fleece.layers ? ` <span class="meta">${esc(fleece.layers)}</span>` : ""}</p>`}
     <p class="sc-line">“${esc(personalityLine(s))}”</p>
     <div class="facts-row">
       ${fact(swatch(w.hex, "big"), esc(colour), esc(looks || (w.trueBlue ? "true blue!" : w.family === "white" ? "colour hidden" : "colour")), { tone: "cream", title: `${colour}${w.trueBlue ? " (true blue)" : ""}, ${pattern}, ${horns}` })}

@@ -62,16 +62,42 @@ const num = (v: number, d: number) => (Number.isFinite(v) ? v : d);
 let LOCKS = 52;
 export function setSheepDetail(d: "full" | "lite"): void { LOCKS = d === "lite" ? 34 : 52; }
 
+/**
+ * Modest procedural breed looks (DESIGN-v3 §3.2, §13 phase 3): build, fleece texture and face/leg colour. The
+ * default is the Farm sheep. `locks` and `lockR` scale the number and size of wool locks, `stretch` makes them
+ * longer (shaggy), `body` scales the build, `face` is the face and leg colour on white or oatmeal sheep and
+ * `faceDark` on coloured ones (null: the usual dark brown tinted by the fleece).
+ */
+export interface BreedLook { locks: number; lockR: number; stretch: number; body: number; face: string | null; faceDark: string | null; tail: number }
+const FARM_LOOK: BreedLook = { locks: 1, lockR: 1, stretch: 1, body: 1, face: null, faceDark: null, tail: 1 };
+export const BREED_LOOKS: Record<string, BreedLook> = {
+  farm: FARM_LOOK,
+  // fine, dense and compact; creamy face under a woolly cap
+  merino: { locks: 1.3, lockR: 0.82, stretch: 0.9, body: 0.93, face: "#f1e6d3", faceDark: "#8a7565", tail: 1 },
+  corriedale: { locks: 1.05, lockR: 0.95, stretch: 1, body: 1.03, face: "#efe4d2", faceDark: null, tail: 1 },
+  // hardy hill sheep: a greyish face and legs, a touch sturdier
+  perendale: { locks: 0.95, lockR: 1.05, stretch: 1.1, body: 0.98, face: "#cfc4b3", faceDark: "#5d4e47", tail: 1 },
+  // lustrous longwool: long, sleek locks, a big frame, a clean white face
+  romney: { locks: 0.82, lockR: 1.12, stretch: 1.4, body: 1.07, face: "#f3ebdd", faceDark: null, tail: 1 },
+  // hairy carpet wool: shaggy, rangy, tan face
+  drysdale: { locks: 0.68, lockR: 1.3, stretch: 1.6, body: 1.02, face: "#b8a58d", faceDark: "#6d5a4b", tail: 1.2 },
+  // Icelandic: smaller, shaggy double coat, tan face and legs, a fat short tail
+  icelandic: { locks: 0.74, lockR: 1.28, stretch: 1.5, body: 0.9, face: "#9a7d60", faceDark: "#5b4638", tail: 1.7 },
+};
+export function breedLook(w: WorldSheep): BreedLook {
+  return BREED_LOOKS[w.breed ?? "farm"] ?? FARM_LOOK;
+}
+
 export function sheepKey(w: WorldSheep): string {
   return [
-    w.id, woolHex(w), w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
+    w.id, w.breed ?? "farm", woolHex(w), w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
     Math.round(num(w.size, 60)), Math.round(num(w.fleeceWeight, 4) * 4), Math.round(num(w.crimp, 5) * 2),
   ].join("|");
 }
 
 /** The natural sheep (DESIGN-v3 §15 items 20–22): a woolly barrel on slim legs, a natural head carried forward. */
 export function sheepDims(w: WorldSheep): SheepDims {
-  const s = clamp(0.75 + (num(w.size, 60) - 40) * 0.0105, 0.62, 1.25);
+  const s = clamp((0.75 + (num(w.size, 60) - 40) * 0.0105) * breedLook(w).body, 0.62, 1.25);
   const p = clamp(0.9 + num(w.fleeceWeight, 4) * 0.04, 0.95, 1.18);
   const L = 0.62 * s * p;
   const H = 0.38 * s * p;
@@ -89,8 +115,9 @@ export function sheepDims(w: WorldSheep): SheepDims {
 
 /** Face and leg colour: cream on white sheep, a warm dark brown (faintly tinted by the fleece) otherwise. */
 export function faceHex(w: WorldSheep): string {
-  if (w.family === "white" || w.family === "oatmeal") return "#eadfce";
-  const c = new THREE.Color("#6a564d").lerp(new THREE.Color(woolHex(w)), 0.14);
+  const look = breedLook(w);
+  if (w.family === "white" || w.family === "oatmeal") return look.face ?? "#eadfce";
+  const c = new THREE.Color(look.faceDark ?? "#6a564d").lerp(new THREE.Color(woolHex(w)), 0.14);
   return `#${c.getHexString()}`;
 }
 
@@ -156,21 +183,22 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   const isSpot = (x: number, y: number, z: number) => { _dir.set(x, y, z).normalize(); return spots.some((sp) => _dir.dot(sp) > 0.82); };
   const bb = new GeoBatch(0, rng);
   bb.ico(wool, 1, 2, [0, 0, 0], [L, H, W]);
-  const n = Math.round(LOCKS * (0.85 + curl * 0.35));
-  const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS);
+  const look = breedLook(w);
+  const n = Math.round(LOCKS * (0.85 + curl * 0.35) * look.locks);
+  const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS) * look.lockR;
   for (let i = 0; i < n; i++) {
     const [x, y, z] = fib(i, n);
     if (y < -0.72) continue;
     _c.set(isSpot(x, y, z) ? spotHex : wool).multiplyScalar(0.97 + rng() * 0.06);
     const r = lockR * (0.85 + rng() * 0.4);
-    bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], [1.2, 0.85 + curl * 0.2, 1], [rng() * 3, rng() * 3, rng() * 3]);
+    bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], [1.2, (0.85 + curl * 0.2) * look.stretch, 1], [rng() * 3, rng() * 3, rng() * 3]);
   }
   // rump and breast fullness, a woolly neck carrying the head forward, a short docked tail
   const woolAt = (x: number, y: number, z: number) => (isSpot(x, y, z) ? spotHex : wool);
   bb.ico(woolAt(-1, 0.1, 0), 0.3 * (L / 0.62), 2, [-L * 0.62, H * 0.12, 0], [1, 1.02, 1.08]);
   bb.ico(woolAt(1, 0.3, 0), 0.26 * (L / 0.62), 2, [L * 0.7, H * 0.3, 0], [1, 1.1, 0.95]);
   bb.ico(wool, 0.2 * (L / 0.62), 2, [L * 0.98, H * 0.72, 0], [1.15, 1.1, 0.82]);
-  bb.ico(wool, 0.1 * (L / 0.62), 1, [-L * 1.05, H * 0.18, 0], [0.9, 1.3, 0.9]);
+  bb.ico(wool, 0.1 * (L / 0.62) * look.tail, 1, [-L * 1.05, H * 0.18, 0], [0.9, 1.3, 0.9]);
   const body = smoothGeo(bb.build()!);
   shadeByHeight(body, -H * 1.05, H * 0.9, 0.8, 1.03);
 

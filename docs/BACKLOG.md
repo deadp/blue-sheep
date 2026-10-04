@@ -5,7 +5,7 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-Next: v3 Phase 3 (breeds and wool types, DESIGN-v3 §13), on the pigment-colour game.
+Next: v3 Phase 4 (wool store, raw sales, demand meters, DESIGN-v3 §13).
 
 Follow-ups from Phase 2, pigment colours (not started):
 - The act ladder is still v2 (true blue replaces blue in act 1; the registry wants six full-blue sheep at
@@ -130,6 +130,7 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Done
 
+- v3 Phase 3, breeds and wool types (HASH): market stock by breed and act (>= 3 breeds at acts 1-3, Icelandic only from act 4), `core/wool.ts` wool-type classification on the measured fleece, breed line from the pedigree, breed + wool-type tag + fleece words on the sheep and market cards (numbers behind the unlock), colour strength word, breed looks in `sheepMesh`, wool-item suitability data; forecast swatch/hint now share one distribution (largest remainder, `NAMED_MIN` 8%). New `breeds.mjs` probe. Open: breed prices untuned, crossbred looks, faded long-shot swatches.
 - v3 Phase 2, pigment colours in the game (see git log): the game runs on `sheep3`; fresh v3 save key (old saves
   ignored, "A new season at Kōwhai Creek" once); colour facts in words with confidence dots (hidden colour,
   pigment classes "passes one red dose to every lamb", pale, spots, horns); forecast swatch litter (5 × 2

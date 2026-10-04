@@ -31,7 +31,7 @@ export { hireVisitingRam, forecastVisitor } from "./visitor.js";
 export { announceText, eventPool, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
   forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, colourText, colourClasses,
-  litterOf, pColour, goalColour, GOALS, type Goal,
+  litterOf, NAMED_MIN, pColour, goalColour, GOALS, type Goal,
 } from "./forecast.js";
 export {
   factsFor, posteriors, updateDiscoveries, marginal, geneDist, geneLoci, entropyBits, channelClassWords, isChannel,
@@ -61,3 +61,10 @@ export {
   TUTORIAL_STEPS, MENTOR, newTutorialGame, advanceTutorial, skipTutorial, tutorialInfo, tutorialActive, tutorialStep,
   cheapestMarketEwe, isTutorialFirstMating, tutorialLambIndex, tutorialLambs, TUTORIAL_LAMBS, TUTORIAL_VERSION, colourOf, hornsOf, type TutorialStepId, type TutorialStepDef, type TutorialInfo,
 } from "./tutorial.js";
+export {
+  marketBreeds, icelandicUnlocked, breedOf, breedFractions, breedShares, breedLine, mainBreed, type BreedFractions,
+} from "./breeds.js";
+export {
+  woolTypeOf, fleeceOf, fleeceWords, finenessWord, stapleWord, lustreWord, strengthWord, strengthFraction, woolSuit, itemsSuiting,
+  WOOL_TYPE_LABEL, WOOL_TYPES, WOOL_TYPE_BLURB, ITEM_IDS, SUIT, type WoolType, type FleeceWords, type ItemId,
+} from "./wool.js";

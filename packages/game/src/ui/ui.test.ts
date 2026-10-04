@@ -32,6 +32,8 @@ const VOCAB = new Set([
   "gene", "dom", "rec", "pick", "r", "c", "look",
   // not actions: colour markers (card colour row, lamb tiles, reveals, order icons, vet rows, title) for CSS and probes
   "colour", "hex", "family", "wool", "key", "order-colour", "test-row", "new-season",
+  // not actions: breed and wool-type markers on the card and market (CSS and probes)
+  "breed", "wool-type",
 ]);
 /** A pigment genotype (never shown): "-/+", "+/+". */
 const PIGMENT_GENOTYPE = /[-+]\/[-+]/;

@@ -5,7 +5,7 @@
 import {
   acceptOrder, advanceSeason, buySheep, buyUpgrade, hasUpgrade, upgradeDef, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
-  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf, woolOf,
+  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf, woolOf, breedFractions, mainBreed,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
@@ -391,6 +391,7 @@ export class App {
       horns: p["horns"] === "horned" ? "horned" : "polled",
       size: Number(p["size"] ?? 60), fleeceWeight: Number(p["fleeceWeight"] ?? 4),
       fineness: Number(p["fineness"] ?? 30), crimp: Number(p["crimp"] ?? 5),
+      breed: mainBreed(breedFractions(this.state, s.id)),
       zone, marker, personality: personalityOf(s), dam: s.dam, fondness: fondnessOf(this.state, s.id),
     };
   }

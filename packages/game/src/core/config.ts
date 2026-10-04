@@ -1,4 +1,5 @@
 /** Every balance number in one place, so the oracle scripts can tune them. */
+import type { BreedId } from "@blue-sheep/genetics";
 import type { ActNumber, DogId, FairCategory, PetId, SheepOrigin, Unlock, UpgradeId } from "./types.js";
 
 export const SEASONS = ["Spring", "Summer", "Autumn", "Winter"] as const;
@@ -23,6 +24,20 @@ export const SHEEP_BASE_PRICE = 12;
  * so a farm that buys in can find blue paint; tuned with scripts/blind.ts (DESIGN-v3 §15 item 19).
  */
 export const MARKET_BLUE_FREQ = 0.15;
+/**
+ * Market stock by breed (DESIGN-v3 §3.2, §15 item 19): the first act each breed can be offered, and its price
+ * multiplier. Farm and Corriedale from the start, Romney and Perendale from act 1, Merino from act 2, Drysdale
+ * from act 3. Icelandic is a reward: it only arrives once the first fair is won (act 4, "Your own breed"),
+ * after the player has learned colour breeding, and then one Icelandic ewe is always among the stock.
+ */
+export const BREED_STOCK: Record<BreedId, { minAct: number; price: number }> = {
+  farm: { minAct: 0, price: 1.0 }, corriedale: { minAct: 0, price: 1.2 }, romney: { minAct: 1, price: 1.3 },
+  perendale: { minAct: 1, price: 1.2 }, merino: { minAct: 2, price: 1.5 }, drysdale: { minAct: 3, price: 1.6 },
+  icelandic: { minAct: 4, price: 1.8 },
+};
+/** The act whose start brings Icelandic sheep to the market (the reward for winning the first fair). */
+export const ICELANDIC_ACT = 4;
+
 /** The Farm breed's average fibre diameter (µm): prices, the fair and words are measured from here. */
 export const FINE_REF = 30;
 /** Lambs (not yet adult) sell for this fraction of an adult's value. */

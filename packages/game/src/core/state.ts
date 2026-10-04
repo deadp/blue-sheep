@@ -1,9 +1,10 @@
 /** Game state: construction, sheep bookkeeping, save/load (v3 saves only: DESIGN-v3 §15 item 5). */
 import {
   Pedigree, createRng, genomeFromJSON, genomeToJSON, getLocus, observePhenotypes,
-  sampleFounder, type Genome, type Rng, type Species,
+  breedFreqs, sampleFounder, type BreedId, type Genome, type Rng, type Species,
 } from "@blue-sheep/genetics";
 import { colourInputFromPhenotype, sheep3, woolColour } from "@blue-sheep/genetics";
+import { marketBreeds } from "./breeds.js";
 import { colourFields } from "./colour.js";
 import {
   ACTS, ADULT_AGE, EWE_BREED_MAX_AGE, FAIR_CATEGORIES, FAIR_SEASON, MARKET_BLUE_FREQ, MARKET_SIZE, MARKET_SIZE_YEAR1, SEASONS, START_MONEY,
@@ -87,7 +88,7 @@ function pickName(state: GameState, sex: Sex, rng: Rng): string {
 export function addSheep(
   state: GameState,
   rng: Rng,
-  opts: { sex: Sex; born: number; dam: string | null; sire: string | null; genome: Genome; inbreeding: number; origin: SheepOrigin },
+  opts: { sex: Sex; born: number; dam: string | null; sire: string | null; genome: Genome; inbreeding: number; origin: SheepOrigin; breed?: BreedId },
 ): Sheep {
   const id = `s${state.nextId++}`;
   const s: Sheep = {
@@ -105,6 +106,7 @@ export function addSheep(
     rosettes: [],
     origin: opts.origin,
   };
+  if (opts.breed) s.breed = opts.breed;
   state.sheep[id] = s;
   return s;
 }
@@ -142,14 +144,25 @@ function wouldBeTrueBlue(g: Genome): boolean {
   return woolColour(colourInputFromPhenotype({ ...ph, depth: 1.4 })).trueBlue;
 }
 
-const MARKET_FREQ = { U1: [1 - MARKET_BLUE_FREQ, MARKET_BLUE_FREQ], U2: [1 - MARKET_BLUE_FREQ, MARKET_BLUE_FREQ] };
+/** Founder frequencies for a market sheep of a breed: the breed's own, with its blue paint tilted a little (config `MARKET_BLUE_FREQ`). */
+function marketFreqs(breed: BreedId) {
+  const f = { ...breedFreqs(breed) };
+  const blue = Math.min(0.95, MARKET_BLUE_FREQ * (breedFreqs(breed)["U1"]![1]! / 0.1));
+  f["U1"] = [1 - blue, blue];
+  f["U2"] = [1 - blue, blue];
+  return f;
+}
 
-/** An unrelated adult Farm sheep that can't already be true blue, so the player has to breed for it. */
-export function sampleFounderSheep(state: GameState, rng: Rng, sex: Sex, born: number, origin: SheepOrigin): Sheep {
+/**
+ * An unrelated adult founder that can't already be true blue, so the player has to breed for it. Market sheep
+ * come from a breed (default Farm); visitors and the fallback use the species' own Farm frequencies.
+ */
+export function sampleFounderSheep(state: GameState, rng: Rng, sex: Sex, born: number, origin: SheepOrigin, breed?: BreedId): Sheep {
+  const freqs = origin === "market" ? marketFreqs(breed ?? "farm") : undefined;
   for (let tries = 0; tries < 50; tries++) {
-    const genome = sampleFounder(species.map, rng, origin === "market" ? MARKET_FREQ : undefined);
+    const genome = sampleFounder(species.map, rng, freqs);
     if (wouldBeTrueBlue(genome)) continue;
-    return addSheep(state, rng, { sex, born, dam: null, sire: null, genome, inbreeding: 0, origin });
+    return addSheep(state, rng, { sex, born, dam: null, sire: null, genome, inbreeding: 0, origin, ...(origin === "market" ? { breed: breed ?? "farm" } : {}) });
   }
   throw new Error("could not sample a founder that isn't true blue");
 }
@@ -295,9 +308,20 @@ export function restockMarket(state: GameState, rng: Rng): void {
   }
   state.market = [];
   const n = marketSize(state.season);
+  // Distinct breeds where the stock allows, drawn in a shuffled order; once Icelandic has arrived (the reward),
+  // the first ewe is always an Icelandic one.
+  const pool = marketBreeds(state);
+  const order: BreedId[] = [];
+  while (order.length < n) {
+    const bag = [...pool];
+    for (let i = bag.length - 1; i > 0; i--) { const j = rng.int(i + 1); [bag[i], bag[j]] = [bag[j]!, bag[i]!]; }
+    order.push(...bag);
+  }
+  const picks = order.slice(0, n);
+  if (pool.includes("icelandic") && !picks.includes("icelandic")) picks[0] = "icelandic";
   for (let i = 0; i < n; i++) {
     const sex: Sex = i < n - 1 ? "ewe" : "ram";
-    state.market.push(sampleFounderSheep(state, rng, sex, state.season - ADULT_AGE - rng.int(6), "market").id);
+    state.market.push(sampleFounderSheep(state, rng, sex, state.season - ADULT_AGE - rng.int(6), "market", picks[i]).id);
   }
 }
 

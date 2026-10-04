@@ -67,13 +67,20 @@ export function learnText(bits: number): string {
   return "This lamb would teach you little new.";
 }
 
-/** "Most lambs snow-white, about one in five bright red, a long shot at true blue." */
+/**
+ * "Most lambs snow-white, about one in ten bright red, a long shot at true blue." Classes at `NAMED_MIN` or better
+ * are named with odds (and have a swatch in `litterOf`); rarer ones are only ever "a long shot".
+ */
 export function colourText(f: Pick<CrossForecast, "swatches" | "trueBlue">): string {
-  const top = f.swatches.filter((w) => w.p > 0.005).slice(0, 3);
-  if (!top.length) return "Nobody can say yet what colour the lambs will be.";
+  const live = f.swatches.filter((w) => w.p > 0.005);
+  if (!live.length) return "Nobody can say yet what colour the lambs will be.";
+  const named = live.filter((w) => w.p >= NAMED_MIN).slice(0, 3);
   const w = (s: LambSwatch) => s.p >= 0.95 ? `every lamb ${s.word}` : s.p >= 0.6 ? `most lambs ${s.word}` : `${fractionWords(s.p)} ${s.word}`;
-  const parts = top.map(w);
-  if (f.trueBlue > 0 && !top.some((s) => s.trueBlue)) parts.push(f.trueBlue < 0.05 ? "a long shot at true blue" : `${fractionWords(f.trueBlue)} true blue`);
+  const parts = named.map(w);
+  const longShots = live.filter((s) => s.p < NAMED_MIN && !s.trueBlue);
+  if (longShots.length && named.length < 3) parts.push(`a long shot at ${longShots[0]!.word}`);
+  const tbClass = Math.max(0, ...f.swatches.filter((s) => s.trueBlue).map((s) => s.p));
+  if (f.trueBlue > 0 && !named.some((s) => s.trueBlue)) parts.push(tbClass < NAMED_MIN ? "a long shot at true blue" : `${fractionWords(f.trueBlue)} true blue`);
   const t = parts.join(", ");
   return `${t.charAt(0).toUpperCase()}${t.slice(1)}.`;
 }
@@ -120,15 +127,26 @@ export function colourClasses(
   return [...out.values()].map(({ best: _b, ...s }) => s).sort((a, b) => b.p - a.p || a.key.localeCompare(b.key));
 }
 
+/** A colour at or above this chance is named with odds ("about one in ten") in the hint and always gets a swatch. */
+export const NAMED_MIN = 0.08;
+
 /**
  * Ten lambs by largest remainder over the classes (most likely first): the swatch litter. Always exactly ten
- * when there is any forecast at all.
+ * when there is any forecast at all. Any class at `NAMED_MIN` or better gets at least one swatch (taken from
+ * the class with the most to spare), so the hint's "about one in ten orange" is never ten white lambs.
  */
 export function litterOf(swatches: LambSwatch[]): LambSwatch[] {
-  const entries = swatches.filter((s) => s.p > 0);
-  const counts = entries.map((s) => ({ s, n: Math.floor(s.p * 10 + 1e-9), frac: s.p * 10 - Math.floor(s.p * 10 + 1e-9) }));
+  const entries = swatches.filter((s) => s.p > 0).sort((a, b) => b.p - a.p);
+  const total = entries.reduce((a, b) => a + b.p, 0) || 1;
+  const counts = entries.map((s) => { const x = (s.p / total) * 10; return { s, n: Math.floor(x + 1e-9), frac: x - Math.floor(x + 1e-9), x }; });
   let left = 10 - counts.reduce((a, b) => a + b.n, 0);
   for (const e of [...counts].sort((a, b) => b.frac - a.frac || b.s.p - a.s.p)) { if (left <= 0) break; e.n++; left--; }
+  for (const e of counts) {
+    if (e.n > 0 || e.s.p < NAMED_MIN) continue;
+    const donor = counts.filter((d) => d.n > 1).sort((a, b) => (b.n - b.x) - (a.n - a.x) || b.n - a.n)[0];
+    if (!donor) break;
+    donor.n--; e.n++;
+  }
   const out: LambSwatch[] = [];
   for (const e of counts) for (let i = 0; i < e.n; i++) out.push(e.s);
   return out.slice(0, 10);

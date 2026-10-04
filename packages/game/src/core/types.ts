@@ -1,4 +1,5 @@
 /** Shared data shapes for the game core. Everything here is plain JSON-serialisable data. */
+import type { BreedId } from "@blue-sheep/genetics";
 import type { QuantForecast } from "@blue-sheep/inference";
 
 export type Sex = "ewe" | "ram";
@@ -23,6 +24,8 @@ export interface Sheep {
   /** Fair categories this sheep has won 1st place in (one entry per rosette). */
   rosettes: FairCategory[];
   origin: SheepOrigin;
+  /** Founder breed of a bought-in sheep (core/breeds.ts). Absent: the Farm breed (starter flock, visitors, bred lambs take their parents' mix). */
+  breed?: BreedId;
 }
 
 export interface Pairing { ewe: string; ram: string }

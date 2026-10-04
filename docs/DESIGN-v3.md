@@ -776,6 +776,7 @@ and tuning is a separate commit only if a target is badly missed.
 - **Demo:** coloured sheep in the field; the swatch litter in the forecast; an old save loads.
 
 ### Phase 3: Breeds and wool types
+- **Status: done** (see CONTRACTS.md §11). Icelandic arrives as the act-4 reward (one ewe in every restock from act 4). Farm staple target is 90 mm. Breed price multipliers exist (`BREED_STOCK.price`) and are untuned (Merino about 3x Farm; Perendale and Romney near Farm). Breed looks are modest (size, face and leg colour, lock count, tail); shag, horns and fold are not done. Faded long-shot swatches were not done (long shots are named in the hint only).
 - **Scope:** market stock by breed and chapter; the breed line (`breedFractions`); `core/wool.ts`
   `woolType`; staple and lustre on the card; the wool type tag; breed looks in `sheepMesh`
   (locks, shag, horns, fold).

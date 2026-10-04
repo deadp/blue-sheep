@@ -1,7 +1,7 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
   ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, isAdult, isIll, lambRoom,
-  litterOf, oddsLabel, oddsText, pColour, ramLoad, woolOf,
+  litterOf, NAMED_MIN, oddsLabel, oddsText, pColour, ramLoad, woolOf,
   type CrossForecast, type GameState, type Goal, type LambSwatch, type Sheep,
 } from "../core/index.js";
 import type { QuantForecast } from "@blue-sheep/inference";
@@ -101,11 +101,12 @@ export function litterWords(state: GameState, f: Pick<CrossForecast, "swatches" 
   const e = f.swatches.filter((w) => w.p > 0.005);
   if (!e.length) return "unknown";
   const nums = numbersOn(state);
-  const w = (c: string, p: number) => nums ? `${Math.round(p * 100)}% ${c}` : p >= 0.95 ? `all ${c}` : `${fractionWords(p)} ${c}`;
+  const w = (c: string, p: number) => nums ? `${Math.round(p * 100)}% ${c}` : p >= 0.95 ? `all ${c}` : p < NAMED_MIN ? `a long shot at ${c}` : `${fractionWords(p)} ${c}`;
   const [top, ...rest] = e;
   const head = top!.p >= 0.95 ? (nums ? w(top!.word, top!.p) : `all ${top!.word}`) : top!.p >= 0.6 ? `mostly ${top!.word}` : w(top!.word, top!.p);
   const tail = rest.slice(0, 2).map((x) => w(x.word, x.p));
-  if (f.trueBlue > 0.005 && !e.slice(0, 3).some((x) => x.trueBlue)) tail.push(w("true blue", f.trueBlue));
+  const tbClass = Math.max(0, ...f.swatches.filter((x) => x.trueBlue).map((x) => x.p));
+  if (f.trueBlue > 0.005 && !e.slice(0, 3).some((x) => x.trueBlue)) tail.push(w("true blue", tbClass < NAMED_MIN ? Math.min(f.trueBlue, NAMED_MIN - 0.001) : f.trueBlue));
   return [head, ...tail].join(", ");
 }
 

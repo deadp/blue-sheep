@@ -1,8 +1,9 @@
 /** Small shared bits for panel HTML: escaping, swatches, dots, pips, words. No DOM. */
 import {
-  FINE_REF, ageOf, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, woolOf, type GameState, type Sheep, type Unlock,
+ ageOf, finenessWord, strengthFraction, strengthWord, WOOL_TYPE_BLURB, fleeceWords, breedFractions, breedLine, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, woolOf, type GameState, type Sheep, type Unlock,
 } from "../core/index.js";
 import { icon, type IconName } from "./felt/icons.js";
+import { tag } from "./felt/components.js";
 
 export function esc(s: unknown): string {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -189,9 +190,10 @@ export function pigmentDots(s: Sheep): string {
     return `<span class="pig-row ${c}" title="${d === 0 ? `no ${c}` : `${d === 1 ? "one" : d === 2 ? "two" : d === 3 ? "three" : "four"} ${c} dose${d === 1 ? "" : "s"}`}"><span class="pig-l">${c}</span><span class="pig-d">${dots}</span></span>`;
   };
   const depth = Number(s.phenotype["depth"] ?? 1);
-  const strength = Math.max(0, Math.min(1, (depth - 0.6) / 0.8));
+  const strength = strengthFraction(depth);
+  const sword = strengthWord(depth);
   return `<div class="pig" style="--wool:${w.hex}">${row("red")}${row("yellow")}${row("blue")}
-    <span class="pig-row extra"><span class="pig-chip ${w.dilute ? "pale" : "full"}">${w.dilute ? "pale" : "full"}</span><span class="pig-str" title="Colour strength: ${depth < 0.9 ? "dull" : depth > 1.1 ? "strong" : "average"}"><span style="${prop("s", strength)}"></span></span></span></div>`;
+    <span class="pig-row extra"><span class="pig-chip ${w.dilute ? "pale" : "full"}">${w.dilute ? "pale" : "full"}</span><span class="pig-str" title="Colour strength: ${sword}"><span style="${prop("s", strength)}"></span></span><span class="pig-sw">${sword}</span></span></div>`;
 }
 
 /** Plain words for measured traits; numbers appended only when unlocked. */
@@ -199,7 +201,7 @@ export function traitWords(state: GameState, s: Sheep): { label: string; text: s
   const ph = s.phenotype;
   const nums = numbersOn(state);
   const fin = Number(ph["fineness"]), fw = Number(ph["fleeceWeight"]), size = Number(ph["size"]), bold = Number(ph["boldness"]);
-  const finW = fin < FINE_REF - 6 ? "very fine" : fin < FINE_REF - 2.5 ? "fine" : fin < FINE_REF + 1.5 ? "medium" : "coarse";
+  const finW = finenessWord(fin);
   const fwW = fw < 3.2 ? "light" : fw < 4.8 ? "average" : "heavy";
   const sizeW = size < 50 ? "small" : size < 68 ? "medium-sized" : "big";
   const pers = personalityOf(s);
@@ -250,4 +252,18 @@ export function heartMeter(state: GameState, level: number, o: { to?: number; co
   const word = fondnessWord(level);
   const num = numbersOn(state) ? ` <span class="num">${Math.round(level)}/100</span>` : "";
   return `<span class="hearts ${o.compact ? "compact" : ""}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(level)}" aria-label="Fondness: ${esc(word)}" title="Fondness: ${esc(word)}"><span class="h-row">${out}</span><span class="h-word">${esc(word)}${num}</span></span>`;
+}
+
+/** The wool type's tag tone. */
+const WOOL_TONE: Record<string, string> = { fine: "sky", medium: "sage", strong: "butter", lustre: "lilac", carpet: "rose", lopi: "cream", crossbred: "cream" };
+
+/** The wool type as a felt tag ("Lopi", "Medium"), with its blurb as the hover text. */
+export function woolTypeTag(state: GameState, s: Sheep): string {
+  const f = fleeceWords(s, numbersOn(state));
+  return tag(esc(f.label), { icon: "yarn", tone: WOOL_TONE[f.type] ?? "cream", cls: `wool-type wt-${f.type}`, title: `${f.label}: ${WOOL_TYPE_BLURB[f.type]}` });
+}
+
+/** The breed line ("Romney", "Merino × Romney", "¾ Corriedale") from the farm's records. */
+export function breedWords(state: GameState, s: Sheep): string {
+  return breedLine(breedFractions(state, s.id));
 }

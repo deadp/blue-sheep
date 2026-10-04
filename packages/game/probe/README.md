@@ -65,6 +65,9 @@ explicitly to test the other modes.
   drawn in their phenotype's wool hex and family; a coloured sheep's card lights one dot per dose; the vet
   offers a pigment test per colour and a test pins both genes; the forecast's ten swatches match the core
   litter (`panels.mjs assertSwatches`); report cards wear the lamb's wool. Shots `colour-*`.
+- **breeds.mjs**: breeds and wool types (DESIGN-v3 Phase 3): at `?act=3` the market offers >= 3 breeds and no
+  Icelandic; at `?act=4` an Icelandic ewe is on offer; a bought sheep's card shows its breed and a known wool
+  type; the world snapshot carries >= 3 breeds. Shots `breeds-*`.
 - **dressing.mjs**: the world dressing pass (DESIGN-v3 §15 item 27). Six fixed views at 1280×800 (boot walk
   view, home paddock with the flock, woolshed, creek/bush edge, winter, pan overview), full and lite, into
   `out/dressing/` with `perf.json` (draw calls, triangles, the world's `__game.debug.breakdown()`). Asserts lite

@@ -44,6 +44,11 @@ export interface WorldSheep {
   fineness: number;
   /** /cm, 2–8 → wool bumpiness */
   crimp: number;
+  /**
+   * The breed behind its looks (optional; default "farm"): "farm" | "merino" | "corriedale" | "perendale" |
+   * "romney" | "drysdale" | "icelandic". Changes face and leg colour, fleece texture and build a little.
+   */
+  breed?: string;
   zone: Zone;
   marker?: "planned" | "new" | "ill" | "rosette" | "selected" | null;
   /** Idle behaviour and greeting (optional; defaults to "calm"). */

@@ -943,3 +943,35 @@ prints the breed table, the founder colour families per breed, and a selective-b
   new `colour.mjs` (world snapshot wool = phenotype, pigment dots = doses, pigment test pins both genes,
   report card wool = lamb wool; shots `colour-*`).
 
+## 11. Breeds and wool types in the game (DESIGN-v3 Phase 3)
+
+- **Data.** `Sheep.breed?: BreedId` (market founders only; absent = farm stock; bred lambs have none, their
+  breed line comes from the pedigree). `config.ts`: `BREED_STOCK[breed] = {minAct, price}` (price multiplies
+  `buyPrice`) and `ICELANDIC_ACT = 4`. No save migration.
+- **Market (`core/breeds.ts`, `state.restockMarket`).** `marketBreeds(state)` is the breeds on offer at the
+  state's act; each slot draws a distinct breed (so at acts 1-3 the market always shows at least three).
+  Icelandic is NOT in early stock: from act 4 (`icelandicUnlocked`) one Icelandic ewe is forced into slot 0
+  every restock. Market sheep are sampled with the breed's founder frequencies (`marketFreqs`); inference
+  uses `Individual.priorFreq = breedFreqs(breed)` for non-farm breeds (`knowledge.individuals`).
+- **Breed line.** `breedFractions(state, id)` (pedigree mean), `breedShares`, `breedLine` ("Romney",
+  "Romney x Farm", "mostly X", "3/4 X", "mixed breed"), `mainBreed` (top share >= 0.6, else farm; feeds
+  `WorldSheep.breed`).
+- **Wool (`core/wool.ts`).** `woolTypeOf(s)` = genetics `woolType(phenotype)` on the measured fleece;
+  `fleeceWords(s, numbers)` gives `{type,label,short,line,layers}`: fineness / staple / lustre in plain words
+  (`finenessWord`, `stapleWord`, `lustreWord`), micron / mm / lustre numbers and layers only when
+  `numbers` is unlocked. `strengthWord` / `strengthFraction` give colour strength. Suitability data only
+  (`SUIT`, `woolSuit`, `itemsSuiting`; the DESIGN-v3 §6.1 table) until the crafting phase.
+- **Swatch litter rule (`forecast.ts`).** `litterOf` uses largest-remainder rounding over the ten tiles; any
+  class at or above `NAMED_MIN` (0.08) gets at least one tile. `colourText` names odds only for classes at
+  or above `NAMED_MIN` (top three) and says "a long shot at X" below it, so the hint line and the swatches
+  come from the same distribution.
+- **UI.** Sheep card: `.sc-breed[data-breed]`, wool-type tag and `.sc-wool[data-wool-type]` (adults only),
+  colour strength word beside the bar (`.pig-sw`, coloured sheep only). Market card: `.m-breed[data-breed]`
+  row (breed + wool-type tag) and a short fleece line. `ui.test` VOCAB gains `breed`, `wool-type`.
+- **World.** `WorldSheep.breed?: string`; `sheepMesh` `BREED_LOOKS` (size, face and leg colour, lock count and
+  size, tail) for farm, merino, corriedale, perendale, romney, drysdale and icelandic; part of `sheepKey`.
+- **Probes.** New `breeds.mjs`: at `?act=3` the market has >= 3 breeds and no Icelandic; at `?act=4` it has
+  an Icelandic ewe; a bought sheep's card has the breed and a known wool type; the world snapshot carries
+  >= 3 breeds. Shots `breeds-*`. Tests: `breeds.test.ts`, `wool.test.ts`, and "forecast swatches match the
+  hint" in `colour.test.ts`. Sim: `scripts/breeds.ts` (fineness by breed, 30 seeds).
+

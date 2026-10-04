@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { lambOutcomes } from "@blue-sheep/inference";
 import {
   advanceSeason, enterAct, factsFor, forecastCross, forecastVet, geneDist, litterOf, newGame, newTutorialGame, planMating, posteriors,
-  scoreCross, setColour, vetTest, woolMatches, woolOf, entropyBits, GENE_LABEL, VET_FEE, type GameState,
+  scoreCross, setColour, vetTest, woolMatches, woolOf, entropyBits, GENE_LABEL, VET_FEE, colourText, NAMED_MIN, type GameState, type LambSwatch,
 } from "./index.js";
 import { GENOTYPE_RE, planAll } from "./testkit.js";
 
@@ -135,5 +135,54 @@ describe("vet pigment tests", () => {
     const col = Object.values(g.sheep).find((s) => g.flock.includes(s.id) && s.phenotype["white"] === "coloured");
     if (col) expect(forecastVet(g, col.id, "W").gainBits).toBeLessThan(0.02);
     for (const l of g.log) expect(l.text).not.toMatch(GENOTYPE_RE);
+  });
+});
+
+describe("forecast swatches match the hint", () => {
+  const sw = (key: string, p: number, extra: Partial<LambSwatch> = {}): LambSwatch => ({
+    key, word: key.replace(":", " "), name: key.split(":")[0]!, family: "red", hex: "#C8322F", p, hidden: false, trueBlue: false, band: "bright", intensity: 0.5, ...extra,
+  });
+  const named = (text: string, swatches: LambSwatch[]) => swatches.filter((w) => text.toLowerCase().includes(w.word) && !text.toLowerCase().includes(`a long shot at ${w.word}`));
+
+  it("every colour named with odds has a swatch, even when largest remainder would drop it", () => {
+    const cases: LambSwatch[][] = [
+      [sw("snow-white", 0.86, { word: "snow-white", hidden: true, family: "white" }), sw("orange:bright", 0.08), sw("yellow:soft", 0.06)],
+      [sw("snow-white", 0.7, { word: "snow-white", hidden: true, family: "white" }), sw("orange:bright", 0.1), sw("yellow:soft", 0.1), sw("blue:vivid", 0.05, { trueBlue: true }), sw("pink:soft", 0.05)],
+      [sw("snow-white", 0.62, { word: "snow-white", hidden: true, family: "white" }), sw("orange:bright", 0.11), sw("yellow:soft", 0.11), sw("red:bright", 0.08), sw("pink:soft", 0.08)],
+    ];
+    for (const swatches of cases) {
+      const ten = litterOf(swatches);
+      expect(ten).toHaveLength(10);
+      const text = colourText({ swatches, trueBlue: swatches.filter((w) => w.trueBlue).reduce((a, b) => a + b.p, 0) });
+      for (const w of swatches) if (w.p >= NAMED_MIN) expect(ten.some((x) => x.key === w.key), `${w.key} (${w.p}) in ${text}`).toBe(true);
+      for (const w of named(text, swatches)) expect(ten.some((x) => x.key === w.key), `${text} names ${w.key} without a swatch`).toBe(true);
+      expect(ten.some((x) => x.key === "snow-white")).toBe(true);
+    }
+  });
+
+  it("rarer colours are only ever long shots in the words", () => {
+    const swatches = [sw("snow-white", 0.9, { word: "snow-white", hidden: true, family: "white" }), sw("orange:bright", 0.05), sw("blue:vivid", 0.05, { trueBlue: true })];
+    const text = colourText({ swatches, trueBlue: 0.05 });
+    expect(text).toMatch(/long shot at orange bright/);
+    expect(text).toMatch(/long shot at true blue/);
+    expect(text).not.toMatch(/one in ten/);
+  });
+
+  it("real forecasts: counts stay close to the stated chances and ten swatches always show", () => {
+    for (const seed of [3, 7, 11]) {
+      const g = grown(seed);
+      const ewes = g.flock.filter((id) => g.sheep[id]!.sex === "ewe").slice(0, 3);
+      const rams = g.flock.filter((id) => g.sheep[id]!.sex === "ram").slice(0, 2);
+      for (const e of ewes) for (const r of rams) {
+        const f = forecastCross(g, e, r);
+        const ten = litterOf(f.swatches);
+        expect(ten).toHaveLength(10);
+        for (const w of f.swatches) {
+          const n = ten.filter((x) => x.key === w.key).length;
+          if (w.p >= NAMED_MIN) expect(n).toBeGreaterThanOrEqual(1);
+          expect(Math.abs(n - w.p * 10)).toBeLessThan(2.01);
+        }
+      }
+    }
   });
 });

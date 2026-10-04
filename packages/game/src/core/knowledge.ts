@@ -8,7 +8,7 @@
  * pigment channel (red, yellow, blue), whose two genes are told about together ("passes one red dose to
  * every lamb").
  */
-import { sheep3, type DiscreteTrait } from "@blue-sheep/genetics";
+import { breedFreqs, sheep3, type DiscreteTrait } from "@blue-sheep/genetics";
 import {
   jointPhenotype, jointTransmission, posteriorDiscrete, type DiscretePosterior, type Individual,
 } from "@blue-sheep/inference";
@@ -45,7 +45,11 @@ export interface Posteriors { byTrait: Map<string, DiscretePosterior>; key: stri
 const cache = new WeakMap<GameState, Posteriors>();
 
 function individuals(state: GameState): Individual[] {
-  return Object.values(state.sheep).map((s) => ({ id: s.id, dam: s.dam, sire: s.sire, phenotype: s.phenotype, tested: s.tested }));
+  // A bought-in sheep's breed is on its tag, so the farmer knows the allele frequencies its breed runs on.
+  return Object.values(state.sheep).map((s) => ({
+    id: s.id, dam: s.dam, sire: s.sire, phenotype: s.phenotype, tested: s.tested,
+    ...(s.breed && s.breed !== "farm" ? { priorFreq: breedFreqs(s.breed) } : {}),
+  }));
 }
 
 function knowledgeKey(state: GameState): string {
