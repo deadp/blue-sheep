@@ -123,7 +123,7 @@ describe("panel content", () => {
     for (const g of GOALS) expect(h).toContain(`data-goal="${g.id}"`);
     expect(h).toContain("data-mate=");
     expect(h).toContain("data-plan=");
-    expect(h.match(/class="lamb-tile /g)?.length).toBe(10);
+    expect(h.replace(/<div class="litter-long">.*?<\/span><\/div>/s, "").match(/class="lamb-tile /g)?.length).toBe(10);
     // Act 0: words, no range bars.
     expect(h).not.toContain('class="range"');
     expect(h).toContain("wool-hint");
@@ -430,10 +430,11 @@ describe("presentation", () => {
     const s = fx("fresh").state;
     const looks: string[] = [];
     const h = renderPanel(s, view({ panel: "forecast", lambArt: (l) => { looks.push(`${l.wool}/${l.pattern}/${l.horns}`); return PORTRAIT; } }));
-    expect(h.match(/class="lamb-tile art/g)?.length).toBe(10);
+    const ten = h.replace(/<div class="litter-long">.*?<\/span><\/div>/s, "");
+    expect(ten.match(/class="lamb-tile art/g)?.length).toBe(10);
     // Each lamb is drawn in its forecast colour (a valid wool hex), and white lambs wear a "?".
     for (const l of looks) expect(l).toMatch(/^#[0-9A-F]{6}\//);
-    expect(h.match(/data-wool="#[0-9A-F]{6}"/g)?.length).toBe(10);
+    expect(ten.match(/data-wool="#[0-9A-F]{6}"/g)?.length).toBe(10);
     expect(h).toContain("Each lamb = one chance in ten");
     expect(looks.length).toBeGreaterThanOrEqual(10);
     expect(visible(h)).not.toContain("%");
@@ -674,3 +675,22 @@ describe("settings: Detail", () => {
   });
 });
 
+
+describe("forecast hint agrees with the headline", () => {
+  it("the true-blue hint chip says 'long shot' exactly when the headline does", async () => {
+    const { newGame, forecastCross, blueText, LONG_SHOT } = await import("../core/index.js");
+    const { hintFor, longShotLook } = await import("./forecast.js");
+    const g = newGame(7);
+    const ewe = g.flock.find((id) => g.sheep[id]!.sex === "ewe")!, ram = g.flock.find((id) => g.sheep[id]!.sex === "ram")!;
+    const f = forecastCross(g, ewe, ram);
+    for (const p of [0.02, 0.06, 0.079, 0.08, 0.1, 0.14, 0.2, 0.5]) {
+      const ff = { ...f, trueBlue: p, swatches: [{ ...f.swatches[0]!, p: 1 - p }, { ...f.swatches[0]!, key: "blue:vivid", word: "vivid blue", p, trueBlue: true, hidden: false }] };
+      ff.blueText = blueText(p);
+      const hint = hintFor(g, ff, "trueblue");
+      expect(/long shot/.test(hint), `${p}: hint "${hint}" vs headline "${ff.blueText}"`).toBe(/long shot/i.test(ff.blueText));
+      expect(/long shot/.test(hint)).toBe(p < LONG_SHOT);
+      // and the marker swatch is there exactly for those
+      expect(longShotLook(ff) !== null).toBe(p < LONG_SHOT && p > 0.005);
+    }
+  });
+});

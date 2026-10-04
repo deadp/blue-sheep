@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { lambOutcomes } from "@blue-sheep/inference";
 import {
   advanceSeason, enterAct, factsFor, forecastCross, forecastVet, geneDist, litterOf, newGame, newTutorialGame, planMating, posteriors,
-  scoreCross, setColour, vetTest, woolMatches, woolOf, entropyBits, GENE_LABEL, VET_FEE, colourText, NAMED_MIN, type GameState, type LambSwatch,
+  scoreCross, setColour, vetTest, woolMatches, woolOf, entropyBits, GENE_LABEL, VET_FEE, colourText, NAMED_MIN, LONG_SHOT, isLongShot, longShotsOf, oddsLabel, oddsText, blueText, type GameState, type LambSwatch,
 } from "./index.js";
 import { GENOTYPE_RE, planAll } from "./testkit.js";
 
@@ -180,9 +180,49 @@ describe("forecast swatches match the hint", () => {
         for (const w of f.swatches) {
           const n = ten.filter((x) => x.key === w.key).length;
           if (w.p >= NAMED_MIN) expect(n).toBeGreaterThanOrEqual(1);
-          expect(Math.abs(n - w.p * 10)).toBeLessThan(2.01);
+          const longMass = f.swatches.filter((x) => x.p < NAMED_MIN).reduce((a, b) => a + b.p, 0);
+          expect(Math.abs(n - w.p * 10)).toBeLessThan(2.01 + longMass * 10);
         }
       }
     }
+  });
+});
+
+describe("long shots: one threshold and one wording", () => {
+  const sw = (key: string, p: number, extra: Partial<LambSwatch> = {}): LambSwatch => ({
+    key, word: key.replace(":", " "), name: key.split(":")[0]!, family: "red", hex: "#C8322F", p, hidden: false, trueBlue: false, band: "bright", intensity: 0.5, ...extra,
+  });
+  const says = (t: string) => /long shot/i.test(t);
+
+  it("headline, odds label and forecast words call an outcome a long shot at exactly the same chances", () => {
+    expect(NAMED_MIN).toBe(LONG_SHOT);
+    for (let p = 0.005; p < 1; p += 0.005) {
+      const long = p < LONG_SHOT - 1e-12;
+      expect(isLongShot(p)).toBe(long);
+      expect(says(blueText(p)), `blueText(${p}) = ${blueText(p)}`).toBe(long);
+      expect(says(oddsLabel(p)), `oddsLabel(${p})`).toBe(long);
+      expect(says(oddsText(p, "lamb")), `oddsText(${p})`).toBe(long);
+      const swatches = [sw("snow-white", 1 - p, { word: "snow-white", hidden: true, family: "white" }), sw("blue:vivid", p, { trueBlue: true })];
+      const words = colourText({ swatches, trueBlue: p });
+      // colourText names a true blue class only as "a long shot at true blue" when it is one, never with odds.
+      expect(/long shot at true blue/.test(words), `colourText at ${p}: ${words}`).toBe(long);
+    }
+  });
+
+  it("a long-shot headline never quotes a fraction (no 'one lamb in ten' for a 6% outcome)", () => {
+    expect(blueText(0.06)).toBe("A long shot — a true blue lamb is possible, but rare.");
+    expect(blueText(0.1)).toBe("Unlikely, but it happens — about one lamb in ten would be true blue.");
+  });
+
+  it("outcomes under 8% get the marker, not a tile; the ten are shared by the rest", () => {
+    const swatches = [sw("snow-white", 0.86, { word: "snow-white", hidden: true, family: "white" }), sw("orange:bright", 0.07), sw("yellow:soft", 0.04), sw("blue:vivid", 0.03, { trueBlue: true })];
+    const ten = litterOf(swatches);
+    expect(ten).toHaveLength(10);
+    expect(ten.every((w) => w.key === "snow-white")).toBe(true);
+    expect(longShotsOf(swatches).map((w) => w.key)).toEqual(["blue:vivid", "orange:bright", "yellow:soft"]);
+    // a diffuse forecast (nothing reaches 8%) keeps all its tiles and shows no marker
+    const diffuse = Array.from({ length: 14 }, (_, i) => sw(`c${i}:soft`, 1 / 14));
+    expect(longShotsOf(diffuse)).toHaveLength(0);
+    expect(litterOf(diffuse)).toHaveLength(10);
   });
 });

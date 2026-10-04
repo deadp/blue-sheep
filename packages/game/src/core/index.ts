@@ -31,7 +31,7 @@ export { hireVisitingRam, forecastVisitor } from "./visitor.js";
 export { announceText, eventPool, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
   forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, colourText, colourClasses,
-  litterOf, NAMED_MIN, pColour, goalColour, GOALS, type Goal,
+  litterOf, longShotsOf, NAMED_MIN, pColour, goalColour, GOALS, type Goal,
 } from "./forecast.js";
 export {
   factsFor, posteriors, updateDiscoveries, marginal, geneDist, geneLoci, entropyBits, channelClassWords, isChannel,
@@ -41,7 +41,7 @@ export { familyTree, type FamilyTree, type TreeNode, type AncestorNode, type Des
 export {
   currentAct, actInfo, isEnding, markEndingShown, registryStatus, enterAct, checkActAdvance, checkEnding, type RegistryStatus,
 } from "./acts.js";
-export { oddsText, oddsLabel, fractionWords } from "./words.js";
+export { oddsText, oddsLabel, fractionWords, LONG_SHOT, isLongShot } from "./words.js";
 export {
   personalityOf, personalityFromBoldness, personalityLine, flavoursOf, PERSONALITY_WORD, PERSONALITY_ICON,
   type Personality, type Flavour,

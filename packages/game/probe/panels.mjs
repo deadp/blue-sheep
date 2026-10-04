@@ -83,9 +83,11 @@ export async function assertSwatches(g, where) {
     const [ewe, ram] = plan.split(":");
     if (ewe && ram) {
       const f = /** @type {any} */ (window).__game.forecast.cross(ewe, ram);
-      const sw = [...f.swatches].filter((w) => w.p > 0);
-      // largest remainder, as core litterOf
-      const counts = sw.map((w) => ({ w, n: Math.floor(w.p * 10 + 1e-9), frac: w.p * 10 - Math.floor(w.p * 10 + 1e-9) }));
+      const all = [...f.swatches].filter((w) => w.p > 0);
+      // long shots (under 8%) are not among the ten; the rest share the ten by largest remainder, as core litterOf
+      const sw = all.some((w) => w.p >= 0.08) ? all.filter((w) => w.p >= 0.08) : all;
+      const swTot = sw.reduce((a, w) => a + w.p, 0) || 1;
+      const counts = sw.map((w) => { const x = (w.p / swTot) * 10; return { w, n: Math.floor(x + 1e-9), frac: x - Math.floor(x + 1e-9) }; });
       let left = 10 - counts.reduce((a, b) => a + b.n, 0);
       for (const e of [...counts].sort((a, b) => b.frac - a.frac || b.w.p - a.w.p)) { if (left <= 0) break; e.n++; left--; }
       const want = counts.filter((c) => c.n > 0).map((c) => `${c.w.key}×${c.n}`).sort().join(",");
@@ -93,7 +95,7 @@ export async function assertSwatches(g, where) {
       for (const d of tiles) got.set(d.key, (got.get(d.key) ?? 0) + 1);
       const have = [...got].map(([k, n]) => `${k}×${n}`).sort().join(",");
       if (want !== have) out.push(`swatches ${have} don't match the forecast's litter ${want}`);
-      const sum = sw.reduce((a, w) => a + w.p, 0);
+      const sum = all.reduce((a, w) => a + w.p, 0);
       if (Math.abs(sum - 1) > 1e-4) out.push(`class chances sum to ${sum}`);
     }
     return out.join("; ");

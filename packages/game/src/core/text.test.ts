@@ -39,6 +39,6 @@ describe("player-facing text", () => {
       }
     }
     expect(blueText(0.66)).toBe("Good odds — about two lambs in three would be true blue.");
-    expect(oddsText(0.1)).toBe("A long shot — about one in ten.");
+    expect(oddsText(0.1)).toBe("Unlikely, but it happens — about one in ten.");
   });
 });

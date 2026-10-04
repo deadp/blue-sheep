@@ -518,7 +518,7 @@ export class WorldView {
     if (owned) disposeGeos(geos);
 
     const c = this.pCanvas;
-    if (c.width !== px) { c.width = px; c.height = px; }
+    if (c.width !== px || c.height !== px) { c.width = px; c.height = px; }
     const ctx = c.getContext("2d")!;
     const img = ctx.createImageData(px, px);
     const row = px * 4;
@@ -628,7 +628,7 @@ export class WorldView {
     this.renderer.shadowMap.autoUpdate = prevShadow;
     this.pScene.remove(root);
     const c = this.pCanvas;
-    if (c.width !== px) { c.width = px; c.height = px; }
+    if (c.width !== px || c.height !== px) { c.width = px; c.height = px; }
     const ctx = c.getContext("2d")!;
     const img = ctx.createImageData(px, px);
     const row = px * 4;

@@ -13,7 +13,7 @@ import {
 import { bandRank, dressWool, type Band } from "./colour.js";
 import { posteriors } from "./knowledge.js";
 import { canBreed, isAdult, pedigreeOf } from "./state.js";
-import { fractionWords, oddsLabel } from "./words.js";
+import { fractionWords, LONG_SHOT, oddsLabel } from "./words.js";
 import type { CrossForecast, GameState, LambSwatch, Sheep } from "./types.js";
 
 /**
@@ -56,7 +56,7 @@ function knownDepth(state: GameState, s: Sheep, flockMean: number): number {
 
 export function blueText(p: number): string {
   if (p <= 0) return "No true blue lambs from this pair, as far as you know.";
-  if (p < 0.05) return "A very long shot — a true blue lamb is possible, but rare.";
+  if (p < LONG_SHOT) return `${oddsLabel(p)} — a true blue lamb is possible, but rare.`;
   if (p >= 0.95) return "Every lamb should be true blue.";
   return `${oddsLabel(p)} — ${fractionWords(p, "lamb")} would be true blue.`;
 }
@@ -128,7 +128,7 @@ export function colourClasses(
 }
 
 /** A colour at or above this chance is named with odds ("about one in ten") in the hint and always gets a swatch. */
-export const NAMED_MIN = 0.08;
+export const NAMED_MIN = LONG_SHOT;
 
 /**
  * Ten lambs by largest remainder over the classes (most likely first): the swatch litter. Always exactly ten
@@ -136,7 +136,9 @@ export const NAMED_MIN = 0.08;
  * the class with the most to spare), so the hint's "about one in ten orange" is never ten white lambs.
  */
 export function litterOf(swatches: LambSwatch[]): LambSwatch[] {
-  const entries = swatches.filter((s) => s.p > 0).sort((a, b) => b.p - a.p);
+  // Long shots (under NAMED_MIN) are not one of the ten: they show as the extra marker swatch (`longShotsOf`).
+  const live = swatches.filter((s) => s.p > 0);
+  const entries = (live.some((s) => s.p >= NAMED_MIN) ? live.filter((s) => s.p >= NAMED_MIN) : live).sort((a, b) => b.p - a.p);
   const total = entries.reduce((a, b) => a + b.p, 0) || 1;
   const counts = entries.map((s) => { const x = (s.p / total) * 10; return { s, n: Math.floor(x + 1e-9), frac: x - Math.floor(x + 1e-9), x }; });
   let left = 10 - counts.reduce((a, b) => a + b.n, 0);
@@ -150,6 +152,16 @@ export function litterOf(swatches: LambSwatch[]): LambSwatch[] {
   const out: LambSwatch[] = [];
   for (const e of counts) for (let i = 0; i < e.n; i++) out.push(e.s);
   return out.slice(0, 10);
+}
+
+/**
+ * The long-shot classes of a forecast: real chances (over half a percent) under `NAMED_MIN`, which get no tile in the
+ * ten and show as one faded marker swatch with a sparkle. True blue first, then most likely. Empty when no class
+ * reaches `NAMED_MIN` (a diffuse forecast keeps all its tiles).
+ */
+export function longShotsOf(swatches: LambSwatch[]): LambSwatch[] {
+  if (!swatches.some((s) => s.p >= NAMED_MIN)) return [];
+  return swatches.filter((s) => s.p > 0.005 && s.p < NAMED_MIN).sort((a, b) => Number(b.trueBlue) - Number(a.trueBlue) || b.p - a.p);
 }
 
 /** P(one lamb has a colour name at `min` band or better); "vivid" = any vivid colour; "true blue". */

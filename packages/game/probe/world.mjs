@@ -175,8 +175,10 @@ export const world = {
       await p.boot(q);
       await p.page.waitForTimeout(1200);
       const f = await fps(p);
+      // the auto-lite path's own measurement (median frame ms after warm-up); wait for its 5 s window to close
+      if (name === "normal") await p.page.waitForFunction(() => /** @type {any} */ (window).__game.debug.world().autoLite.done, null, { timeout: 15_000 }).catch(() => {});
       const s = await W(p);
-      perf[name] = { fps: +f.toFixed(1), calls: s.calls, tris: s.triangles, shadows: s.shadows, sheep: s.sheep };
+      perf[name] = { fps: +f.toFixed(1), calls: s.calls, tris: s.triangles, shadows: s.shadows, sheep: s.sheep, medianMs: s.autoLite.median, autoSwitched: s.autoLite.switched };
       if (name === "lite") ctx.artifact(await p.screenshot("world-lite"));
       if (name === "normal") {
         await p.page.setViewportSize({ width: 1024, height: 768 });
@@ -192,7 +194,7 @@ export const world = {
       await p.close();
     }
     if (perf.lite.shadows || !(perf.lite.tris < perf.normal.tris)) throw new ProbeError(`?lite=1 should drop shadows and triangles: ${JSON.stringify(perf)}`);
-    ctx.note(`perf (swiftshader, walk view, act 3): normal ${perf.normal.fps} fps, ${perf.normal.calls} draw calls, ${perf.normal.tris} tris; lite ${perf.lite.fps} fps, ${perf.lite.calls} calls, ${perf.lite.tris} tris`);
+    ctx.note(`perf (swiftshader, walk view, act 3): normal ${perf.normal.fps} fps (auto-lite median ${perf.normal.medianMs} ms, switched ${perf.normal.autoSwitched}), ${perf.normal.calls} draw calls, ${perf.normal.tris} tris; lite ${perf.lite.fps} fps, ${perf.lite.calls} calls, ${perf.lite.tris} tris`);
   },
 };
 

@@ -49,6 +49,12 @@ export interface WorldSheep {
    * "romney" | "drysdale" | "icelandic". Changes face and leg colour, fleece texture and build a little.
    */
   breed?: string;
+  /**
+   * The breed blend of a crossbred sheep (optional): up to three breeds with shares that sum to 1, biggest first
+   * (the pedigree's breed fractions, from the controller). Absent for pure sheep (shares of 97% or more). The look
+   * is blended by these weights; `breed` stays the dominant look for the flock's main-breed rule.
+   */
+  breedMix?: { breed: string; share: number }[];
   zone: Zone;
   marker?: "planned" | "new" | "ill" | "rosette" | "selected" | null;
   /** Idle behaviour and greeting (optional; defaults to "calm"). */

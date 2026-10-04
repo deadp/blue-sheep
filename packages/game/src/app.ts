@@ -5,7 +5,7 @@
 import {
   acceptOrder, advanceSeason, buySheep, buyUpgrade, hasUpgrade, upgradeDef, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
-  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf, woolOf, breedFractions, mainBreed,
+  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf, woolOf, breedFractions, breedShares, mainBreed,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
@@ -384,6 +384,11 @@ export class App {
   private worldSheep(s: Sheep, zone: Zone, marker: Marker): WorldSheep {
     const p = s.phenotype;
     const w = woolOf(s);
+    // Crossbreds draw as a blend of their top three breeds (shares renormalised); pure sheep carry no blend.
+    const fr = breedFractions(this.state, s.id);
+    const top = breedShares(fr).slice(0, 3);
+    const tot = top.reduce((a, b) => a + b.share, 0) || 1;
+    const mix = top.length > 1 && top[0]!.share < 0.97 ? top.map((b) => ({ breed: b.breed as string, share: b.share / tot })) : null;
     return {
       id: s.id, name: s.name, sex: s.sex, adult: isAdult(s, this.state.season),
       wool: w.hex, family: w.family,
@@ -391,7 +396,8 @@ export class App {
       horns: p["horns"] === "horned" ? "horned" : "polled",
       size: Number(p["size"] ?? 60), fleeceWeight: Number(p["fleeceWeight"] ?? 4),
       fineness: Number(p["fineness"] ?? 30), crimp: Number(p["crimp"] ?? 5),
-      breed: mainBreed(breedFractions(this.state, s.id)),
+      breed: mainBreed(fr),
+      ...(mix ? { breedMix: mix } : {}),
       zone, marker, personality: personalityOf(s), dam: s.dam, fondness: fondnessOf(this.state, s.id),
     };
   }
@@ -1051,6 +1057,12 @@ export class App {
         world: () => this.world.debugStats(),
         /** Point the world camera at (x, z) with half-width halfW (probe sheets only). */
         camera: (x: number, z: number, halfW: number) => this.world.debugCamera(x, z, halfW),
+        /** A portrait data URL of a made-up sheep (breed looks sheet for probes). */
+        portrait: (w: Partial<WorldSheep>, px = 220): string =>
+          this.world.portrait({
+            id: "look", name: "look", sex: "ewe", adult: true, wool: "#FAFAF7", family: "white", pattern: "solid", horns: "polled",
+            size: 60, fleeceWeight: 4, fineness: 26, crimp: 5, zone: "paddock", marker: null, ...w,
+          } as WorldSheep, px),
         /** What the world would draw now, by kind (meshes, triangles, shadow-pass meshes), for the perf budget. */
         breakdown: () => this.world.debugBreakdown(),
         /** The voice params of the last bleat (played or not: `played`/`reason` say which). */

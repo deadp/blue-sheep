@@ -12,11 +12,20 @@ export function fractionWords(p: number, noun?: string): string {
   return `about ${NUM[a]} ${a === 1 ? noun : `${noun}s`} in ${NUM[b]}`;
 }
 
+/**
+ * Below this chance an outcome is a "long shot" everywhere: the headline, the hint, the forecast words and the
+ * litter (a faded marker swatch instead of one of the ten). One source so the wording always agrees.
+ */
+export const LONG_SHOT = 0.08;
+/** True when a chance is a long shot (above zero, under `LONG_SHOT`). */
+export const isLongShot = (p: number): boolean => p > 0 && p < LONG_SHOT;
+
 /** Headline odds word for a probability. */
 export function oddsLabel(p: number): string {
   if (p <= 0) return "No chance";
   if (p < 0.05) return "A very long shot";
-  if (p < 0.15) return "A long shot";
+  if (p < LONG_SHOT) return "A long shot";
+  if (p < 0.15) return "Unlikely, but it happens";
   if (p < 0.3) return "Possible, but don't count on it";
   if (p < 0.45) return "Fair odds";
   if (p < 0.6) return "About even";
@@ -30,7 +39,7 @@ export function oddsText(p: number, noun?: string): string {
   const label = oddsLabel(p);
   if (p <= 0) return "No chance, as far as you know.";
   if (p >= 0.95) return "As good as certain.";
-  if (p < 0.05) return "A very long shot.";
+  if (p < LONG_SHOT) return `${label}.`;
   return `${label} — ${fractionWords(p, noun)}.`;
 }
 

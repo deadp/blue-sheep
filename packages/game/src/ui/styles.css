@@ -667,3 +667,13 @@ body.gallery-mode #hud { position: sticky; top: 0; height: 110px; }
 .sc-wool { margin: 2px 8px; text-align: center; font: 700 13px/1.3 var(--f-ui); color: var(--ink); }
 .m-breed { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
 .pig-sw { font: 800 11px/1 var(--f-ui); color: var(--ink-soft); white-space: nowrap; }
+
+/* long shots (under 8%): one faded marker swatch with a sparkle, outside the ten */
+.litter-long { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; justify-content: center; font: 700 12.5px/1.25 var(--f-ui); color: #4b5e40; }
+.litter-long .lamb-tile { width: 48px; height: 48px; flex: 0 0 auto; }
+.lamb-tile.long { opacity: .6; filter: saturate(.7); outline: 2px dashed rgba(90, 110, 80, .55); outline-offset: 2px; background: transparent; }
+.lamb-tile.long .lb.sparkle { right: -7px; top: -8px; width: 18px; height: 18px; background: #fff6cf; }
+.lamb-tile.long .lb.sparkle .ic { width: 13px; height: 13px; }
+.key.long { opacity: .9; }
+.key .k-long { display: grid; place-items: center; opacity: .6; outline: 2px dashed rgba(90, 110, 80, .55); outline-offset: -2px; }
+.key .k-long .ic { width: 13px; height: 13px; }

@@ -355,6 +355,8 @@ export interface WorldSheep {
   family: string;   // colour family: white oatmeal taupe charcoal brown red orange yellow green blue purple
   pattern: "solid" | "spotted"; horns: "polled" | "horned";
   size: number; fleeceWeight: number; fineness: number; crimp: number;
+  breed?: string;       // dominant look: farm merino corriedale perendale romney drysdale icelandic (default farm)
+  breedMix?: { breed: string; share: number }[]; // crossbreds only: top three breeds, shares sum to 1, biggest first
   zone: Zone;
   marker?: "planned" | "new" | "ill" | "rosette" | "selected" | null;
   personality?: "shy" | "calm" | "curious" | "bold";
@@ -968,8 +970,20 @@ prints the breed table, the founder colour families per breed, and a selective-b
 - **UI.** Sheep card: `.sc-breed[data-breed]`, wool-type tag and `.sc-wool[data-wool-type]` (adults only),
   colour strength word beside the bar (`.pig-sw`, coloured sheep only). Market card: `.m-breed[data-breed]`
   row (breed + wool-type tag) and a short fleece line. `ui.test` VOCAB gains `breed`, `wool-type`.
-- **World.** `WorldSheep.breed?: string`; `sheepMesh` `BREED_LOOKS` (size, face and leg colour, lock count and
-  size, tail) for farm, merino, corriedale, perendale, romney, drysdale and icelandic; part of `sheepKey`.
+- **World.** `WorldSheep.breed?: string` (the 60% main breed, else farm) and `WorldSheep.breedMix?` (the pedigree's
+  `breedShares`, top three renormalised to sum 1; set when the top share is under 97%, absent for pure sheep). The
+  controller builds both from `breedFractions`; world3d imports nothing from core. `sheepMesh` `BREED_LOOKS`
+  (size, leg length, face/leg colour, lock count/size/length, tail, plus feature weights: `wrinkle` Merino neck
+  folds, `hang` Romney/Icelandic hanging outer locks, `hairy` Drysdale spiky hair and mane, `under` Icelandic short
+  under-wool, `cap` face wool, `horn` size) for the seven breeds; `breedLook(w)` blends them by `breedMix`
+  weights (numbers by weight, face colours lerped). `breedMix` is part of `sheepKey`. Lite mode keeps all
+  features at fewer locks, hairs and hanging rows. `__game.debug.portrait(partialWorldSheep, px)` renders a made-up
+  sheep for probe sheets.
+- **Long shots (forecast).** One threshold: `LONG_SHOT = NAMED_MIN = 0.08` (core `words.ts`), used by `oddsLabel`
+  ("A long shot" under 8%, "A very long shot" under 5%, "Unlikely, but it happens" to 15%), `blueText`,
+  `colourText`, `litterWords` and the hint chip. Classes under 8% get no tile in `litterOf`'s ten (unless nothing
+  reaches 8%); `longShotsOf(swatches)` returns them (true blue first) and the forecast shows one faded marker
+  swatch with a sparkle (`.litter-long .lamb-tile.long`, outside `.litter`) plus a `.key.long` legend entry.
 - **Probes.** New `breeds.mjs`: at `?act=3` the market has >= 3 breeds and no Icelandic; at `?act=4` it has
   an Icelandic ewe; a bought sheep's card has the breed and a known wool type; the world snapshot carries
   >= 3 breeds. Shots `breeds-*`. Tests: `breeds.test.ts`, `wool.test.ts`, and "forecast swatches match the

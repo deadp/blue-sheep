@@ -63,34 +63,58 @@ let LOCKS = 52;
 export function setSheepDetail(d: "full" | "lite"): void { LOCKS = d === "lite" ? 34 : 52; }
 
 /**
- * Modest procedural breed looks (DESIGN-v3 §3.2, §13 phase 3): build, fleece texture and face/leg colour. The
- * default is the Farm sheep. `locks` and `lockR` scale the number and size of wool locks, `stretch` makes them
- * longer (shaggy), `body` scales the build, `face` is the face and leg colour on white or oatmeal sheep and
- * `faceDark` on coloured ones (null: the usual dark brown tinted by the fleece).
+ * Procedural breed looks (DESIGN-v3 §3.2, §15 item 30): build, fleece texture and face/leg colour. The default is
+ * the Farm sheep. `locks` and `lockR` scale the number and size of wool locks, `stretch` makes them longer
+ * (shaggy), `body` scales the build, `legs` the leg length, `face` is the face and leg colour on white or oatmeal
+ * sheep and `faceDark` on coloured ones (null: the usual dark brown tinted by the fleece). The 0..1 features:
+ * `wrinkle` neck folds (Merino), `hang` long locks hanging from the flanks (Romney, Icelandic outer coat),
+ * `hairy` coarse spiky hair with a mane (Drysdale), `under` a short dense under-wool beneath long outer locks
+ * (Icelandic), `cap` extra face wool, `horn` horn size multiplier.
  */
-export interface BreedLook { locks: number; lockR: number; stretch: number; body: number; face: string | null; faceDark: string | null; tail: number }
-const FARM_LOOK: BreedLook = { locks: 1, lockR: 1, stretch: 1, body: 1, face: null, faceDark: null, tail: 1 };
+export interface BreedLook {
+  locks: number; lockR: number; stretch: number; body: number; legs: number; face: string | null; faceDark: string | null; tail: number;
+  wrinkle: number; hang: number; hairy: number; under: number; cap: number; horn: number;
+}
+const FARM_LOOK: BreedLook = { locks: 1, lockR: 1, stretch: 1, body: 1, legs: 1, face: null, faceDark: null, tail: 1, wrinkle: 0, hang: 0, hairy: 0, under: 0, cap: 0, horn: 1 };
+const look = (o: Partial<BreedLook>): BreedLook => ({ ...FARM_LOOK, ...o });
 export const BREED_LOOKS: Record<string, BreedLook> = {
   farm: FARM_LOOK,
-  // fine, dense and compact; creamy face under a woolly cap
-  merino: { locks: 1.3, lockR: 0.82, stretch: 0.9, body: 0.93, face: "#f1e6d3", faceDark: "#8a7565", tail: 1 },
-  corriedale: { locks: 1.05, lockR: 0.95, stretch: 1, body: 1.03, face: "#efe4d2", faceDark: null, tail: 1 },
-  // hardy hill sheep: a greyish face and legs, a touch sturdier
-  perendale: { locks: 0.95, lockR: 1.05, stretch: 1.1, body: 0.98, face: "#cfc4b3", faceDark: "#5d4e47", tail: 1 },
-  // lustrous longwool: long, sleek locks, a big frame, a clean white face
-  romney: { locks: 0.82, lockR: 1.12, stretch: 1.4, body: 1.07, face: "#f3ebdd", faceDark: null, tail: 1 },
-  // hairy carpet wool: shaggy, rangy, tan face
-  drysdale: { locks: 0.68, lockR: 1.3, stretch: 1.6, body: 1.02, face: "#b8a58d", faceDark: "#6d5a4b", tail: 1.2 },
-  // Icelandic: smaller, shaggy double coat, tan face and legs, a fat short tail
-  icelandic: { locks: 0.74, lockR: 1.28, stretch: 1.5, body: 0.9, face: "#9a7d60", faceDark: "#5b4638", tail: 1.7 },
+  // fine, dense, crimped and compact: many small round locks, deep neck folds, a woolly cap on a creamy face
+  merino: look({ locks: 1.3, lockR: 0.78, stretch: 0.8, body: 0.95, face: "#f1e6d3", faceDark: "#8a7565", wrinkle: 1, cap: 1 }),
+  corriedale: look({ locks: 1.08, lockR: 0.95, stretch: 1.05, body: 1.03, face: "#efe4d2", cap: 0.4 }),
+  // hardy hill sheep: a greyish face and legs, a touch sturdier and rangier
+  perendale: look({ locks: 0.95, lockR: 1.05, stretch: 1.12, body: 0.99, legs: 1.04, face: "#cfc4b3", faceDark: "#5d4e47" }),
+  // lustrous longwool: a big frame under long locks that hang in rows past the belly, a clean white face
+  romney: look({ locks: 0.85, lockR: 1.1, stretch: 1.9, body: 1.07, face: "#f3ebdd", hang: 1 }),
+  // hairy carpet wool: coarse spiky hair, a mane and forelock, rangy, tan face, big horns
+  drysdale: look({ locks: 0.6, lockR: 1.05, stretch: 1.5, body: 1.03, legs: 1.06, face: "#b8a58d", faceDark: "#6d5a4b", tail: 1.2, hairy: 1, horn: 1.3 }),
+  // Icelandic: smaller on shorter legs, a short dense under-coat with a long outer coat hanging over it, a fat tail
+  icelandic: look({ locks: 0.95, lockR: 0.85, stretch: 1.1, body: 0.86, legs: 0.8, face: "#9a7d60", faceDark: "#5b4638", tail: 1.7, hang: 0.9, under: 1, horn: 1.15 }),
 };
+const hexOr = (c: string | null, d: string) => new THREE.Color(c ?? d);
+/** The look of a sheep: its breed's, or a blend by `breedMix` weights (numbers by weight, face colours lerped). */
 export function breedLook(w: WorldSheep): BreedLook {
-  return BREED_LOOKS[w.breed ?? "farm"] ?? FARM_LOOK;
+  const mix = w.breedMix;
+  if (!mix || mix.length < 2) return BREED_LOOKS[w.breed ?? "farm"] ?? FARM_LOOK;
+  const out: BreedLook = { ...FARM_LOOK };
+  const keys: (keyof BreedLook)[] = ["locks", "lockR", "stretch", "body", "legs", "tail", "wrinkle", "hang", "hairy", "under", "cap", "horn"];
+  const tot = mix.reduce((a, m) => a + m.share, 0) || 1;
+  for (const k of keys) (out[k] as number) = 0;
+  const face = new THREE.Color(0, 0, 0), dark = new THREE.Color(0, 0, 0);
+  for (const m of mix) {
+    const l = BREED_LOOKS[m.breed] ?? FARM_LOOK, k = m.share / tot;
+    for (const key of keys) (out[key] as number) += (l[key] as number) * k;
+    face.r += hexOr(l.face, "#eadfce").r * k; face.g += hexOr(l.face, "#eadfce").g * k; face.b += hexOr(l.face, "#eadfce").b * k;
+    dark.r += hexOr(l.faceDark, "#6a564d").r * k; dark.g += hexOr(l.faceDark, "#6a564d").g * k; dark.b += hexOr(l.faceDark, "#6a564d").b * k;
+  }
+  out.face = `#${face.getHexString()}`;
+  out.faceDark = `#${dark.getHexString()}`;
+  return out;
 }
 
 export function sheepKey(w: WorldSheep): string {
   return [
-    w.id, w.breed ?? "farm", woolHex(w), w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
+    w.id, w.breed ?? "farm", (w.breedMix ?? []).map((m) => `${m.breed}${Math.round(m.share * 20)}`).join("+"), woolHex(w), w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
     Math.round(num(w.size, 60)), Math.round(num(w.fleeceWeight, 4) * 4), Math.round(num(w.crimp, 5) * 2),
   ].join("|");
 }
@@ -102,7 +126,7 @@ export function sheepDims(w: WorldSheep): SheepDims {
   const L = 0.62 * s * p;
   const H = 0.38 * s * p;
   const W = 0.37 * s * p;
-  const legLen = (w.adult ? 0.47 : 0.52) * Math.sqrt(s);
+  const legLen = (w.adult ? 0.47 : 0.52) * Math.sqrt(s) * breedLook(w).legs;
   const bodyY = legLen + H * 0.62;
   const hs = (w.adult ? 1.34 : 1.62) * Math.sqrt(s);
   const neck: V3 = [L * 1.16, bodyY + H * 0.98, 0];
@@ -181,15 +205,20 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
     for (let i = 0; i < k; i++) spots.push(new THREE.Vector3(rng() * 2 - 1, rng() * 1.2 - 0.1, rng() * 2 - 1).normalize());
   }
   const isSpot = (x: number, y: number, z: number) => { _dir.set(x, y, z).normalize(); return spots.some((sp) => _dir.dot(sp) > 0.82); };
+  const look0 = breedLook(w);
   const bb = new GeoBatch(0, rng);
-  bb.ico(wool, 1, 2, [0, 0, 0], [L, H, W]);
+  bb.ico(look0.under > 0 ? new THREE.Color(wool).multiplyScalar(1 - 0.16 * look0.under) : wool, 1, 2, [0, 0, 0], [L, H, W]);
   const look = breedLook(w);
   const n = Math.round(LOCKS * (0.85 + curl * 0.35) * look.locks);
   const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS) * look.lockR;
+  const lite = LOCKS < 40;
+  // Icelandic: the base layer is a short dense under-wool a shade darker than the long outer locks laid over it
+  const under = new THREE.Color(wool).multiplyScalar(1 - 0.16 * look.under);
+  const tip = new THREE.Color(wool).lerp(new THREE.Color("#fff6e4"), 0.18 * look.under);
   for (let i = 0; i < n; i++) {
     const [x, y, z] = fib(i, n);
     if (y < -0.72) continue;
-    _c.set(isSpot(x, y, z) ? spotHex : wool).multiplyScalar(0.97 + rng() * 0.06);
+    _c.set(isSpot(x, y, z) ? spotHex : look.under > 0 ? under : wool).multiplyScalar(0.97 + rng() * 0.06);
     const r = lockR * (0.85 + rng() * 0.4);
     bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], [1.2, (0.85 + curl * 0.2) * look.stretch, 1], [rng() * 3, rng() * 3, rng() * 3]);
   }
@@ -199,6 +228,49 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   bb.ico(woolAt(1, 0.3, 0), 0.26 * (L / 0.62), 2, [L * 0.7, H * 0.3, 0], [1, 1.1, 0.95]);
   bb.ico(wool, 0.2 * (L / 0.62), 2, [L * 0.98, H * 0.72, 0], [1.15, 1.1, 0.82]);
   bb.ico(wool, 0.1 * (L / 0.62) * look.tail, 1, [-L * 1.05, H * 0.18, 0], [0.9, 1.3, 0.9]);
+  const u = L / 0.62;
+  // Merino: deep wrinkles across the neck and shoulder: rounded ridges of wool with a darker crease between each
+  if (look.wrinkle > 0.05) {
+    const ridge = Math.max(2, Math.round(4 * look.wrinkle)), crease = new THREE.Color(wool).multiplyScalar(0.7).getHex();
+    for (let i = 0; i < ridge; i++) {
+      const xi = L * (0.38 + i * 0.2), t = xi / L;
+      const ys = Math.max(H * Math.sqrt(Math.max(0, 1 - t * t)) * 0.97, H * 0.66) + 0.01, rr = 0.13 * u;
+      // a dark crease just behind each fat ridge of wool that wraps over the neck and shoulder
+      bb.ico(crease, rr * 0.95, 1, [xi - 0.09 * u, ys - 0.03 * u, 0], [0.55, 0.9, (W * 0.92) / (rr * 0.95)]);
+      bb.ico(woolAt(1, 0.5, 0), rr, 1, [xi, ys + 0.02 * u, 0], [0.8, 1, (W * 0.88) / rr]);
+    }
+    bb.ico(wool, 0.17 * u, 1, [L * 1.0, H * 0.18, 0], [0.8, 1.1, 0.9]);
+  }
+  // Romney / Icelandic outer coat: long locks hanging in rows from the shoulder, flank and rump
+  if (look.hang > 0.05) {
+    const rows = lite ? 2 : 3, per = Math.round(10 * look.hang * (lite ? 0.8 : 1));
+    for (let r = 0; r < rows; r++) for (let i = 0; i < per; i++) {
+      const a = ((i + (r % 2) * 0.5) / per) * Math.PI * 2;
+      const x = Math.cos(a) * L * 0.9, z = Math.sin(a) * W * 0.9;
+      if (Math.abs(z) < 0.15 * W) continue; // keep the spine and belly line clean
+      const topY = H * (0.4 - r * 0.32), len = (0.27 + 0.08 * r + rng() * 0.06) * u * look.hang;
+      _c.set(isSpot(x / L, 0, z / W) ? spotHex : look.under > 0 ? tip : wool).multiplyScalar(0.94 + rng() * 0.1);
+      bb.ico(_c.getHex(), len * 0.5, 0, [x * 0.98, topY - len * 0.4, z * 1.02], [0.55, 1, 0.7], [0, a, (rng() - 0.5) * 0.25]);
+    }
+  }
+  // Drysdale: coarse hair, spiky guard hairs standing out from the fleece, a shaggy mane along the neck
+  if (look.hairy > 0.05) {
+    const k = Math.round((lite ? 26 : 44) * look.hairy);
+    for (let i = 0; i < k; i++) {
+      const [x, y, z] = fib(i * 3 + 1, k * 3);
+      if (y < -0.45) continue;
+      _dir.set(x * L, y * H, z * W).normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(_up, _dir);
+      const len = (0.15 + rng() * 0.12) * u;
+      const col = new THREE.Color(wool).multiplyScalar(0.8 + rng() * 0.35);
+      const pos = new THREE.Vector3(x * L, y * H, z * W).addScaledVector(_dir, len * 0.45);
+      bb.add(new THREE.ConeGeometry(0.035 * u, len, 4), col, new THREE.Matrix4().compose(pos, q, new THREE.Vector3(1, 1, 1)));
+    }
+    for (let i = 0; i < 6; i++) {
+      const t = i / 5;
+      bb.ico(new THREE.Color(wool).multiplyScalar(0.85 + rng() * 0.2).getHex(), 0.07 * u, 0, [L * (0.35 + t * 0.7), H * (0.95 + t * 0.12), 0], [0.9, 1.9, 0.9], [0, 0, 0.5 - t * 0.9]);
+    }
+  }
   const body = smoothGeo(bb.build()!);
   shadeByHeight(body, -H * 1.05, H * 0.9, 0.8, 1.03);
 
@@ -219,13 +291,26 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   hico(wool, 0.06, 1, [0.1, 0.12, 0.04]);
   hico(wool, 0.06, 1, [0.1, 0.12, -0.04]);
   hico(wool, 0.13, 1, [-0.06, -0.02, 0], [1, 1.1, 1.2]);
+  // a woolly cap and cheek ruffs on woolly breeds (Merino most); Drysdale gets a coarse forelock
+  if (look.cap > 0.05) {
+    const c = look.cap;
+    hico(wool, 0.085 * (0.8 + 0.4 * c), 1, [0.06, 0.11, 0], [1.2, 0.85, 1.4]);
+    hico(wool, 0.055, 1, [0.13, 0.11, 0.05 * c + 0.02]);
+    hico(wool, 0.055, 1, [0.13, 0.11, -0.05 * c - 0.02]);
+    for (const side of [1, -1]) hico(wool, 0.07, 1, [0.04, -0.06, side * 0.1 * c + side * 0.02], [1.1, 0.9, 0.8]);
+  }
+  if (look.hairy > 0.05) {
+    hico(new THREE.Color(wool).multiplyScalar(0.82), 0.08, 0, [0.15, 0.14, 0], [1.4, 1.2, 0.6], [0, 0, -0.5]);
+    hico(new THREE.Color(wool).multiplyScalar(0.9), 0.07, 0, [0.0, 0.17, 0.05], [0.8, 1.8, 0.7], [0, 0, 0.3]);
+    hico(new THREE.Color(wool).multiplyScalar(0.9), 0.07, 0, [0.0, 0.17, -0.05], [0.8, 1.8, 0.7], [0, 0, 0.3]);
+  }
   // a faint pale patch round each soft eye
   const patch = faceC.clone().lerp(new THREE.Color("#f4e8da"), 0.22);
   for (const side of [1, -1]) hico(patch, 0.064, 1, [0.138, 0.042, side * 0.106], [1.1, 1.05, 0.55], [0, side * 0.35, 0]);
   if (w.horns === "horned") {
     const ram = w.sex === "ram" && w.adult;
-    const R = ram ? 0.13 : 0.085, turn = ram ? Math.PI * 1.8 : Math.PI * 1.35, segs = ram ? 12 : 9;
-    const r0 = ram ? 0.05 : 0.036, r1 = ram ? 0.022 : 0.018;
+    const hk = look.horn, R = (ram ? 0.13 : 0.085) * hk, turn = ram ? Math.PI * 1.8 : Math.PI * 1.35, segs = ram ? 12 : 9;
+    const r0 = (ram ? 0.05 : 0.036) * Math.sqrt(hk), r1 = (ram ? 0.022 : 0.018) * Math.sqrt(hk);
     for (const side of [1, -1]) {
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i <= segs; i++) {
