@@ -3,10 +3,10 @@ import type { Goal, SeasonReport } from "../core/index.js";
 
 export type PanelName =
   | "title" | "help" | "sheep" | "forecast" | "board" | "orders" | "market" | "vet"
-  | "fair" | "codex" | "tree" | "report" | "ending" | "settings" | "animal";
+  | "fair" | "codex" | "tree" | "report" | "ending" | "settings" | "animal" | "woolshed";
 
 export const PANEL_NAMES: PanelName[] = [
-  "title", "help", "sheep", "forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report", "ending", "settings", "animal",
+  "title", "help", "sheep", "forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report", "ending", "settings", "animal", "woolshed",
 ];
 
 export interface View {
@@ -18,6 +18,8 @@ export interface View {
   goal: Goal;
   /** Panel-local tab (vet: selected sheep id; settings: "confirm-new"; codex: "cards" | "concepts"). */
   tab: string | null;
+  /** The last wool sale, for the Reveal beside the forecast the player saw (cleared when a panel opens). */
+  sale?: { forecast: number; paid: number; text: string } | undefined;
   /** The report from the last sleep, for the report panel. */
   report: SeasonReport | null;
   /** PNG data URL for a sheep (from WorldView.portrait). */

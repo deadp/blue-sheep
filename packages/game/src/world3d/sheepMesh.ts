@@ -229,17 +229,17 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   bb.ico(wool, 0.2 * (L / 0.62), 2, [L * 0.98, H * 0.72, 0], [1.15, 1.1, 0.82]);
   bb.ico(wool, 0.1 * (L / 0.62) * look.tail, 1, [-L * 1.05, H * 0.18, 0], [0.9, 1.3, 0.9]);
   const u = L / 0.62;
-  // Merino: deep wrinkles across the neck and shoulder: rounded ridges of wool with a darker crease between each
+  // Merino: a few small skin folds on the neck, just behind the head: short ridges of wool wrapped round the neck
+  // (never over the back) with a darker crease behind each. Kept small so they read as folds, not lumps.
   if (look.wrinkle > 0.05) {
-    const ridge = Math.max(2, Math.round(4 * look.wrinkle)), crease = new THREE.Color(wool).multiplyScalar(0.7).getHex();
+    const ridge = Math.max(2, Math.round(3 * look.wrinkle)), crease = new THREE.Color(wool).multiplyScalar(0.72).getHex();
     for (let i = 0; i < ridge; i++) {
-      const xi = L * (0.38 + i * 0.2), t = xi / L;
-      const ys = Math.max(H * Math.sqrt(Math.max(0, 1 - t * t)) * 0.97, H * 0.66) + 0.01, rr = 0.13 * u;
-      // a dark crease just behind each fat ridge of wool that wraps over the neck and shoulder
-      bb.ico(crease, rr * 0.95, 1, [xi - 0.09 * u, ys - 0.03 * u, 0], [0.55, 0.9, (W * 0.92) / (rr * 0.95)]);
-      bb.ico(woolAt(1, 0.5, 0), rr, 1, [xi, ys + 0.02 * u, 0], [0.8, 1, (W * 0.88) / rr]);
+      // from the shoulder-front forward to the head, stepping slightly down the neck's slope
+      const xi = L * (0.9 + i * 0.075), yi = H * (0.62 - i * 0.045), rr = 0.045 * u, half = W * 0.5;
+      bb.ico(crease, rr, 1, [xi - 0.05 * u, yi - 0.015 * u, 0], [0.45, 0.8, half / rr * 0.9], [0, 0, -0.35]);
+      bb.ico(woolAt(1, 0.5, 0), rr * 1.1, 1, [xi, yi + 0.012 * u, 0], [0.6, 0.85, half / (rr * 1.1)], [0, 0, -0.35]);
     }
-    bb.ico(wool, 0.17 * u, 1, [L * 1.0, H * 0.18, 0], [0.8, 1.1, 0.9]);
+    bb.ico(wool, 0.12 * u, 1, [L * 1.0, H * 0.18, 0], [0.8, 1.1, 0.9]);
   }
   // Romney / Icelandic outer coat: long locks hanging in rows from the shoulder, flank and rump
   if (look.hang > 0.05) {

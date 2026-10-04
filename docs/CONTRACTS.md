@@ -525,7 +525,7 @@ data-findmate="id"        open forecast for sheep
 data-mate="id"            select candidate in forecast
 data-goal="blue|learn|fine|heavy"
 data-plan="ewe:ram"       toggle plan
-data-buy="id" / data-sell="id" / data-hire="1" / data-upgrade="paddock|terrier|collie|maremma|cat|barn|shearing|meadow"
+data-buy="id" / data-sell="id" / data-selllot="lotId" / data-selltype="woolType|all" / data-autosell="on|off" / data-hire="1" / data-upgrade="paddock|terrier|collie|maremma|cat|barn|shearing|meadow"
 data-treat="id"           give a sheep in the flock, or an owned dog/cat (PetId), a treat (1 coin)
 data-open="animal" data-sheep-id="terrier|collie|maremma|cat"   the animal card
 data-test="sheepId:locus"
@@ -671,7 +671,7 @@ discovery/concept cards.
   (`localStorage["blue-sheep-autolite-told"]`); later boots may switch again, silently.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
-  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"brush", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?} | {type:"lesson", op:"ack"|"skip"}`.
+  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"sellLot", id} | {type:"sellLots", wool} | {type:"autoSell", on} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"brush", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?} | {type:"lesson", op:"ack"|"skip"}`.
   Opening an own sheep's card (`open` sheep) or an animal's card (`open` animal with a PetId) greets it
   (fondness, once per season; hearts in the field; saved). The animal card also glides the camera to the
   animal, which speaks (bubble + bark/mew).
@@ -989,3 +989,42 @@ prints the breed table, the founder colour families per breed, and a selective-b
   >= 3 breeds. Shots `breeds-*`. Tests: `breeds.test.ts`, `wool.test.ts`, and "forecast swatches match the
   hint" in `colour.test.ts`. Sim: `scripts/breeds.ts` (fineness by breed, 30 seeds).
 
+
+## 12. The wool store and demand meters (DESIGN-v3 Phase 4)
+
+- **Shearing (`core/woolstore.ts`).** Spring and autumn only (`SHEAR_SEASONS`, `isShearingSeason`). `advanceSeason`
+  step 2: wool orders take their fleeces first (`shearForOrders`, shearing seasons only, clip-sized), then
+  `shearFlock` makes one `FleeceLot` per remaining adult: `{id, sheep, name, season, greasy, clean, type, family, word, hex,
+  microns, intensity, rate, fond}`. `greasy = fleeceWeight x CLIP_KG` (2: a clip is two seasons' growth, so a year's
+  kilos match v2), `clean = greasy x WASH_YIELD[type]`, `rate = fleeceRate(s)` (coins per greasy kg at rest demand:
+  colour price x fineness multiplier x `RAW_TYPE_FACTOR[type]`). v2's `woolIncome(s, boom, bonus)` is kept only as a
+  forecast helper (coins from one clip at rest demand); `sim.ts` no longer uses it.
+- **Store.** `state.store?: FleeceLot[]` (absent = empty), `storeCap` = `STORE_CAP` 12, `STORE_CAP_SHED` 24 with the
+  shearing shed. `state.autoSell?` (absent = on): on, each lot is sold at shearing; off, lots wait, and lots past
+  capacity are sold at once ("overflow"). `SeasonReport.shearing?: ShearingReport | null` (lots, kg, autoSold,
+  autoCoins, overflow, overflowCoins, held, auto, shedBonus, fondBonus; null in a season without a shearing).
+  `report.income` is the coins paid by those sales (minus mice). If feed is due and coins run short, the dearest stored
+  lots are sold first (`sellStoreForCash`), then sheep as before. Mice spoil `MICE_WOOL` of the clip's value plus the
+  stored lots' value at rest.
+- **Selling.** `lotPrice(state, lot, D)` = `greasy x rate x fond x shed(1.25) x boom(2) x m(avg D over the lot)`. `sellLot(state,
+  id)` pays it and lowers the lot's type meter by `greasy x RAW_STEP`. `forecastSale(state, ids)` prices the lots in order
+  with the meter falling between them: exactly what the sales then pay (tested). Actions: `sellLot`, `sellLots {wool:
+  type|"all"}` (every stored lot of that type, forecast order), `autoSell {on}`. The controller sets `view.sale = {forecast,
+  paid, text}` for the Reveal beside the forecast.
+- **Demand (`core/demand.ts`).** `state.demand?: Record<string, number>`: keys `raw:<woolType>` (and `item:<id>` for the
+  crafting phases), absent = at the seasonal target. `demandMult(D) = 0.4 + 0.6 D`, D in [0, 1.5]. `demandTarget`: 1,
+  +/- `SEASON_SWING` (0.1) for raw wool (warm types up in autumn, fine up in spring). Raw sales lower by `RAW_STEP` (0.005)
+  per greasy kg; each season turn a meter moves `RAW_REFILL` (0.5) toward its next target (items: up 0.3, down 0.25).
+  `sellRun(D, units, step)` pays on the straight-line average. `demandWord`: glutted / slow / steady / keen / begging for it.
+  The wool boom is a live x2 on one colour family while it is announced and running (`boomColourNow`: announced in
+  autumn for winter), applied at sale time, so stored lots catch it.
+- **UI.** New panel `woolshed` (`ui/woolshed.ts`, wide; in the bag's tray; `?panel=woolshed`): the store's lots (swatch, fleece
+  in words, `Sell . coins`), the auto-sell toggle, and the buyer. `woolBuyerHtml` (also in the market panel): per wool type a
+  `.buyer-row[data-wool-type]` with a demand meter (ten dots + word; the price multiplier only with the numbers unlock), an
+  "After you sell" meter, and `Sell n . coins`; `Sell all`; `.sale-reveal[data-sale]` after a sale. kg and micron figures on
+  lots only with numbers. The report lists the shearing line. `ui.test` VOCAB gains `selllot`, `selltype`, `autosell`, `lot`, `after`, `sale`.
+- **Probe.** New `woolstore.mjs`: after a sleep in a shearing season the store gains one lot per adult (none with auto-sell on);
+  three lots sold by real clicks each pay the price on their button and lower their meter; selling a whole type pays the
+  forecast and shows the Reveal. Shots `woolshed`, `market-wool-before`, `market-wool-after`, `panel-woolshed`. Tests:
+  `demand.test.ts`, `woolstore.test.ts` (shearing seasons, lots, auto-sell, overflow, forecast = paid, determinism, old saves,
+  year-1 income within 15% of v2 on seeds 1-20, money >= 0 over 12 seasons).

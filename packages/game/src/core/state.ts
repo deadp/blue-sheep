@@ -145,7 +145,7 @@ function wouldBeTrueBlue(g: Genome): boolean {
 }
 
 /** Founder frequencies for a market sheep of a breed: the breed's own, with its blue paint tilted a little (config `MARKET_BLUE_FREQ`). */
-function marketFreqs(breed: BreedId) {
+export function marketFreqs(breed: BreedId) {
   const f = { ...breedFreqs(breed) };
   const blue = Math.min(0.95, MARKET_BLUE_FREQ * (breedFreqs(breed)["U1"]![1]! / 0.1));
   f["U1"] = [1 - blue, blue];
@@ -155,14 +155,15 @@ function marketFreqs(breed: BreedId) {
 
 /**
  * An unrelated adult founder that can't already be true blue, so the player has to breed for it. Market sheep
- * come from a breed (default Farm); visitors and the fallback use the species' own Farm frequencies.
+ * come from a breed (default Farm); visitors (and the fallback) come from a breed too when given one.
  */
 export function sampleFounderSheep(state: GameState, rng: Rng, sex: Sex, born: number, origin: SheepOrigin, breed?: BreedId): Sheep {
-  const freqs = origin === "market" ? marketFreqs(breed ?? "farm") : undefined;
+  const bred = origin === "market" || (origin === "visitor" && breed !== undefined);
+  const freqs = bred ? marketFreqs(breed ?? "farm") : undefined;
   for (let tries = 0; tries < 50; tries++) {
     const genome = sampleFounder(species.map, rng, freqs);
     if (wouldBeTrueBlue(genome)) continue;
-    return addSheep(state, rng, { sex, born, dam: null, sire: null, genome, inbreeding: 0, origin, ...(origin === "market" ? { breed: breed ?? "farm" } : {}) });
+    return addSheep(state, rng, { sex, born, dam: null, sire: null, genome, inbreeding: 0, origin, ...(bred ? { breed: breed ?? "farm" } : {}) });
   }
   throw new Error("could not sample a founder that isn't true blue");
 }

@@ -10,6 +10,7 @@ import { btn, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 import { crossCached } from "./cache.js";
 import { petForecastHtml } from "./pets.js";
+import { woolBuyerHtml } from "./woolshed.js";
 
 /** Best pairing of an outside sheep with the flock, by true blue chance, then vivid colour, then learning. */
 function bestMatch(state: GameState, s: Sheep): { mate: Sheep; f: CrossForecast } | null {
@@ -123,6 +124,7 @@ export function marketHtml(state: GameState, view: View): string {
     ${head("sheep", "For sale")}
     <div class="mcards">${stock.length ? stock.map((s) => marketCard(state, view, s)).join("") : `<p class="meta">Sold out. The trader comes back next season.</p>`}</div>
     ${visitor}
+    ${woolBuyerHtml(state, view)}
     ${upgradesHtml(state)}
     ${more("market-sell", `Sell a sheep · ${state.flock.length} of ${state.flockCap}`, `<ul class="sell-list">${flock}</ul>`, { open: lambRoom(state) < 1 })}`;
 }

@@ -164,6 +164,7 @@ function trayItems(state: GameState): { panel: PanelName; label: string; icon: I
     { panel: "board", label: "Board", icon: "board", on: true },
     { panel: "orders", label: "Letters", icon: "mail", badge: openOrders, on: has(state, "orders") },
     { panel: "market", label: "Market", icon: "store", on: true },
+    { panel: "woolshed", label: "Woolshed", icon: "yarn", on: true },
     { panel: "vet", label: "Vet", icon: "vet", on: has(state, "vet") },
     { panel: "fair", label: "Fair", icon: "rosette", on: has(state, "fair") },
     { panel: "codex", label: "Codex", icon: "book", on: has(state, "cards") },

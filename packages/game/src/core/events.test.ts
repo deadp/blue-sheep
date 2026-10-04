@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceSeason, announceText, enterAct, FEED_COST, flockSheep, newGame, woolIncome, isAdult, type EventKind, type GameState } from "./index.js";
+import { advanceSeason, announceText, enterAct, FEED_COST, flockSheep, newGame, isAdult, storeOf, lotPrice, boomColourNow, type EventKind, type GameState } from "./index.js";
 
 function atWinter(seed: number, kind: EventKind, colour: string | null = null): GameState {
   const g = newGame(seed);
@@ -67,13 +67,24 @@ describe("winter events", () => {
     expect(h.flock).toContain(lamb2.id);
   });
 
-  it("wool boom doubles that colour's wool", () => {
-    const g = atWinter(74, "woolBoom", "white");
-    const whites = flockSheep(g).filter((s) => s.phenotype["family"] === "white" && isAdult(s, 3));
-    const others = flockSheep(g).filter((s) => s.phenotype["family"] !== "white" && isAdult(s, 3));
-    const expected = whites.reduce((t, s) => t + woolIncome(s, "white"), 0) + others.reduce((t, s) => t + woolIncome(s), 0);
-    const r = advanceSeason(g);
-    expect(r.income).toBe(expected);
-    for (const s of whites) expect(woolIncome(s, "white")).toBeGreaterThanOrEqual(2 * woolIncome(s) - 1);
+  it("wool boom doubles that colour's fleece price while it runs (a live multiplier on stored lots, not a winter clip)", () => {
+    const mk = (boom: boolean) => {
+      const g = newGame(74);
+      enterAct(g, 1, undefined, { grant: true });
+      g.season = 2; g.autoSell = false;
+      if (boom) g.pendingEvent = { kind: "woolBoom", season: 3, colour: "white", text: announceText("woolBoom", "white") };
+      return g;
+    };
+    const g = mk(true), h = mk(false);
+    advanceSeason(g); advanceSeason(h);
+    const lots = storeOf(g);
+    expect(lots.length).toBeGreaterThan(0);
+    expect(lots.some((l) => l.family === "white")).toBe(true);
+    for (const l of lots) {
+      const a = lotPrice(g, l, 1).coins, b = lotPrice(h, l, 1).coins;
+      if (l.family === "white") expect(a).toBeGreaterThanOrEqual(2 * b - 1); else expect(a).toBe(b);
+    }
+    expect(boomColourNow(g)).toBe("white");
+    expect(boomColourNow(h)).toBeNull();
   });
 });

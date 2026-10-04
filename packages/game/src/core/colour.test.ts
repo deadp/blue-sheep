@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { lambOutcomes } from "@blue-sheep/inference";
 import {
   advanceSeason, enterAct, factsFor, forecastCross, forecastVet, geneDist, litterOf, newGame, newTutorialGame, planMating, posteriors,
-  scoreCross, setColour, vetTest, woolMatches, woolOf, entropyBits, GENE_LABEL, VET_FEE, colourText, NAMED_MIN, LONG_SHOT, isLongShot, longShotsOf, oddsLabel, oddsText, blueText, type GameState, type LambSwatch,
+  scoreCross, setColour, vetTest, woolMatches, woolOf, entropyBits, GENE_LABEL, VET_FEE, colourText, NAMED_MIN, LONG_SHOT, isLongShot, longShotsOf, longShotNames, oddsLabel, oddsText, blueText, type GameState, type LambSwatch,
 } from "./index.js";
 import { GENOTYPE_RE, planAll } from "./testkit.js";
 
@@ -142,7 +142,10 @@ describe("forecast swatches match the hint", () => {
   const sw = (key: string, p: number, extra: Partial<LambSwatch> = {}): LambSwatch => ({
     key, word: key.replace(":", " "), name: key.split(":")[0]!, family: "red", hex: "#C8322F", p, hidden: false, trueBlue: false, band: "bright", intensity: 0.5, ...extra,
   });
-  const named = (text: string, swatches: LambSwatch[]) => swatches.filter((w) => text.toLowerCase().includes(w.word) && !text.toLowerCase().includes(`a long shot at ${w.word}`));
+  const named = (text: string, swatches: LambSwatch[]) => {
+    const odds = text.toLowerCase().split("a long shot at")[0]!; // the long shots come last, with no odds and no swatch
+    return swatches.filter((w) => odds.includes(w.word));
+  };
 
   it("every colour named with odds has a swatch, even when largest remainder would drop it", () => {
     const cases: LambSwatch[][] = [
@@ -160,11 +163,24 @@ describe("forecast swatches match the hint", () => {
     }
   });
 
+  it("the hint line and the long-shot marker list the same long shots by the same names", () => {
+    const swatches = [
+      sw("snow-white", 0.72, { word: "snow-white", hidden: true, family: "white" }), sw("orange:bright", 0.15, { word: "bright orange" }),
+      sw("blue:vivid", 0.05, { word: "vivid blue", trueBlue: true }), sw("purple:soft", 0.04, { word: "soft purple" }), sw("purple:vivid", 0.03, { word: "vivid purple" }),
+      sw("pink:soft", 0.01, { word: "soft pink" }),
+    ];
+    const names = longShotNames(swatches);
+    expect(names).toEqual(["true blue", "soft purple", "vivid purple"]);
+    expect(longShotsOf(swatches).slice(0, 3).map((w) => (w.trueBlue ? "true blue" : w.word))).toEqual(names);
+    const text = colourText({ swatches, trueBlue: 0.05 });
+    expect(text).toContain("a long shot at true blue, soft purple or vivid purple");
+    expect(text).not.toContain("vivid blue");
+  });
+
   it("rarer colours are only ever long shots in the words", () => {
     const swatches = [sw("snow-white", 0.9, { word: "snow-white", hidden: true, family: "white" }), sw("orange:bright", 0.05), sw("blue:vivid", 0.05, { trueBlue: true })];
     const text = colourText({ swatches, trueBlue: 0.05 });
-    expect(text).toMatch(/long shot at orange bright/);
-    expect(text).toMatch(/long shot at true blue/);
+    expect(text).toMatch(/long shot at true blue or orange bright/);
     expect(text).not.toMatch(/one in ten/);
   });
 

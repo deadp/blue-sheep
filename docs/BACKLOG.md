@@ -5,7 +5,7 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-Next: v3 Phase 4 (wool store, raw sales, demand meters, DESIGN-v3 §13).
+Next: v3 Phase 5 (woolshed queue, items and patterns, DESIGN-v3 §13).
 
 Follow-ups from Phase 2, pigment colours (not started):
 - The act ladder is still v2 (true blue replaces blue in act 1; the registry wants six full-blue sheep at
@@ -129,6 +129,8 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- v3 Phase 4, wool store, raw sales and demand meters (see git log): `core/woolstore.ts` (spring/autumn shearing to fleece lots, washing, store cap, overflow, auto-sell), `core/demand.ts` (meters, refill, seasonal targets, boom as live x2), `woolshed` panel and market wool buyer with an after-you-sell forecast and Reveal, `sellLot`/`sellLots`/`autoSell` actions, `woolstore.mjs` probe. Carry-overs: visiting rams drawn from breed stock, Merino folds at the neck only, long-shot names from one source (`longShotNames`). Open: item meters exist (`item:` keys) but nothing sells items until Phase 5; wool press (store 40) with the woolshed.
 
 - v3 Phase 3 follow-up, breed looks and long shots (DESIGN-v3 §15 item 30; see git log): stronger procedural breed looks (Merino neck folds and dense small locks, Romney hanging long locks, Drysdale spiky hair, mane and bigger horns, Icelandic short under-wool beneath hanging outer locks on shorter legs), crossbred look blended from `breedFractions` via `WorldSheep.breedMix`, forecast outcomes under 8% as one faded sparkle marker swatch plus legend entry, one `LONG_SHOT` threshold for headline, hint and words (unit tests), portrait canvas size bug fixed. New `breedlooks.mjs` probe and before/after sheet, `scripts/sheeptris.ts` cost per breed. Open: visiting rams stay Farm (their genetics are Farm), breed prices (Phase 4).
 - v3 Phase 3, breeds and wool types (16c879e): market stock by breed and act (>= 3 breeds at acts 1-3, Icelandic only from act 4), `core/wool.ts` wool-type classification on the measured fleece, breed line from the pedigree, breed + wool-type tag + fleece words on the sheep and market cards (numbers behind the unlock), colour strength word, breed looks in `sheepMesh`, wool-item suitability data; forecast swatch/hint now share one distribution (largest remainder, `NAMED_MIN` 8%). New `breeds.mjs` probe. Open: breed prices untuned, crossbred looks, faded long-shot swatches.

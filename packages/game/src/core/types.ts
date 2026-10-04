@@ -6,6 +6,33 @@ export type Sex = "ewe" | "ram";
 export type Phenotype = Record<string, string | number>;
 export type SheepOrigin = "founder" | "bred" | "market" | "visitor";
 
+/** One sheep's clip, skirted and washed: what the wool store holds (core/woolstore.ts). */
+export interface FleeceLot {
+  id: string;
+  /** The sheep it came from, and its name then. */
+  sheep: string;
+  name: string;
+  /** The season it was shorn. */
+  season: number;
+  /** Greasy kg as shorn, and clean kg after washing. */
+  greasy: number;
+  clean: number;
+  /** Wool type (core/wool.ts) and the fleece in words. */
+  type: string;
+  family: string;
+  /** "soft pink", "snow-white". */
+  word: string;
+  hex: string;
+  /** Fibre diameter (µm). */
+  microns: number;
+  /** Colour strength 0-1. */
+  intensity: number;
+  /** Coins per greasy kg at rest demand: colour, fineness and wool type, before fondness. */
+  rate: number;
+  /** The donor's fondness multiplier at shearing. */
+  fond: number;
+}
+
 export interface Sheep {
   id: string;
   name: string;
@@ -277,6 +304,14 @@ export interface GameState {
   care?: Record<string, CareRecord>;
   /** The season mice are expected in the barn, announced a season ahead (null: none coming). */
   mice?: number | null;
+  /** The wool store: fleece lots from shearing, waiting to be sold (core/woolstore.ts). Absent: empty. */
+  store?: FleeceLot[];
+  /** Sell each clip to the wool buyer at shearing (default true; core/woolstore.ts). */
+  autoSell?: boolean;
+  /** Next fleece lot number. */
+  nextLot?: number;
+  /** Demand meters by key ("raw:fine", "item:socks"); a key not here sits at its seasonal target (core/demand.ts). */
+  demand?: Record<string, number>;
   /** Legacy v1 notebook/achievements, kept for old saves. */
   achievements: string[];
   /**
@@ -349,6 +384,28 @@ export interface CrossForecast {
   learnText: string;
 }
 
+/** What a shearing did (core/woolstore.ts `shearFlock`). */
+export interface ShearingReport {
+  /** Fleece lots made (one per adult whose wool didn't go to an order). */
+  lots: number;
+  /** Greasy kg shorn. */
+  kg: number;
+  /** Lots sold at once (auto-sell), the coins they fetched and their kg. */
+  autoSold: number;
+  autoCoins: number;
+  /** Lots the store had no room for: sold to the wool buyer, the coins they fetched and the sheep they came from. */
+  overflow: number;
+  overflowCoins: number;
+  overflowNames: string[];
+  /** Of the coins from this shearing: the share the shearing shed added, and the share fond sheep added. */
+  shedBonus: number;
+  fondBonus: number;
+  /** Lots now in the store. */
+  held: number;
+  /** Was auto-sell on. */
+  auto: boolean;
+}
+
 export interface SeasonReport {
   /** The season that has just begun (state.season after the advance). */
   season: number;
@@ -363,6 +420,8 @@ export interface SeasonReport {
   /** Mice in the barn this season (null when none came). */
   mice: MiceReport | null;
   feed: number;
+  /** The shearing this season (null in a season without one; absent in old reports). */
+  shearing?: ShearingReport | null;
   deaths: Sheep[];
   /** Sheep the trader took because feed could not be paid or the flock was over its cap. */
   autoSold: { id: string; name: string; price: number; reason: "feed" | "room" }[];

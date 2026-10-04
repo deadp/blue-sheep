@@ -148,6 +148,30 @@ export const FOND_WORDS = ["Skittish", "Wary", "Friendly", "Fond of you", "Devot
 /** Wool price multiplier with the shearing shed. */
 export const SHEARING_BONUS = 1.25;
 
+// ---- The wool store and the demand meters (DESIGN-v3 §5, §7, §15 item 3) ---------------------------------------
+/** Shearing seasons of the year: spring (0) and autumn (2). */
+export const SHEAR_SEASONS: readonly number[] = [0, 2];
+/** A clip holds the wool grown since the last shearing: a sheep's fleece weight (a season's growth) times this. */
+export const CLIP_KG = 2;
+/** Clean weight = greasy weight x yield, by wool type (skirted and washed on the way into the store). */
+export const WASH_YIELD: Record<string, number> = { fine: 0.65, medium: 0.7, strong: 0.75, crossbred: 0.75, lustre: 0.75, carpet: 0.8, lopi: 0.8 };
+/** Raw-wool price factor by wool type (medium = 1), on top of colour and fineness. */
+export const RAW_TYPE_FACTOR: Record<string, number> = { fine: 1.15, medium: 1.05, strong: 1, crossbred: 1, lustre: 1.05, carpet: 0.9, lopi: 1.1 };
+/** Fleece lots the wool store holds: the start, with the shearing shed. (The wool press, 40, arrives with the woolshed.) */
+export const STORE_CAP = 12;
+export const STORE_CAP_SHED = 24;
+/** Demand meter range, and the price multiplier m(D) = DEMAND_FLOOR + DEMAND_SLOPE x D (0.4x saturated, 1.0 at rest, 1.3x in a spike). */
+export const DEMAND_MAX = 1.5;
+export const DEMAND_FLOOR = 0.4;
+export const DEMAND_SLOPE = 0.6;
+/** Raw wool meters (one per wool type): each greasy kg sold lowers the meter; each season it refills this share of the way to its target. */
+export const RAW_STEP = 0.005;
+export const RAW_REFILL = 0.5;
+/** Item meters (the crafting phases): a unit sold lowers the meter by ITEM_STEP (or its own step); refill up / down per season. */
+export const ITEM_STEP = 0.1;
+export const ITEM_REFILL_UP = 0.3;
+export const ITEM_REFILL_DOWN = 0.25;
+
 // Orders
 export const MAX_OPEN_ORDERS = 3; // visible on the board (offered + accepted)
 export const MAX_ACCEPTED_ORDERS = 2;
@@ -223,3 +247,5 @@ export const REGISTRY_MAX_INBREEDING = 0.125;
 export const ORDERS_FOR_ACT2 = 3;
 /** Orders filled before act 2 that count toward it (at most). */
 export const ORDERS_CARRIED = 2;
+/** How far raw-wool targets swing with the time of year (warm wools up in autumn, fine up in spring). */
+export const SEASON_SWING = 0.1;

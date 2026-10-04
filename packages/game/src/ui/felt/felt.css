@@ -194,3 +194,8 @@ hr.stitch { border: 0; height: 4px; margin: 12px 4px; background: var(--stitch-r
 #toast { position: fixed; left: 50%; bottom: 96px; transform: translate(-50%, 16px) scale(.96); opacity: 0; z-index: 40; display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px 10px 10px; border-radius: var(--r-pill); color: var(--ink); font: 800 15px/1.2 var(--f-ui); box-shadow: var(--lift); outline: 1.6px dashed rgba(183, 110, 95, .5); outline-offset: -5px; transition: opacity .2s, transform .35s var(--spring); pointer-events: none; max-width: 80vw; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast .t-knot { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 38% 32%, #fffaf0, #d9e9f3 70%); }
+
+/* Demand meters (the wool buyer): ten dots, cool when the market is glutted, warm and bright when it is keen. */
+.m-bar.demand i.on { background: radial-gradient(circle at 35% 30%, #f8dcbc, #e6ab78); }
+.m-bar.demand i.on.s3, .m-bar.demand i.on.s4, .m-bar.demand i.on.s5 { background: radial-gradient(circle at 35% 30%, #f2e2a6, #d2b44e); }
+.m-bar.demand i.on.s6, .m-bar.demand i.on.s7, .m-bar.demand i.on.s8, .m-bar.demand i.on.s9 { background: radial-gradient(circle at 35% 30%, #cfe7c2, #7fb06a); }

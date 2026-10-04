@@ -1,7 +1,8 @@
 /** Prices, wool income, buying and selling, and the money floor. */
-import { BREED_STOCK, BUY_MARKUP, FINE_REF, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE } from "./config.js";
+import { BREED_STOCK, BUY_MARKUP, CLIP_KG, RAW_TYPE_FACTOR, FINE_REF, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE } from "./config.js";
 import { breedOf } from "./breeds.js";
 import { colourValue, woolOf, woolPricePerKg } from "./colour.js";
+import { woolTypeOf } from "./wool.js";
 import { addLog, flockSheep, isAdult } from "./state.js";
 import type { GameState, Sheep } from "./types.js";
 
@@ -40,12 +41,16 @@ export function finenessMultiplier(microns: number): number {
   return Math.max(0.5, Math.min(2, (FINE_REF + 4 - microns) / 10 + 1));
 }
 
-/** Coins from one adult's fleece this season. `boomColour` is a colour family whose wool fetches double. */
+/** Coins per greasy kg at rest demand: colour, fineness and wool type (before fondness, the shed and the meters). */
+export function fleeceRate(s: Sheep): number {
+  return woolPricePerKg(woolOf(s)) * finenessMultiplier(Number(s.phenotype["fineness"])) * (RAW_TYPE_FACTOR[woolTypeOf(s)] ?? 1);
+}
+
+/** Coins from one adult's clip (one shearing) at rest demand. `boomColour` is a colour family whose wool fetches double. */
 export function woolIncome(s: Sheep, boomColour: string | null = null, bonus = 1): number {
-  const w = woolOf(s);
-  const kg = Number(s.phenotype["fleeceWeight"]);
-  const boom = boomColour !== null && w.family === boomColour ? 2 : 1;
-  return Math.round(kg * woolPricePerKg(w) * finenessMultiplier(Number(s.phenotype["fineness"])) * boom * bonus);
+  const kg = Number(s.phenotype["fleeceWeight"]) * CLIP_KG;
+  const boom = boomColour !== null && woolOf(s).family === boomColour ? 2 : 1;
+  return Math.round(kg * fleeceRate(s) * boom * bonus);
 }
 
 /** Remove a sheep from the flock and every plan / entry that mentions it. */

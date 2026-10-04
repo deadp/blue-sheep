@@ -1,7 +1,7 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
   ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, isAdult, isIll, lambRoom,
-  litterOf, longShotsOf, NAMED_MIN, oddsLabel, oddsText, pColour, ramLoad, woolOf,
+  litterOf, longShotsOf, longShotNames, orList as orWords, NAMED_MIN, oddsLabel, oddsText, pColour, ramLoad, woolOf,
   type CrossForecast, type GameState, type Goal, type LambSwatch, type Sheep,
 } from "../core/index.js";
 import type { QuantForecast } from "@blue-sheep/inference";
@@ -35,7 +35,7 @@ export function litterLooks(f: LitterForecast): LambLook[] {
   const ten = litterOf(f.swatches);
   const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
   let spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
-  const out: LambLook[] = ten.map((w, k) => ({ key: w.key, word: w.word, wool: w.hex, hidden: w.hidden, trueBlue: w.trueBlue, horns: k < hornedN ? "horned" : "polled", pattern: "solid" }));
+  const out: LambLook[] = ten.map((w, k) => ({ key: w.key, word: longShotNames(f.swatches).join(", ") || w.word, wool: w.hex, hidden: w.hidden, trueBlue: w.trueBlue, horns: k < hornedN ? "horned" : "polled", pattern: "solid" }));
   for (let k = out.length - 1; k >= 0 && spottedN > 0; k--) if (!out[k]!.hidden) { out[k]!.pattern = "spotted"; spottedN--; }
   return out;
 }
@@ -43,7 +43,7 @@ export function litterLooks(f: LitterForecast): LambLook[] {
 /** The extra faded marker swatch for the forecast's long shots (true blue first), or null when there are none. */
 export function longShotLook(f: Pick<CrossForecast, "swatches">): LambLook | null {
   const w = longShotsOf(f.swatches)[0];
-  return w ? { key: w.key, word: w.word, wool: w.hex, hidden: w.hidden, trueBlue: w.trueBlue, horns: "polled", pattern: "solid", longShot: true } : null;
+  return w ? { key: w.key, word: longShotNames(f.swatches).join(", ") || w.word, wool: w.hex, hidden: w.hidden, trueBlue: w.trueBlue, horns: "polled", pattern: "solid", longShot: true } : null;
 }
 
 function lookWords(l: LambLook): string {
@@ -76,7 +76,7 @@ export function litterRow(state: GameState, f: LitterForecast, small = false, vi
   if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);
   if (looks.some((l) => l.hidden)) extras.push(`<span class="xkey"><b class="lb q">?</b> white on top</span>`);
   const ls = small ? null : longShotLook(f);
-  const longTile = ls ? `<div class="litter-long">${lambTile(view, ls, 10)}<span class="ll-txt"><b>${icon("sparkle", "inl")} A long shot</b> on top of the ten: ${esc(longShotsOf(f.swatches).slice(0, 3).map((w) => w.word).join(", "))}</span></div>` : "";
+  const longTile = ls ? `<div class="litter-long">${lambTile(view, ls, 10)}<span class="ll-txt"><b>${icon("sparkle", "inl")} A long shot</b> on top of the ten: ${esc(orWords(longShotNames(f.swatches)))}</span></div>` : "";
   return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f))}">${tiles}</div>${longTile}
     ${small ? "" : `<div class="litter-cap"><span class="each">Each lamb = one chance in ten</span>${extras.length ? `<span class="legend extras">${extras.join("")}</span>` : ""}</div>`}`;
 }
@@ -100,13 +100,9 @@ export function litterKey(state: GameState, f: Pick<CrossForecast, "swatches">, 
     return `<span class="key">${keyArt(w)}<span><span class="k-name">${esc(w.hidden ? "white (colour hidden)" : w.word)}</span> <span class="k-n">${nums ? `${w.p < 0.01 ? "<1" : Math.round(w.p * 100)}%` : k === 10 ? "every lamb" : `${k} in 10`}</span></span></span>`;
   }).join("");
   const lp = longs.reduce((a, w) => a + w.p, 0);
-  const longKey = longs.length ? `<span class="key long"><b class="k-long" style="--wool:${esc(longs[0]!.hex)}" aria-hidden="true">${icon("sparkle")}</b><span><span class="k-name">A long shot</span> <span class="k-n">${esc(longs.slice(0, 3).map((w) => w.word).join(", "))}${nums ? ` · ${lp < 0.01 ? "<1" : Math.round(lp * 100)}%` : ""}</span></span></span>` : "";
-  const rareNote = rare.length && !nums ? `<div class="meta rare">A ${esc(orList(rare))} lamb could happen, but rarely.</div>` : "";
+  const longKey = longs.length ? `<span class="key long"><b class="k-long" style="--wool:${esc(longs[0]!.hex)}" aria-hidden="true">${icon("sparkle")}</b><span><span class="k-name">A long shot</span> <span class="k-n">${esc(orWords(longShotNames(f.swatches)))}${nums ? ` · ${lp < 0.01 ? "<1" : Math.round(lp * 100)}%` : ""}</span></span></span>` : "";
+  const rareNote = rare.length && !nums ? `<div class="meta rare">A ${esc(orWords(rare))} lamb could happen, but rarely.</div>` : "";
   return `<div class="legend">${legend}${longKey}</div>${rareNote}`;
-}
-
-function orList(xs: string[]): string {
-  return xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}`;
 }
 
 /** "mostly snow-white, about one in ten bright red". Percentages only with numbers. */
@@ -115,11 +111,15 @@ export function litterWords(state: GameState, f: Pick<CrossForecast, "swatches" 
   if (!e.length) return "unknown";
   const nums = numbersOn(state);
   const w = (c: string, p: number) => nums ? `${Math.round(p * 100)}% ${c}` : p >= 0.95 ? `all ${c}` : p < NAMED_MIN ? `a long shot at ${c}` : `${fractionWords(p)} ${c}`;
-  const [top, ...rest] = e;
+  const named = e.filter((x) => x.p >= NAMED_MIN);
+  const [top, ...rest] = named.length ? named : e;
   const head = top!.p >= 0.95 ? (nums ? w(top!.word, top!.p) : `all ${top!.word}`) : top!.p >= 0.6 ? `mostly ${top!.word}` : w(top!.word, top!.p);
   const tail = rest.slice(0, 2).map((x) => w(x.word, x.p));
-  const tbClass = Math.max(0, ...f.swatches.filter((x) => x.trueBlue).map((x) => x.p));
-  if (f.trueBlue > 0.005 && !e.slice(0, 3).some((x) => x.trueBlue)) tail.push(w("true blue", tbClass < NAMED_MIN ? Math.min(f.trueBlue, NAMED_MIN - 0.001) : f.trueBlue));
+  // Long shots: the same names the hint line and the marker swatch use (core `longShotNames`).
+  const longs = longShotNames(f.swatches);
+  if (named.length && longs.length) tail.push(`a long shot at ${orWords(longs)}`);
+  const tbP = f.swatches.filter((x) => x.trueBlue).reduce((a, x) => a + x.p, 0);
+  if (tbP >= NAMED_MIN && !named.slice(0, 3).some((x) => x.trueBlue)) tail.push(w("true blue", f.trueBlue));
   return [head, ...tail].join(", ");
 }
 

@@ -21,6 +21,7 @@ export const PANELS = [
   { name: "market", act: 3, shot: "market-upgrades", scrollTo: "#overlay .mcard.upgrade" },
   { name: "market", act: 3, shot: "market-improvements", scrollTo: '#overlay [data-upgrade-card="paddock"]' },
   { name: "animal" },
+  { name: "woolshed", act: 3 },
   { name: "settings" },
   { name: "report" },
   { name: "orders", act: 1 },

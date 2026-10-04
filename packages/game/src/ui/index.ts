@@ -8,6 +8,7 @@ import { endingHtml, helpHtml, settingsHtml, titleHtml } from "./misc.js";
 import { reportHtml } from "./report.js";
 import { sheepCardHtml, treeHtml } from "./sheep.js";
 import { animalCardHtml } from "./pets.js";
+import { woolshedHtml } from "./woolshed.js";
 import type { PanelName, View } from "./view.js";
 
 export type { View, PanelName } from "./view.js";
@@ -20,6 +21,7 @@ export { sheepCardHtml, treeHtml, familyTreeHtml, careHtml } from "./sheep.js";
 export { animalCardHtml, myAnimalsHtml, petSubject, PET_ICON } from "./pets.js";
 export { boardHtml, ordersHtml, goalCard } from "./board.js";
 export { marketHtml, vetHtml, fairHtml } from "./farm.js";
+export { woolshedHtml, woolBuyerHtml, demandMeter } from "./woolshed.js";
 export { codexHtml, CONCEPTS } from "./codex.js";
 export { reportHtml } from "./report.js";
 export { actTrack, ACT_ICONS } from "./track.js";
@@ -31,11 +33,11 @@ export { oddsMeter, learnMeter, ODDS_SCALE, LEARN_SCALE } from "./util.js";
 const RENDER: Record<PanelName, (s: GameState, v: View) => string> = {
   title: titleHtml, help: helpHtml, sheep: sheepCardHtml, forecast: forecastPanelHtml, board: boardHtml,
   orders: ordersHtml, market: marketHtml, vet: vetHtml, fair: fairHtml, codex: codexHtml, tree: treeHtml,
-  report: reportHtml, ending: endingHtml, settings: settingsHtml, animal: animalCardHtml,
+  report: reportHtml, ending: endingHtml, settings: settingsHtml, animal: animalCardHtml, woolshed: woolshedHtml,
 };
 
 /** Panels that want the wide layout. */
-export const WIDE_PANELS: ReadonlySet<PanelName> = new Set<PanelName>(["forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report"]);
+export const WIDE_PANELS: ReadonlySet<PanelName> = new Set<PanelName>(["forecast", "board", "orders", "market", "vet", "fair", "codex", "tree", "report", "woolshed"]);
 
 /** Panels docked to the right so the farm stays visible beside them (the sheep card: the sheep says hello). */
 export const SIDE_PANELS: ReadonlySet<PanelName> = new Set<PanelName>(["sheep", "animal"]);

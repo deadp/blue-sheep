@@ -9,6 +9,7 @@ import {
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
+  sellLot, forecastSale, storeOf,
   type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
 } from "./core/index.js";
 import { Hold, WorldView, type AreaId, type Hotspot, type LandInfo, type MoveMode, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
@@ -50,6 +51,12 @@ export type Action =
   | { type: "sleep" }
   | { type: "buy"; id: string }
   | { type: "sell"; id: string }
+  /** Sell one fleece lot from the wool store (core/woolstore.ts `sellLot`). */
+  | { type: "sellLot"; id: string }
+  /** Sell every stored lot of a wool type ("all" for the lot), in the order the forecast priced them. */
+  | { type: "sellLots"; wool: string }
+  /** Auto-sell each clip at shearing (default on); off keeps the lots in the store. */
+  | { type: "autoSell"; on: boolean }
   | { type: "test"; id: string; locus: string }
   | { type: "accept"; id: string }
   | { type: "decline"; id: string }
@@ -752,6 +759,7 @@ export class App {
     if (id !== undefined && !s.sheep[id] && !(panel === "animal" && isPetId(id))) throw new Error("I can't find that sheep.");
     this.view.tab = tab;
     this.view.tray = false;
+    if (panel !== "market" && panel !== "woolshed") this.view.sale = undefined;
     switch (panel) {
       case "forecast":
         this.view.sheepId = id ?? (flock.find((x) => x.sex === "ewe" && canBreed(x, s.season)) ?? flock.find((x) => isAdult(x, s.season)) ?? flock[0])?.id ?? null;
@@ -830,6 +838,9 @@ export class App {
       else if (d["plan"]) { const [e, r] = d["plan"].split(":"); this.mutate(() => planMating(this.state, e!, r!)); }
       else if (d["buy"]) this.mutate(() => { buySheep(this.state, d["buy"]!); toast(`${this.state.sheep[d["buy"]!]?.name ?? "The sheep"} joins your flock.`); });
       else if (d["sell"]) this.mutate(() => { const name = this.state.sheep[d["sell"]!]?.name; const p = sellSheep(this.state, d["sell"]!); toast(`Sold ${name ?? "the sheep"} for ${p} coins.`); });
+      else if (d["selllot"]) this.guard(() => this.sellLotIds([d["selllot"]!]));
+      else if (d["selltype"]) this.guard(() => this.sellLotType(d["selltype"]!));
+      else if (d["autosell"]) this.mutate(() => { this.state.autoSell = d["autosell"] === "on"; });
       else if (d["hire"]) this.mutate(() => hireVisitingRam(this.state));
       else if (d["upgrade"]) { const opened = this.buyUpgrade(d["upgrade"]!); if (opened) { this.render(); return; } }
       else if (d["treat"]) this.treat(d["treat"]);
@@ -875,6 +886,23 @@ export class App {
     this.save();
   }
 
+  /** Sell fleece lots in this order, and set the Reveal: what the forecast said next to what was paid. */
+  private sellLotIds(ids: string[]): void {
+    const forecast = forecastSale(this.state, ids).coins;
+    if (ids.some((id) => !storeOf(this.state).some((l) => l.id === id))) throw new Error("That fleece isn't in the store.");
+    let paid = 0;
+    this.mutate(() => { for (const id of ids) paid += sellLot(this.state, id); });
+    const n = ids.length;
+    this.view.sale = { forecast, paid, text: `Sold ${n} fleece${n === 1 ? "" : "s"} to the wool buyer.` };
+    toast(`Sold ${n} fleece${n === 1 ? "" : "s"} for ${paid} coins.`);
+  }
+
+  private sellLotType(wool: string): void {
+    const ids = storeOf(this.state).filter((l) => wool === "all" || l.type === wool).map((l) => l.id);
+    if (!ids.length) throw new Error("There's no wool of that kind in the store.");
+    this.sellLotIds(ids);
+  }
+
   /** The probe hook's dispatcher. Illegal moves throw. */
   async act(a: Action): Promise<void> {
     if (this.sleeping) throw new Error("Shh — the farm is asleep.");
@@ -883,6 +911,9 @@ export class App {
       case "unplan": this.mutate(() => unplanMating(this.state, a.ewe)); break;
       case "buy": this.mutate(() => buySheep(this.state, a.id)); break;
       case "sell": this.mutate(() => { sellSheep(this.state, a.id); }); break;
+      case "sellLot": this.sellLotIds([a.id]); break;
+      case "sellLots": this.sellLotType(a.wool); break;
+      case "autoSell": this.mutate(() => { this.state.autoSell = a.on; }); break;
       case "test": this.mutate(() => vetTest(this.state, a.id, a.locus)); break;
       case "accept": this.mutate(() => acceptOrder(this.state, a.id)); break;
       case "decline": this.mutate(() => declineOrder(this.state, a.id)); break;
@@ -913,6 +944,7 @@ export class App {
       await this.world.sleepTransition();
       const report = advanceSeason(this.state);
       this.view.report = report;
+      this.view.sale = undefined;
       this.persist = true;
       this.save();
       this.view.sheepId = null;

@@ -4,9 +4,11 @@ import { checkActAdvance, checkEnding } from "./acts.js";
 import { isTrueBlue, woolOf } from "./colour.js";
 import { plannedPairings } from "./breeding.js";
 import { MAX_AGE, SHEARING_BONUS } from "./config.js";
-import { cheapestSheep, removeFromFlock, sheepValue, woolIncome } from "./economy.js";
+import { cheapestSheep, removeFromFlock, sheepValue } from "./economy.js";
 import { fondWoolMultiplier, fondnessOf, petFeed, seasonCare, welcomeLamb } from "./care.js";
 import { announceEvent, applyEvent } from "./events.js";
+import { refillDemand } from "./demand.js";
+import { lotPrice, sellStoreForCash, shearFlock, storeOf } from "./woolstore.js";
 import { announceMice, applyMice } from "./mice.js";
 import { judgeFair } from "./fair.js";
 import { forecastCross } from "./forecast.js";
@@ -52,24 +54,26 @@ export function advanceSeason(state: GameState): SeasonReport {
   const shorn = shearForOrders(state);
   report.orderResults.push(...shorn.results);
   for (const r of shorn.results) say(r.text);
-  const shed = hasUpgrade(state, "shearing") ? SHEARING_BONUS : 1;
-  for (const s of flockSheep(state)) {
-    if (!isAdult(s, t) || shorn.used.has(s.id)) continue;
-    const boom = ev?.boomColour ?? null;
-    const plain = woolIncome(s, boom);
-    const shedOnly = woolIncome(s, boom, shed);
-    // Happy sheep grow better wool; skittish ones a little worse.
-    const paid = woolIncome(s, boom, shed * fondWoolMultiplier(fondnessOf(state, s.id)));
-    report.income += paid;
-    report.shedBonus += shedOnly - plain;
-    report.fondBonus += paid - shedOnly;
+  // The rest of the clip goes through the wool store (spring and autumn only): lots, auto-sold or held.
+  const shearing = shearFlock(state, t, shorn.used);
+  report.shearing = shearing;
+  if (shearing) {
+    report.income = shearing.autoCoins + shearing.overflowCoins;
+    report.shedBonus = shearing.shedBonus;
+    report.fondBonus = shearing.fondBonus;
+    if (shearing.lots) say(shearing.auto
+      ? `Shearing: ${shearing.lots} fleece${shearing.lots === 1 ? "" : "s"} sold to the wool buyer for ${shearing.autoCoins} coins.`
+      : `Shearing: ${shearing.lots} fleece${shearing.lots === 1 ? "" : "s"} washed and put in the store.`);
+    if (shearing.overflow) say(`The store was full, so ${shearing.overflow} fleece${shearing.overflow === 1 ? "" : "s"} went straight to the wool buyer for ${shearing.overflowCoins} coins.`);
   }
-  // Mice (announced last season) spoil some of the clip; the cat catches most of them.
+  // Mice (announced last season) spoil some of the clip and the stored wool; the cat catches most of them.
   const eatersNow = state.flock.length;
-  report.mice = applyMice(state, report.income, eatersNow);
-  if (report.mice) { report.income -= report.mice.wool; say(report.mice.text); }
-  state.money += report.income;
-  state.stats.coinsEarned += report.income;
+  const stored = storeOf(state).reduce((n, l) => n + lotPrice(state, l, 1).coins, 0);
+  report.mice = applyMice(state, report.income + stored, eatersNow);
+  if (report.mice) {
+    report.income -= report.mice.wool; say(report.mice.text);
+    state.money -= report.mice.wool; state.stats.coinsEarned -= report.mice.wool;
+  }
 
   // 3. Lambing. A valid planned mating always gives at least one lamb unless the ewe is ill.
   const tutorialCards: Sheep[] = [];
@@ -128,7 +132,12 @@ export function advanceSeason(state: GameState): SeasonReport {
   const eaters = () => state.flock.filter((id) => !newborn.has(id)).length;
   // The dogs and the cat eat too; mice (if any came) eat into the hay.
   const extraFeed = (report.mice?.feed ?? 0) + petFeed(state);
-  while (state.money < eaters() * perHead + extraFeed) {
+  const due = () => eaters() * perHead + extraFeed;
+  if (state.money < due()) {
+    const lots = sellStoreForCash(state, due());
+    if (lots.sold) { report.income += lots.coins; say(`Feed was due, so ${lots.sold} stored fleece${lots.sold === 1 ? " was" : "s were"} sold to the wool buyer for ${lots.coins} coins.`); }
+  }
+  while (state.money < due()) {
     const s = cheapestSheep(state, newborn) ?? cheapestSheep(state);
     if (!s) break;
     const price = sheepValue(s, state.season);
@@ -140,7 +149,8 @@ export function advanceSeason(state: GameState): SeasonReport {
   report.feed = Math.min(state.money, eaters() * perHead + extraFeed);
   state.money -= report.feed;
 
-  // 6. Ageing.
+  // 6. Ageing. The wool meters refill toward next season's targets.
+  refillDemand(state, t + 1);
   state.season = t + 1;
   report.season = state.season;
   for (const s of flockSheep(state)) {

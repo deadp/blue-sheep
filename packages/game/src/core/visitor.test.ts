@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  advanceSeason, candidates, enterAct, forecastVisitor, flockSheep, forecastCross, hireVisitingRam, newGame, planMating,
+  advanceSeason, breedOf, marketBreeds, woolOf, candidates, enterAct, forecastVisitor, flockSheep, forecastCross, hireVisitingRam, newGame, planMating,
 } from "./index.js";
 
 function toSpring(g: ReturnType<typeof newGame>) {
@@ -21,6 +21,24 @@ describe("visiting ram", () => {
     expect(g.sheep[v.id]!.dam).toBeNull();
     expect(g.flock).not.toContain(v.id);
     expect(v.fee).toBeGreaterThan(0);
+  });
+
+  it("is drawn from breed stock: a recorded breed that is on offer, coloured, never true blue, and the same for the same save", () => {
+    const seen = new Set<string>();
+    for (let seed = 60; seed < 72; seed++) {
+      const g = newGame(seed);
+      toSpring(g);
+      const r = g.sheep[g.visitingRam!.id]!;
+      expect(r.breed, `seed ${seed}`).toBeDefined();
+      expect(marketBreeds(g)).toContain(breedOf(r));
+      expect(woolOf(r).trueBlue).toBe(false);
+      seen.add(breedOf(r));
+      const again = newGame(seed);
+      toSpring(again);
+      expect(again.sheep[again.visitingRam!.id]!.breed).toBe(r.breed);
+      expect(again.sheep[again.visitingRam!.id]!.phenotype).toEqual(r.phenotype);
+    }
+    expect(seen.size).toBeGreaterThan(1);
   });
 
   it("appears as a candidate with a forecast before hiring; must be hired to plan", () => {

@@ -7,7 +7,7 @@ export {
 } from "./state.js";
 export { advanceSeason, renameSheep, twinChance } from "./sim.js";
 export { planMating, unplanMating, plannedPairings, ramLoad, ramAvailable, lambRoom, overCap, growingLambs } from "./breeding.js";
-export { buySheep, sellSheep, sheepValue, buyPrice, ramPrice, woolIncome, finenessMultiplier } from "./economy.js";
+export { buySheep, sellSheep, sheepValue, buyPrice, ramPrice, woolIncome, finenessMultiplier, fleeceRate } from "./economy.js";
 export { vetTest, forecastVet, isTestLocus, wasTested } from "./vet.js";
 export {
   woolOf, woolFromPhenotype, dressWool, colourFields, setColour, isTrueBlue, isColoured, bandRank, woolMatches, targetWords, woolPricePerKg,
@@ -31,7 +31,7 @@ export { hireVisitingRam, forecastVisitor } from "./visitor.js";
 export { announceText, eventPool, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
   forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, colourText, colourClasses,
-  litterOf, longShotsOf, NAMED_MIN, pColour, goalColour, GOALS, type Goal,
+  litterOf, longShotsOf, longShotNames, orList, NAMED_MIN, pColour, goalColour, GOALS, type Goal,
 } from "./forecast.js";
 export {
   factsFor, posteriors, updateDiscoveries, marginal, geneDist, geneLoci, entropyBits, channelClassWords, isChannel,
@@ -68,3 +68,5 @@ export {
   woolTypeOf, fleeceOf, fleeceWords, finenessWord, stapleWord, lustreWord, strengthWord, strengthFraction, woolSuit, itemsSuiting,
   WOOL_TYPE_LABEL, WOOL_TYPES, WOOL_TYPE_BLURB, ITEM_IDS, SUIT, type WoolType, type FleeceWords, type ItemId,
 } from "./wool.js";
+export * from "./demand.js";
+export { isShearingSeason, clipKg, storeCap, storeOf, autoSellOn, boomColourNow, makeLot, lotPrice, sellLotNow, sellLot, forecastSale, sellStoreForCash, shearFlock, type LotPrice, type SaleForecast } from "./woolstore.js";

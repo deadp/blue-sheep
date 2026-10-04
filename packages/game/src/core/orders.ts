@@ -4,12 +4,14 @@ import { forecastQuantitative } from "@blue-sheep/inference";
 import { plannedPairings, ramAvailable } from "./breeding.js";
 import {
   MAX_ACCEPTED_ORDERS, MAX_OPEN_ORDERS, MAX_AGE, ORDER_BOARD_RAMP, ORDER_FAIL_REPUTATION, ORDER_MIN_PFILL, ORDER_REP_BONUS_CAP, ORDER_OFFER_SEASONS, RAM_CAPACITY,
+  CLIP_KG,
 } from "./config.js";
 import { removeFromFlock } from "./economy.js";
 import { flockStats, traitRecords } from "./forecast.js";
 import { lambChanceBySample, lambOutcomesBySample, posteriors } from "./knowledge.js";
 import { dressWool, targetWords, woolMatches, woolOf, type Band, type ColourTarget } from "./colour.js";
 import { woolColour } from "@blue-sheep/genetics";
+import { clipKg, isShearingSeason } from "./woolstore.js";
 import { VILLAGERS } from "./names.js";
 import { addLog, ageOf, canBreed, flockSheep, isAdult, seasonLabel } from "./state.js";
 import { oddsText } from "./words.js";
@@ -151,11 +153,12 @@ function hashSeed(...xs: number[]): number {
 }
 
 /** kg of qualifying fleece the current flock would give at the shearing in season t. */
-function woolAt(state: GameState, o: Order, t: number): number {
+function woolAt(state: GameState, o: Order, t: number, anySeason = false): number {
+  if (!anySeason && !isShearingSeason(t)) return 0;
   let kg = 0;
   for (const s of flockSheep(state)) {
     if (t - s.born < 2 || ageOf(s, t) >= MAX_AGE) continue;
-    if (Number(s.phenotype["fineness"]) <= (o.microns ?? 0)) kg += Number(s.phenotype["fleeceWeight"]);
+    if (Number(s.phenotype["fineness"]) <= (o.microns ?? 0)) kg += clipKg(s);
   }
   return kg;
 }
@@ -196,9 +199,9 @@ function pFillWool(state: GameState, o: Order): number {
         const litter = rng.chance(TWIN_P) ? 2 : 1;
         for (let l = 0; l < litter; l++) {
           const micr = c.fin.mean + rng.normal() * c.fin.sd;
-          const kg = Math.max(0.5, c.fw.mean + rng.normal() * c.fw.sd);
+          const kg = Math.max(0.5, c.fw.mean + rng.normal() * c.fw.sd) * CLIP_KG;
           if (micr > (o.microns ?? 0)) continue;
-          for (let s = state.season + t + 3; s <= lastShear; s++) extra.set(s, (extra.get(s) ?? 0) + kg);
+          for (let s = state.season + t + 3; s <= lastShear; s++) if (isShearingSeason(s)) extra.set(s, (extra.get(s) ?? 0) + kg);
         }
       }
     }
@@ -215,7 +218,7 @@ export function forecastOrderFor(state: GameState, o: Order): { pFill: number; t
   if (o.status === "failed" || o.status === "expired") return { pFill: 0, text: "This one has passed." };
   if (o.kind === "wool") {
     const pFill = pFillWool(state, o);
-    const now = woolAt(state, o, state.season) >= (o.kg ?? 0);
+    const now = woolAt(state, o, state.season, true) >= (o.kg ?? 0);
     return { pFill, text: now ? "Your flock could fill this at the next shearing." : pFill >= 0.999 ? "Your flock will manage this as it grows up." : oddsText(pFill) };
   }
   const have = flockSheep(state).some((s) => sheepMatchesOrder(s, o));
@@ -281,7 +284,7 @@ function proposeOrder(state: GameState, rng: Rng, first = false): Order | null {
     const fins = adults.map((s) => Number(s.phenotype["fineness"])).sort((a, b) => a - b);
     const target = fins[Math.floor(fins.length * (0.3 + rng.next() * 0.3))]!;
     o.microns = Math.round(target * 2) / 2;
-    const have = woolAt(state, { ...o }, state.season);
+    const have = woolAt(state, { ...o }, state.season, true);
     o.kg = Math.max(3, Math.min(16, Math.round(have + 3 + rng.next() * 5)));
     o.deadline = state.season + 5 + rng.int(3);
   } else if (o.kind === "horns") {
@@ -386,16 +389,17 @@ function payOrder(state: GameState, o: Order): OrderResult {
 export function shearForOrders(state: GameState): { results: OrderResult[]; used: Set<string> } {
   const used = new Set<string>();
   const results: OrderResult[] = [];
+  if (!isShearingSeason(state.season)) return { results, used };
   for (const id of [...state.acceptedOrders]) {
     const o = state.orders.find((x) => x.id === id);
     if (!o || o.kind !== "wool") continue;
     const pool = flockSheep(state)
       .filter((s) => isAdult(s, state.season) && !used.has(s.id) && Number(s.phenotype["fineness"]) <= (o.microns ?? 0))
-      .sort((a, b) => Number(b.phenotype["fleeceWeight"]) - Number(a.phenotype["fleeceWeight"]));
-    const total = pool.reduce((t, s) => t + Number(s.phenotype["fleeceWeight"]), 0);
+      .sort((a, b) => clipKg(b) - clipKg(a));
+    const total = pool.reduce((t, s) => t + clipKg(s), 0);
     if (total < (o.kg ?? 0)) continue;
     let kg = 0;
-    for (const s of pool) { if (kg >= (o.kg ?? 0)) break; used.add(s.id); o.filledBy.push(s.id); kg += Number(s.phenotype["fleeceWeight"]); }
+    for (const s of pool) { if (kg >= (o.kg ?? 0)) break; used.add(s.id); o.filledBy.push(s.id); kg += clipKg(s); }
     results.push(payOrder(state, o));
   }
   return { results, used };

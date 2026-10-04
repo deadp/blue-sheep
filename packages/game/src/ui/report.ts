@@ -114,6 +114,11 @@ export function reportHtml(state: GameState, view: View): string {
   const fond = r.fondBonus ?? 0;
   if (fond > 0) li("good fond", "heart", `Happy sheep: <b>+${fond}</b> coin${fond === 1 ? "" : "s"} of wool.`);
   else if (fond < 0) li("bad fond", "heartBroken", `Skittish sheep: <b>−${-fond}</b> coin${fond === -1 ? "" : "s"}. Say hello, or bring a treat.`);
+  const sh = r.shearing;
+  if (sh && sh.lots) {
+    if (sh.auto) li("good shear", "yarn", `Shearing: ${sh.lots} fleece${sh.lots === 1 ? "" : "s"} sold at once.`);
+    else li("shear", "yarn", `Shearing: ${sh.lots} fleece${sh.lots === 1 ? "" : "s"} washed and stored (${sh.held} in the ${btn("woolshed", { kind: "ghost", cls: "inline", data: { open: "woolshed" } })}).${sh.overflow ? ` The store was full: ${sh.overflow} sold at once for ${sh.overflowCoins} coins.` : ""}`);
+  }
   if (r.mice) li(`${r.mice.cat ? "good" : "bad"} ev-mice`, "mouse", `${esc(r.mice.text)}${r.mice.wool + r.mice.feed ? ` <b>−${r.mice.wool + r.mice.feed}</b>` : ""}`);
   for (const o of r.orderResults) li(o.outcome === "filled" ? "good" : "bad", o.outcome === "filled" ? "mail" : "heartBroken", `${esc(cap(o.text))}${o.reward ? ` <b>+${o.reward}</b>` : ""}`);
   if (r.fairResult) {
@@ -132,7 +137,7 @@ export function reportHtml(state: GameState, view: View): string {
   if (r.announced) li("", "megaphone", esc(r.announced.text));
   if (r.miceComing) li("ev-mice", "mouse", esc(MICE_ANNOUNCE));
   if (r.newOrders.length) li("", "mail", `${r.newOrders.length} new letter${r.newOrders.length === 1 ? "" : "s"} in the mailbox.`);
-  blocks.push(`${head("coin", "The farm")}<div class="money-row">${money("yarn", `+${r.income}`, r.shedBonus ? `wool (shed +${r.shedBonus})` : "wool", "good")}${money("hay", `−${r.feed}`, "feed", "bad")}${money("coin", String(state.money), "coins now")}</div>
+  blocks.push(`${head("coin", "The farm")}<div class="money-row">${money("yarn", `+${r.income}`, r.shedBonus ? `wool sold (shed +${r.shedBonus})` : "wool sold", "good")}${money("hay", `−${r.feed}`, "feed", "bad")}${money("coin", String(state.money), "coins now")}</div>
     ${lines.length ? `<ul class="plain events">${lines.join("")}</ul>` : ""}`);
   return `${head("calendar", `${esc(seasonLabel(r.season))}`, 2)}
     ${blocks.join("")}

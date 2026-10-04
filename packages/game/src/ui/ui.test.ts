@@ -12,6 +12,8 @@ const VOCAB = new Set([
   "enter", "sheep-id", "sleep", "rename", "newgame", "tab", "toggle", "export", "import", "upgrade", "tutorial", "treat", "lesson",
   // the HUD's bag: opens and closes the tray of farm places
   "tray",
+  // the wool store: sell a lot, sell a type (or all), the auto-sell toggle; markers
+  "selllot", "selltype", "autosell", "lot", "wool-type", "after", "sale",
   // Settings: the world's Detail (auto / full / lite)
   "detail",
   // not actions: HUD pieces (for the overlap probe) and "more" folds (kept open across re-renders)
@@ -692,5 +694,28 @@ describe("forecast hint agrees with the headline", () => {
       // and the marker swatch is there exactly for those
       expect(longShotLook(ff) !== null).toBe(p < LONG_SHOT && p > 0.005);
     }
+  });
+});
+
+describe("long shots read the same everywhere", () => {
+  it("the marker, the legend and the hint line name the same long shots", async () => {
+    const { litterRow, litterKey, litterWords } = await import("./forecast.js");
+    const { colourText, longShotNames } = await import("../core/index.js");
+    const sw = (key: string, word: string, p: number, extra: Record<string, unknown> = {}) =>
+      ({ key, word, name: word, family: "red", hex: "#C8322F", p, hidden: false, trueBlue: false, band: "bright", intensity: 0.5, ...extra });
+    const swatches = [
+      sw("snow-white", "snow-white", 0.72, { hidden: true, family: "white" }), sw("orange:bright", "bright orange", 0.15),
+      sw("blue:vivid", "vivid blue", 0.05, { trueBlue: true }), sw("purple:soft", "soft purple", 0.04), sw("purple:vivid", "vivid purple", 0.03),
+    ];
+    const f = { swatches, trueBlue: 0.05, horns: {}, pattern: {} } as never;
+    const state = fixtures()[0]!.state;
+    const names = longShotNames(swatches);
+    expect(names).toEqual(["true blue", "soft purple", "vivid purple"]);
+    const row = litterRow(state, f, false, null), key = litterKey(state, f, null);
+    for (const n of names) { expect(row).toContain(n); expect(key).toContain(n); }
+    expect(row).not.toContain("vivid blue");
+    expect(key).not.toContain("vivid blue");
+    expect(colourText(f)).toContain("true blue, soft purple or vivid purple");
+    expect(litterWords(state, f)).toContain("true blue, soft purple or vivid purple");
   });
 });

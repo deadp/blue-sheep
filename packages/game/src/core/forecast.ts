@@ -77,12 +77,25 @@ export function colourText(f: Pick<CrossForecast, "swatches" | "trueBlue">): str
   const named = live.filter((w) => w.p >= NAMED_MIN).slice(0, 3);
   const w = (s: LambSwatch) => s.p >= 0.95 ? `every lamb ${s.word}` : s.p >= 0.6 ? `most lambs ${s.word}` : `${fractionWords(s.p)} ${s.word}`;
   const parts = named.map(w);
-  const longShots = live.filter((s) => s.p < NAMED_MIN && !s.trueBlue);
-  if (longShots.length && named.length < 3) parts.push(`a long shot at ${longShots[0]!.word}`);
-  const tbClass = Math.max(0, ...f.swatches.filter((s) => s.trueBlue).map((s) => s.p));
-  if (f.trueBlue > 0 && !named.some((s) => s.trueBlue)) parts.push(tbClass < NAMED_MIN ? "a long shot at true blue" : `${fractionWords(f.trueBlue)} true blue`);
+  // The long shots come from `longShotNames`, the one list the litter's marker swatch uses too.
+  const longs = longShotNames(f.swatches);
+  const tbP = f.swatches.filter((s) => s.trueBlue).reduce((a, s) => a + s.p, 0);
+  // A true blue chance too small for any swatch (under half a percent) is still worth a mention.
+  if (f.trueBlue > 0 && tbP < NAMED_MIN && !longs.includes("true blue") && !named.some((s) => s.trueBlue) && live.some((s) => s.p >= NAMED_MIN)) longs.unshift("true blue");
+  if (longs.length) parts.push(`a long shot at ${orList(longs)}`);
+  else if (!named.length) {
+    // A diffuse forecast (nothing reaches NAMED_MIN) keeps all its tiles; name its likeliest class.
+    const first = live.find((s) => !s.trueBlue) ?? live[0]!;
+    parts.push(`a long shot at ${first.trueBlue ? "true blue" : first.word}`);
+  }
+  if (tbP >= NAMED_MIN && f.trueBlue > 0 && !named.some((s) => s.trueBlue)) parts.push(`${fractionWords(f.trueBlue)} true blue`);
   const t = parts.join(", ");
   return `${t.charAt(0).toUpperCase()}${t.slice(1)}.`;
+}
+
+/** "a", "a or b", "a, b or c". */
+export function orList(xs: string[]): string {
+  return xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}`;
 }
 
 const DEPTH_POINTS: [number, number][] = [[-1, 0.25], [0, 0.5], [1, 0.25]];
@@ -162,6 +175,16 @@ export function litterOf(swatches: LambSwatch[]): LambSwatch[] {
 export function longShotsOf(swatches: LambSwatch[]): LambSwatch[] {
   if (!swatches.some((s) => s.p >= NAMED_MIN)) return [];
   return swatches.filter((s) => s.p > 0.005 && s.p < NAMED_MIN).sort((a, b) => Number(b.trueBlue) - Number(a.trueBlue) || b.p - a.p);
+}
+
+/**
+ * The long shots of a forecast by name (true blue as "true blue", never "vivid blue"; at most `max`, each once).
+ * The hint line (`colourText`), the litter's marker swatch and the legend all read this one list.
+ */
+export function longShotNames(swatches: LambSwatch[], max = 3): string[] {
+  const names: string[] = [];
+  for (const s of longShotsOf(swatches)) { const n = s.trueBlue ? "true blue" : s.word; if (!names.includes(n)) names.push(n); }
+  return names.slice(0, max);
 }
 
 /** P(one lamb has a colour name at `min` band or better); "vivid" = any vivid colour; "true blue". */

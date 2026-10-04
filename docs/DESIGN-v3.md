@@ -790,6 +790,7 @@ and tuning is a separate commit only if a target is badly missed.
 - **Demo:** buy an Icelandic ewe, see "Lopi" and the shaggy coat.
 
 ### Phase 4: Wool store, raw sales and demand meters
+- **Status: done** (see CONTRACTS.md §12). Shearing is spring and autumn only (clip = 2 x fleece weight), lots go to the store (12, 24 with the shed) or are auto-sold; raw wool has a meter per type (step 0.005 per greasy kg, refill half-way a season). Year-1 income is within 15% of v2 on seeds 1-20 (0.88 to 1.08 of v2, mean about 1.0). Balance (breed prices) was tuned in a separate pass.
 - **Scope:** shearing makes fleece lots (`core/woolstore.ts`); washing yields; store capacity and
   overflow; the auto-sell toggle; `core/demand.ts` (meters, refill, seasonal targets, events); the
   market panel's wool buyer with meters and "after you sell" forecasts; v2 `woolIncome` removed
