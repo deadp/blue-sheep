@@ -1104,3 +1104,12 @@ and tuning is a separate commit only if a target is badly missed.
     ("strong colour"). Coordinator-found bug to fix next: the forecast hint can
     say "about one in ten bright orange, about one in ten soft yellow" while all
     ten lamb swatches are white — swatch allocation must reflect the stated odds.
+30. **Breeds phase feedback (user, 2026-10-04):** Icelandic stays an act 4
+    market reward; breed prices are tuned together with the Phase 4 wool store
+    and demand meters, not before; breed looks get a stronger procedural pass
+    now (Merino wrinkly and fine, Romney long shaggy locks, Drysdale hairy and
+    horned, Icelandic double-coated) and crossbred lambs get a blended look from
+    `breedFractions`; forecast outcomes under 8% show as a faded marker swatch
+    with a sparkle. Coordinator note: the forecast headline can say "A long
+    shot — about one lamb in ten would be true blue" while the hint line calls
+    it a long shot too; headline and hint wording should agree.
