@@ -165,7 +165,7 @@ export const DEMAND_MAX = 1.5;
 export const DEMAND_FLOOR = 0.4;
 export const DEMAND_SLOPE = 0.6;
 /** Raw wool meters (one per wool type): each greasy kg sold lowers the meter; each season it refills this share of the way to its target. */
-export const RAW_STEP = 0.005;
+export const RAW_STEP = 0.002;
 export const RAW_REFILL = 0.5;
 /** Item meters (the crafting phases): a unit sold lowers the meter by ITEM_STEP (or its own step); refill up / down per season. */
 export const ITEM_STEP = 0.1;

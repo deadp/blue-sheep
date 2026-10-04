@@ -200,3 +200,5 @@ existing saves), then implementation in phases, each probe-verified.
 - Presentation pass: personalities, live portraits, infographics (f2942ca).
 - Balance pass: farm improvements, economy sinks (dc0d9c2).
 - Complete game v1 (45dab0f).
+
+- v3 Phase 4 balance pass (separate commit): `RAW_STEP` 0.005 to 0.002; sim policy keeps a feed reserve in non-shearing seasons (wool now pays only in spring and autumn). Oracle 30 seeds: ending 97% (before Phase 4: 93%), median end money 1399 (462). Blind 30 seeds: ending 70% (90%), first true blue 26/30 median season 14 (27/30, 13), median end money 1130 (413), money after season 8 / year 5 78 / 85 (90 / 143). Blind ending dips are act-4 fineness and inbreeding stalls, not money; breed prices untouched. Open: tune blind-brain keep rules for the new market.

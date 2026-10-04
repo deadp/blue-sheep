@@ -14,9 +14,14 @@ import {
   acceptOrder, advanceSeason, buyPrice, buySheep, canBreed, currentAct, enterFair, fairScore, flockSheep,
   forecastOrder, isAdult, isEnding, lambRoom, markEndingShown, newGame, pedigreeOf, planMating, ramAvailable, RAM_CAPACITY,
   sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
-  ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF,
+  ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF, feedPerHead, isShearingSeason,
   type GameState, type Order, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
+
+/** Coins to keep back in a non-shearing season: feed is due every season but wool only pays in shearing seasons. */
+export function feedReserve(g: GameState): number {
+  return isShearingSeason(g.season) ? 0 : Math.ceil(feedPerHead(g.season) * g.flock.length);
+}
 
 export interface CrossDist {
   /** Chance a lamb is true blue, and full (not pale) blue of any strength (the registry's blue). */
@@ -147,7 +152,7 @@ function manageFlock(g: GameState, b: Brain): void {
       if (g.flock.length >= g.flockCap) { const w = flockSheep(g).filter((s) => s.sex === "ewe" && !reserve.has(s.id)).sort((x, y) => keepValue(g, b, x) - keepValue(g, b, y))[0]; if (w) sellSheep(g, w.id); }
       if (g.flock.length < g.flockCap) { buySheep(g, id); continue; }
     }
-    if (g.money < price + 30) continue;
+    if (g.money < price + 30 + feedReserve(g)) continue;
     const worst = flockSheep(g).filter((s) => !reserve.has(s.id)).sort((x, y) => keepValue(g, b, x) - keepValue(g, b, y))[0];
     const needRam = m.sex === "ram" && rams().filter((r) => canBreed(r, g.season)).length === 0;
     const needEwe = m.sex === "ewe" && flockSheep(g).filter((s) => s.sex === "ewe" && ageOf(s, g.season) < 16).length < 5;
@@ -166,7 +171,7 @@ function manageFlock(g: GameState, b: Brain): void {
  */
 function manageUpgrades(g: GameState): void {
   if (g.act < Number(process.env["UPACT"] ?? 0)) return;
-  const buy = (id: UpgradeId, spare = 40) => { if (!upgradeBlocked(g, id) && g.money >= upgradeDef(id).price + spare) buyUpgrade(g, id); };
+  const buy = (id: UpgradeId, spare = 40) => { if (!upgradeBlocked(g, id) && g.money >= upgradeDef(id).price + spare + feedReserve(g)) buyUpgrade(g, id); };
   const ev = g.pendingEvent?.kind;
   const dogs = () => ["terrier", "collie", "maremma"].filter((d) => hasUpgrade(g, d as UpgradeId)).length;
   if (process.env["NODOGS"]) {
@@ -185,13 +190,13 @@ function manageCare(g: GameState): void {
   if (process.env["NOCARE"]) return;
   const ids = [...g.flock, ...ownedPets(g)];
   for (const id of ids) { greetAnimal(g, id); brushAnimal(g, id); }
-  if (g.money < 150) return;
+  if (g.money < 150 + feedReserve(g)) return;
   for (const id of ids) if (fondnessOf(g, id) < 100 && !treatBlocked(g, id)) giveTreat(g, id);
 }
 
 function manageVisitor(g: GameState, b: Brain, cache: Map<string, CrossDist>): void {
   const v = g.visitingRam;
-  if (!v || v.season !== g.season || g.hiredRam || g.money < v.fee + 20) return;
+  if (!v || v.season !== g.season || g.hiredRam || g.money < v.fee + 20 + feedReserve(g)) return;
   const vis = g.sheep[v.id]!;
   const ewes = breedingEwes(g);
   let gain = 0;

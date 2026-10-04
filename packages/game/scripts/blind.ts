@@ -8,7 +8,7 @@ import {
   VET_FEE, canBreed, flockSheep, forecastCross, forecastVet, geneDist, marginal, orderTarget, pColour, vetTest,
   type GameState, type Sheep,
 } from "../src/core/index.js";
-import { play, summarise, type Brain } from "./policy.js";
+import { feedReserve, play, summarise, type Brain } from "./policy.js";
 
 /** Expected "+" copies of a pigment channel (0..4) from its class distribution ("hk": h double, k single). */
 const paint = (g: GameState, s: Sheep, gene: "red" | "yellow" | "blue"): number => {
@@ -36,7 +36,7 @@ export const blind: Brain = {
     return { blue: paint(g, s, "blue"), w: wCopies(g, s), ry: paint(g, s, "red") + paint(g, s, "yellow") };
   },
   vet(g) {
-    if (!g.unlocks.includes("vet") || g.money < VET_FEE + 40) return;
+    if (!g.unlocks.includes("vet") || g.money < VET_FEE + 40 + feedReserve(g)) return;
     const pool = flockSheep(g).filter((s) => canBreed(s, g.season));
     if (g.visitingRam?.season === g.season) pool.push(g.sheep[g.visitingRam.id]!);
     let best: { id: string; locus: string; v: number } | null = null;
