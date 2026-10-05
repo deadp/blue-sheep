@@ -1122,3 +1122,12 @@ and tuning is a separate commit only if a target is badly missed.
     ("vivid blue, soft purple, vivid purple") that differ from the hint line
     ("a long shot at soft purple, a long shot at true blue"); both should list
     the same long shots by the same names.
+32. **Wool store phase feedback (user, 2026-10-05):** retune the blind sim
+    farmer's keep rules for the new market first (blind ending rate fell 90% →
+    70%, stalls on act 4 fineness/inbreeding); only if it still stalls, ease the
+    act 4 fineness goal. No year-1 starter clip — keep the spring/autumn shearing
+    rhythm. The 40-fleece wool press arrives with Phase 5 crafting. Breed prices
+    are tuned in Phase 5, when items give breeds distinct uses. Coordinator
+    notes: woolshed lot lines repeat a word ("Strong, strong, a heavy clip" —
+    wool type and strength word collide); the full probe was not re-run after
+    the Phase 4 balance commit.
