@@ -719,3 +719,16 @@ describe("long shots read the same everywhere", () => {
     expect(litterWords(state, f)).toContain("true blue, soft purple or vivid purple");
   });
 });
+
+describe("fleece lot description", () => {
+  it("never repeats a word, across every wool type, fineness band and clip size", async () => {
+    const { lotDescription } = await import("./woolshed.js");
+    const { WOOL_TYPES } = await import("../core/index.js");
+    for (const t of WOOL_TYPES) for (const um of [14, 19, 22, 26, 30, 35, 40]) for (const kg of [2, 8, 14]) {
+      const line = lotDescription(t, um, kg);
+      const words = line.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+      expect(new Set(words).size, line).toBe(words.length);
+    }
+    expect(lotDescription("strong", 30, 14)).toBe("Strong, a heavy clip");
+  });
+});

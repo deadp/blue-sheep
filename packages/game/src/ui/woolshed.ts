@@ -21,6 +21,21 @@ function clipWord(kg: number): string {
   return kg < 6 ? "a light clip" : kg < 11 ? "a fair clip" : "a heavy clip";
 }
 
+/** The words of a phrase, lower-cased, hyphens splitting compounds ("medium-fine" has "medium"). */
+const wordsOf = (t: string): string[] => t.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+
+/**
+ * "Strong, a heavy clip": the wool type, the fineness word and the clip. The fineness word is dropped when it
+ * shares a word with the type's name (a Strong fleece is strong already), so no word repeats.
+ */
+export function lotDescription(type: string, microns: number, greasyKg: number): string {
+  const typeName = WOOL_TYPE_LABEL[type as keyof typeof WOOL_TYPE_LABEL] ?? type;
+  const fine = finenessWord(microns);
+  const taken = new Set(wordsOf(typeName));
+  const parts = [typeName, ...(wordsOf(fine).some((w) => taken.has(w)) ? [] : [fine]), clipWord(greasyKg)];
+  return parts.join(", ");
+}
+
 /** Wool types worth a row: those in the store or on an adult sheep, in the usual order. */
 function typesShown(state: GameState): string[] {
   const have = new Set<string>(storeOf(state).map((l) => l.type));
@@ -74,7 +89,7 @@ function lotCard(state: GameState, l: FleeceLot): string {
   return `<div class="lot" data-lot="${esc(l.id)}" style="--wool:${esc(l.hex)}">
     ${swatch(l.hex, "lot-sw")}
     <div class="l-body"><div class="l-name"><b>${esc(l.name)}</b>'s ${esc(l.word)} fleece</div>
-      <div class="meta">${esc(WOOL_TYPE_LABEL[l.type as keyof typeof WOOL_TYPE_LABEL])}, ${esc(finenessWord(l.microns))}, ${esc(clipWord(l.greasy))}${nums ? ` · ${l.greasy} kg greasy, ${l.clean} kg washed · ${Math.round(l.microns)} µm` : ""} · shorn ${esc(seasonLabel(l.season))}</div></div>
+      <div class="meta">${esc(lotDescription(l.type, l.microns, l.greasy))}${nums ? ` · ${l.greasy} kg greasy, ${l.clean} kg washed · ${Math.round(l.microns)} µm` : ""} · shorn ${esc(seasonLabel(l.season))}</div></div>
     <div class="l-act">${btn(`Sell · ${p.coins}`, { kind: "secondary", icon: "coin", cls: "small", data: { selllot: l.id }, title: `${demandWord(demandLevel(state, rawKey(l.type)))} demand for ${l.type} wool` })}</div>
   </div>`;
 }
