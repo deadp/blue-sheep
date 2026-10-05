@@ -32,9 +32,9 @@ export const MARKET_BLUE_FREQ = 0.15;
  * after the player has learned colour breeding, and then one Icelandic ewe is always among the stock.
  */
 export const BREED_STOCK: Record<BreedId, { minAct: number; price: number }> = {
-  farm: { minAct: 0, price: 1.0 }, corriedale: { minAct: 0, price: 1.2 }, romney: { minAct: 1, price: 1.3 },
-  perendale: { minAct: 1, price: 1.2 }, merino: { minAct: 2, price: 1.5 }, drysdale: { minAct: 3, price: 1.6 },
-  icelandic: { minAct: 4, price: 1.8 },
+  farm: { minAct: 0, price: 1.0 }, corriedale: { minAct: 0, price: 1.2 }, romney: { minAct: 1, price: 1.2 },
+  perendale: { minAct: 1, price: 1.1 }, merino: { minAct: 2, price: 1.6 }, drysdale: { minAct: 3, price: 1.4 },
+  icelandic: { minAct: 4, price: 2.0 },
 };
 /** The act whose start brings Icelandic sheep to the market (the reward for winning the first fair). */
 export const ICELANDIC_ACT = 4;
@@ -287,11 +287,11 @@ export const BENCH_UPGRADES: { id: UpgradeId; bench: BenchName; tier: number }[]
   { id: "feltTable", bench: "felt", tier: 1 }, { id: "feltSink", bench: "felt", tier: 2 },
 ];
 export const BENCH_LABEL: Record<BenchName, string> = { card: "Carding", spin: "Spinning", knit: "Knitting", weave: "Weaving", felt: "Felting" };
-export const MAX_JOBS = 12;
+export const MAX_JOBS = 16;
 /** Seasons a lot of fibre kg counts as one "batch" for stock jobs. */
 export const STOCK_KG = 0.5;
 /** Starting gift when the woolshed opens: Old Tom's spare fleece. */
-export const GIFT_FLEECE = { kg: 1, microns: 28, staple: 90 };
+export const GIFT_FLEECE = { kg: 3, microns: 28, staple: 90 };
 
 export interface Recipe {
   id: ItemId;
@@ -314,18 +314,18 @@ export interface Recipe {
   blurb: string;
 }
 export const RECIPES: Recipe[] = [
-  { id: "socks", name: "Socks", kg: 0.2, bench: "knit", work: 2, micron: 23, base: 14, step: 0.1, colour: "any", blurb: "A warm pair. Soft wool, spun fine." },
-  { id: "beanie", name: "Beanie", kg: 0.15, bench: "knit", work: 1, micron: 28, base: 12, step: 0.1, colour: "any", blurb: "Quick to knit, and everyone wants one in winter." },
-  { id: "dryerBalls", name: "Dryer balls", kg: 0.2, bench: "felt", work: 0.5, micron: 35, base: 4, step: 0.05, colour: "any", blurb: "Felted balls. Any wool will do." },
-  { id: "teaCosy", name: "Tea cosy", kg: 0.2, bench: "felt", work: 1, micron: 30, base: 9, step: 0.12, colour: "any", blurb: "Felted and snug. Sells best in summer, oddly." },
-  { id: "gumbootSocks", name: "Gumboot socks", kg: 0.3, bench: "knit", work: 2, micron: 34, base: 10, step: 0.08, colour: "natural", blurb: "Thick and hard-wearing, in natural colours." },
-  { id: "mittens", name: "Mittens", kg: 0.15, bench: "knit", work: 1.5, micron: 29, base: 12, step: 0.1, colour: "any", blurb: "A pair for cold hands." },
-  { id: "slippers", name: "Felted slippers", kg: 0.35, bench: "felt", work: 2, micron: 28, base: 18, step: 0.12, colour: "any", blurb: "Felted to fit. Takes practice." },
-  { id: "scarf", name: "Scarf", kg: 0.3, bench: "knit", work: 2, micron: 25, base: 16, step: 0.1, colour: "any", blurb: "Long and soft." },
-  { id: "babyShawl", name: "Baby shawl", kg: 0.4, bench: "knit", work: 4, micron: 19, base: 30, step: 0.2, colour: "pastel", blurb: "Only the finest, palest wool." },
-  { id: "lopapeysa", name: "Lopapeysa", kg: 0.8, bench: "knit", work: 8, micron: 30, base: 60, step: 0.25, colour: "any", minStaple: 100, blurb: "The Icelandic yoke jersey. Wants long, double-coated wool." },
-  { id: "bushShirt", name: "Bush shirt", kg: 1, bench: "weave", work: 6, micron: 34, base: 55, step: 0.25, colour: "any", blurb: "A tough woven shirt, bush-proof." },
-  { id: "rug", name: "Rug", kg: 2.5, bench: "weave", work: 8, micron: 45, base: 70, step: 0.3, colour: "any", minStaple: 120, blurb: "Hearth rug from the coarsest carpet wool." },
+  { id: "socks", name: "Socks", kg: 0.2, bench: "knit", work: 2, micron: 23, base: 38, step: 0.1, colour: "any", blurb: "A warm pair. Soft wool, spun fine." },
+  { id: "beanie", name: "Beanie", kg: 0.15, bench: "knit", work: 1, micron: 28, base: 32, step: 0.1, colour: "any", blurb: "Quick to knit, and everyone wants one in winter." },
+  { id: "dryerBalls", name: "Dryer balls", kg: 0.2, bench: "felt", work: 0.5, micron: 35, base: 10, step: 0.05, colour: "any", blurb: "Felted balls. Any wool will do." },
+  { id: "teaCosy", name: "Tea cosy", kg: 0.2, bench: "felt", work: 1, micron: 30, base: 22, step: 0.12, colour: "any", blurb: "Felted and snug. Sells best in summer, oddly." },
+  { id: "gumbootSocks", name: "Gumboot socks", kg: 0.3, bench: "knit", work: 2, micron: 34, base: 24, step: 0.08, colour: "natural", blurb: "Thick and hard-wearing, in natural colours." },
+  { id: "mittens", name: "Mittens", kg: 0.15, bench: "knit", work: 1.5, micron: 29, base: 32, step: 0.1, colour: "any", blurb: "A pair for cold hands." },
+  { id: "slippers", name: "Felted slippers", kg: 0.35, bench: "felt", work: 2, micron: 28, base: 42, step: 0.12, colour: "any", blurb: "Felted to fit. Takes practice." },
+  { id: "scarf", name: "Scarf", kg: 0.3, bench: "knit", work: 2, micron: 25, base: 42, step: 0.1, colour: "any", blurb: "Long and soft." },
+  { id: "babyShawl", name: "Baby shawl", kg: 0.4, bench: "knit", work: 4, micron: 19, base: 45, step: 0.2, colour: "pastel", blurb: "Only the finest, palest wool." },
+  { id: "lopapeysa", name: "Lopapeysa", kg: 0.8, bench: "knit", work: 8, micron: 30, base: 90, step: 0.25, colour: "any", minStaple: 100, blurb: "The Icelandic yoke jersey. Wants long, double-coated wool." },
+  { id: "bushShirt", name: "Bush shirt", kg: 1, bench: "weave", work: 6, micron: 34, base: 80, step: 0.25, colour: "any", blurb: "A tough woven shirt, bush-proof." },
+  { id: "rug", name: "Rug", kg: 2.5, bench: "weave", work: 8, micron: 45, base: 105, step: 0.3, colour: "any", minStaple: 120, blurb: "Hearth rug from the coarsest carpet wool." },
 ];
 /** Items seasonal targets: warm things want winter, tea cosies want summer (read by core/demand.ts). */
 export const ITEM_WINTER: string[] = ["beanie", "mittens", "gumbootSocks"];

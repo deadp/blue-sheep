@@ -1040,7 +1040,7 @@ prints the breed table, the founder colour families per breed, and a selective-b
   `item:<id>` meter by the recipe `step`.
 - **State** (all optional, old saves load): `jobs`, `items`, `fibre` (batts and yarn kept for later), `hands` (finished jobs per finishing
   bench), `craft` (made, spun counters), `patterns`, `nextJob/nextItem/nextFibre`. Unlock `"craft"` arrives at season 7 (`CALENDAR.craft`)
-  with Old Tom's gift fleece (`giftFleece`), and auto-sell goes off. Fixtures (`?act=N`) keep auto-sell as it was.
+  with Old Tom's gift fleece of 3 kg (`giftFleece`), and auto-sell goes off. Fixtures (`?act=N`) keep auto-sell as it was.
 - **Actions.** `{type:"queue", item, source}`, `{type:"cancelJob", id}` (refund only before the first stage), `{type:"sellItem", id}`,
   `{type:"sellItems", kind}`. Panel `woolshed` has tabs `bench`, `items`, `store` (`data-tab`); `?panel=woolshed` opens on the bench once craft has
   arrived, else the store only. Deep link actions `open` accept `tab`.

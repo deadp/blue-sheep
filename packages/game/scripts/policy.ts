@@ -15,6 +15,7 @@ import {
   forecastOrder, isAdult, isEnding, lambRoom, markEndingShown, newGame, pedigreeOf, planMating, ramAvailable, RAM_CAPACITY,
   sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
   ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF, feedPerHead, isShearingSeason,
+  allSources, craftOn, demandLevel, forecastJob, itemKey, itemPrice, itemsOf, jobsOf, lotPrice, patternsOf, queueJob, rawKey, sellItem, sellLot, storeCap, storeOf,
   type GameState, type Order, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
 
@@ -44,7 +45,9 @@ export interface Brain {
   vet?(g: GameState): void;
 }
 
-export interface RunResult { ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string; firstTrueBlue: number | null }
+/** Revenue by source in year 3 (seasons 8 to 11): "raw", "orders", "fair" and one entry per item kind. */
+export type Revenue = Record<string, number>;
+export interface RunResult { y3?: Revenue; y34?: Revenue; ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string; firstTrueBlue: number | null }
 
 const fin = (s: Sheep) => Number(s.phenotype["fineness"]);
 /** Act 4's registry wants the flock mean at or under 28 µm, so only wool coarser than this costs anything: finer is no use. */
@@ -215,6 +218,52 @@ function manageUpgrades(g: GameState): void {
   for (const id of ["paddock", "collie", "cat", "barn", "maremma", "shearing", "meadow"] as const) buy(id);
 }
 
+
+/** Bench upgrades in order of what they unlock per coin: the wheel and circle first (the spinning wheel is the bottleneck). */
+const BENCH_BUY: UpgradeId[] = ["wheel", "circle", "drumCarder", "feltTable", "knitHall", "wheel2", "tableLoom", "millShare", "floorLoom", "feltSink"];
+
+/**
+ * Crafting policy (DESIGN-v3 Phase 5): auto-sell is off once crafting arrives, wool goes through the benches, finished items
+ * are sold while their meter is healthy (or when cash is short), spare fleece goes raw, bench upgrades are bought with spare coins.
+ * `sale(cat, coins)` books revenue by source.
+ */
+function manageCraft(g: GameState, sale: (cat: string, coins: number) => void): void {
+  if (!craftOn(g)) return;
+  const reserve = feedReserve(g);
+  // The cheap knitting circle at once; the rest with a cushion (more of one while the blue hunt in act 1 needs coins).
+  for (const id of BENCH_BUY) {
+    const spare = id === "circle" ? 60 : g.act <= 1 ? 100 : 40;
+    if (!upgradeBlocked(g, id) && g.money >= upgradeDef(id).price + spare + reserve) { buyUpgrade(g, id); break; }
+  }
+  // Sell finished items: while the meter is healthy, when cash is short, or when they have sat for three seasons.
+  for (const it of [...itemsOf(g)].sort((a, b) => b.q - a.q)) {
+    const d = demandLevel(g, itemKey(it.kind));
+    const stale = g.season - it.season >= 3;
+    if (d >= 0.2 || stale || g.money < reserve + 20) sale(it.kind, sellItem(g, it.id));
+  }
+  // Queue the best-paying jobs while the benches aren't backed up.
+  for (let guard = 0; guard < 12; guard++) {
+    if (jobsOf(g).length >= 14) break;
+    let best: { key: string; item: string; v: number } | null = null;
+    for (const item of patternsOf(g)) {
+      for (const src of allSources(g)) {
+        const f = forecastJob(g, { item, source: src.key });
+        if (!f.ok || f.stock || f.seasons > 5) continue;
+        const v = (f.coinsLo + f.coinsHi) / 2;
+        if (v >= 7 && (!best || v > best.v)) best = { key: src.key, item, v };
+      }
+    }
+    if (!best) break;
+    queueJob(g, { item: best.item, source: best.key });
+  }
+  // Spare fleece goes raw: keep a few lots for the benches, sell the rest while their meters are decent.
+  const keep = 2;
+  const lots = [...storeOf(g)].sort((a, b) => lotPrice(g, b, demandLevel(g, rawKey(b.type))).coins - lotPrice(g, a, demandLevel(g, rawKey(a.type))).coins);
+  for (const lot of lots.slice(0, Math.max(0, lots.length - keep))) sale("raw", sellLot(g, lot.id));
+  if (process.env["CRAFTLOG"]) console.log(g.season, "money", g.money, "jobs", jobsOf(g).map((j) => j.item + ":" + j.route.join(">")).join(","), "items", itemsOf(g).length, "lots", storeOf(g).length, "pat", patternsOf(g).join(","), "hands", JSON.stringify(g.hands), "ups", (g.upgrades ?? []).join(","));
+  if (storeOf(g).length >= storeCap(g) - 1) { const l = [...storeOf(g)][0]; if (l) sale("raw", sellLot(g, l.id)); }
+}
+
 /** Say hello to and brush (pat) every animal each season (free); give treats when coins are plentiful. */
 function manageCare(g: GameState): void {
   if (process.env["NOCARE"]) return;
@@ -260,13 +309,18 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
   let endSeason: number | null = null;
   let firstTrueBlue: number | null = null;
   const ledger: Record<string, number> = {};
+  const rev: Revenue = {};
+  const rev2: Revenue = {};
   for (let t = 0; t < maxSeasons; t++) {
     const cache = new Map<string, CrossDist>();
     const T = (label: string, f: () => void) => { const t0 = Date.now(), m0 = g.money; f(); ledger[label] = (ledger[label] ?? 0) + g.money - m0; if (process.env["PROF"]) console.error(g.season, label, Date.now() - t0); };
     T("orders", () => manageOrders(g));
     T("fair", () => manageFair(g));
     T("vet", () => b.vet?.(g));
+    const y3 = g.season >= 8 && g.season <= 11;
+    const sale = (cat: string, coins: number) => { if (y3) rev[cat] = (rev[cat] ?? 0) + coins; if (g.season >= 8 && g.season <= 15) rev2[cat] = (rev2[cat] ?? 0) + coins; };
     T("upgrades", () => manageUpgrades(g));
+    T("craft", () => manageCraft(g, sale));
     T("care", () => manageCare(g));
     T("flock", () => manageFlock(g, b));
     T("visitor", () => manageVisitor(g, b, cache));
@@ -275,7 +329,9 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     if (process.env["PLANS"]) console.log(g.season, "act", g.act, "flock", g.flock.length, "plans", Object.entries(g.plans).map(([e, ra]) => `${g.sheep[e]!.name}x${g.sheep[ra]!.name}`).join(","), "orders", g.acceptedOrders.length);
     T("advance", () => { r = advanceSeason(g); });
     const add = (k: string, v: number) => { ledger[k] = (ledger[k] ?? 0) + v; };
-    add("wool", r.income); add("feed", -r.feed); add("fondWool", r.fondBonus); add("miceLoss", -((r.mice?.wool ?? 0) + (r.mice?.feed ?? 0)));
+    add("wool", r.income);
+    if (g.season - 1 >= 8 && g.season - 1 <= 15) rev2["raw"] = (rev2["raw"] ?? 0) + r.income;
+    if (g.season - 1 >= 8 && g.season - 1 <= 11) { rev["raw"] = (rev["raw"] ?? 0) + r.income; rev["orders"] = (rev["orders"] ?? 0) + r.orderResults.reduce((t, o) => t + o.reward, 0); rev["fair"] = (rev["fair"] ?? 0) + (r.fairResult?.prize ?? 0); } add("feed", -r.feed); add("fondWool", r.fondBonus); add("miceLoss", -((r.mice?.wool ?? 0) + (r.mice?.feed ?? 0)));
     add("foxWolfLambs", r.event && (r.event.kind === "fox" || r.event.kind === "wolf") && !r.event.saved && r.event.sheep ? -1 : 0); add("orderPay", r.orderResults.reduce((t, o) => t + o.reward, 0));
     add("fairPay", r.fairResult?.prize ?? 0); add("autoSold", r.autoSold.reduce((t, a) => t + a.price, 0));
     money.push(g.money);
@@ -297,7 +353,7 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     const by = (st: string) => h.filter((o) => o.status === st);
     console.log(`seed ${seed}: posted ${g.nextOrderId - 1}, filled ${by("filled").length} [${by("filled").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}], failed ${by("failed").length} [${by("failed").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg + "kg<" + o.microns)).join(" ")}], expired ${by("expired").length} [${by("expired").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}]`);
   }
-  return { ledger, seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}`, firstTrueBlue };
+  return { y3: rev, y34: rev2, ledger, seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}`, firstTrueBlue };
 }
 
 export function summarise(label: string, results: RunResult[], maxSeasons: number): void {
@@ -322,6 +378,14 @@ export function summarise(label: string, results: RunResult[], maxSeasons: numbe
   if (process.env["LEDGER"]) {
     const keys = [...new Set(results.flatMap((r) => Object.keys(r.ledger)))];
     console.log("ledger (median over seeds, whole run):", keys.map((k) => `${k} ${med(results.map((r) => r.ledger[k] ?? 0))}`).join(", "));
+  }
+  const y3 = results.filter((r) => r.y3 && Object.keys(r.y3).length);
+  if (y3.length) {
+    const tot = (r: RunResult) => Object.values(r.y3!).reduce((a, b) => a + b, 0);
+    const craftSum = (r: RunResult) => Object.entries(r.y3!).filter(([k]) => !["raw", "orders", "fair"].includes(k)).reduce((a, [, v]) => a + v, 0);
+    const hhiOf = (keys: (k: string) => boolean) => (r: RunResult) => { const parts = Object.entries(r.y34 ?? r.y3!).filter(([k]) => keys(k)); const s2 = parts.reduce((a, [, v]) => a + v, 0) || 1; return parts.reduce((a, [, v]) => a + (v / s2) ** 2, 0); };
+    const hhi = hhiOf((k) => k !== "orders" && k !== "fair"), hhiItems = hhiOf((k) => !["raw", "orders", "fair"].includes(k));
+    console.log(`year 3 (seasons 8-11): crafted share of income median ${med(y3.map((r) => craftSum(r) / (tot(r) || 1))).toFixed(2)}, wool+item sales HHI (years 3-4) median ${med(y3.map(hhi)).toFixed(2)}, item-only HHI (years 3-4) ${med(y3.map(hhiItems)).toFixed(2)}, median income ${med(y3.map(tot))}, median crafted ${med(y3.map(craftSum))}`);
   }
   for (const r of results.filter((x) => x.endSeason === null)) console.log(`  seed ${r.seed} unfinished — ${r.stuck} (acts at ${r.actSeason.join(",")})`);
 }
