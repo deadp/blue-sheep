@@ -47,10 +47,13 @@ export interface Brain {
 export interface RunResult { ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string; firstTrueBlue: number | null }
 
 const fin = (s: Sheep) => Number(s.phenotype["fineness"]);
+/** Act 4's registry wants the flock mean at or under 28 µm, so only wool coarser than this costs anything: finer is no use. */
+const FINE_ENOUGH = 24;
+const coarse = (x: number) => Math.max(0, x - FINE_ENOUGH);
 
 /** How much a sheep's genes help towards true blue: blue paint and hidden colour help; red and yellow paint muddy it. */
 function blueValue(d: Doses): number {
-  return d.blue * 2 + d.w * 1.2 - d.ry * 0.5;
+  return d.blue * 2 + d.w * 1.2 - d.ry * 1.2;
 }
 
 /** True when no sheep in the flock carries blue paint, as far as the farmer knows: bring a blue carrier in. */
@@ -67,7 +70,8 @@ function keepValue(g: GameState, b: Brain, s: Sheep): number {
   if (d.blue >= 0.3 && flockLacksBlue(g, b)) v += 6;
   if (w.name === "blue") v += 6;
   if (w.trueBlue) v += 4;
-  if (act >= 2) v += (FINE_REF - fin(s)) * (act >= 4 ? 1.2 : 0.6);
+  if (act >= 2) v += act >= 4 ? -coarse(fin(s)) * 1.2 : (FINE_REF - fin(s)) * 0.6;
+  if (act >= 4 && w.name === "blue") v += 8; // the registry counts blue sheep: never trade them for finer non-blues
   if (act >= 4) v -= s.inbreeding * 30;
   if (act === 3 && g.fair.category !== "rare") v += fairScore(s, g.fair.category) * 1.5;
   if (s.rosettes.length) v += 1;
@@ -85,7 +89,7 @@ function matingScore(g: GameState, b: Brain, ewe: Sheep, ram: Sheep, cache: Map<
   const F = pedigreeOf(g).offspringInbreeding(ewe.id, ram.id);
   let v = (act <= 1 ? c.trueBlue * 10 : c.blue * 6 + c.trueBlue * 4) + (blueValue(b.doses(g, ewe)) + blueValue(b.doses(g, ram))) / 2 * 0.5;
   if (act <= 1 && c.learnBits) v += Math.min(2, c.learnBits);
-  if (act >= 2) v += (FINE_REF - (fin(ewe) + fin(ram)) / 2) * (act >= 4 ? 1.5 : 0.6);
+  if (act >= 2) v += act >= 4 ? -coarse((fin(ewe) + fin(ram)) / 2) * 1.5 : (FINE_REF - (fin(ewe) + fin(ram)) / 2) * 0.6;
   if (act >= 3) v -= F * (act >= 4 ? 60 : 20);
   for (const id of g.acceptedOrders) {
     const o = g.orders.find((x) => x.id === id);
@@ -129,6 +133,25 @@ function reservedForOrders(g: GameState): Set<string> {
   return out;
 }
 
+/** Best true-blue chance of crossing `x` with an opposite-sex breeder we own, as the farmer's forecast sees it. */
+function bestTrueBlue(g: GameState, b: Brain, x: Sheep): number {
+  let best = 0;
+  for (const o of flockSheep(g)) {
+    if (o.sex === x.sex || !canBreed(o, g.season)) continue;
+    const [e, r] = x.sex === "ewe" ? [x, o] : [o, x];
+    best = Math.max(best, b.cross(g, e.id, r.id).trueBlue);
+  }
+  return best;
+}
+
+/** How much better a market sheep's best cross is than the flock's own best (0 when it isn't worth buying). */
+function complementGain(g: GameState, b: Brain, m: Sheep): number {
+  const own = flockSheep(g).filter((x) => x.sex === "ewe" && canBreed(x, g.season)).flatMap((e) => flockSheep(g).filter((r) => r.sex === "ram" && canBreed(r, g.season)).map((r) => b.cross(g, e.id, r.id).trueBlue));
+  const base = own.length ? Math.max(...own) : 0;
+  const cand = bestTrueBlue(g, b, m);
+  return cand > base * 1.5 + 0.03 ? cand - base : 0;
+}
+
 function manageFlock(g: GameState, b: Brain): void {
   const reserve = reservedForOrders(g);
   const rams = () => flockSheep(g).filter((s) => s.sex === "ram");
@@ -150,6 +173,13 @@ function manageFlock(g: GameState, b: Brain): void {
     const noRam = m.sex === "ram" && rams().filter((r) => canBreed(r, g.season)).length === 0;
     if (noRam && g.money >= price) {
       if (g.flock.length >= g.flockCap) { const w = flockSheep(g).filter((s) => s.sex === "ewe" && !reserve.has(s.id)).sort((x, y) => keepValue(g, b, x) - keepValue(g, b, y))[0]; if (w) sellSheep(g, w.id); }
+      if (g.flock.length < g.flockCap) { buySheep(g, id); continue; }
+    }
+    // Act 1 dead end: a flock fixed on red or short of blue can't make a true blue lamb however it mates. Bring in
+    // a sheep that, crossed with someone we own, forecasts a clearly better chance of one.
+    if (g.act <= 1 && g.money >= price + 15 + feedReserve(g) && complementGain(g, b, m) > 0) {
+      const w = flockSheep(g).filter((s) => !reserve.has(s.id) && s.sex === m.sex).sort((x, y) => keepValue(g, b, x) - keepValue(g, b, y))[0];
+      if (g.flock.length >= g.flockCap && w) sellSheep(g, w.id);
       if (g.flock.length < g.flockCap) { buySheep(g, id); continue; }
     }
     if (g.money < price + 30 + feedReserve(g)) continue;
@@ -218,6 +248,7 @@ function planAll(g: GameState, b: Brain, cache: Map<string, CrossDist>): void {
   for (const o of opts) {
     if (used.has(o.e.id) || (load.get(o.r.id) ?? 0) >= RAM_CAPACITY || lambRoom(g) < 1) continue;
     planMating(g, o.e.id, o.r.id);
+    if (process.env["PLANS"]) console.log("  plan", o.e.name, "x", o.r.name, "score", o.v.toFixed(2), "trueBlue", cache.get(`${o.e.id}|${o.r.id}`)!.trueBlue.toFixed(3), "F", pedigreeOf(g).offspringInbreeding(o.e.id, o.r.id).toFixed(2));
     used.add(o.e.id); load.set(o.r.id, (load.get(o.r.id) ?? 0) + 1);
   }
 }

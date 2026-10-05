@@ -48,9 +48,10 @@ export const blind: Brain = {
   },
 };
 
-const MAX = 60;
+const MAX = Number(process.env["MAXS"] ?? 60);
 const N = Number(process.env["SEEDS"] ?? 30);
 const FROM = Number(process.env["FROM"] ?? 1); // first seed
 const results = [];
 for (let i = 0; i < N; i++) results.push(await play(FROM + i, blind, MAX));
+if (process.env["OUT"]) (await import("node:fs")).writeFileSync(process.env["OUT"], JSON.stringify(results));
 summarise("blind (knowledge-limited)", results, MAX);
