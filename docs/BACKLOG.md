@@ -5,7 +5,7 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-Next: v3 Phase 5 (woolshed queue, items and patterns, DESIGN-v3 §13).
+Next: v3 Phase 6 (fantasy wools, DESIGN-v3 §13).
 
 Follow-ups from Phase 2, pigment colours (not started):
 - The act ladder is still v2 (true blue replaces blue in act 1; the registry wants six full-blue sheep at
@@ -130,6 +130,7 @@ existing saves), then implementation in phases, each probe-verified.
 
 ## Done
 
+- v3 Phase 5, woolshed queue, items and patterns (DESIGN-v3 §13; CONTRACTS §13; see git log): `core/craft.ts`, 12 kiwiana recipes, five benches with upgrades, one stage a season, quality with noise band and forecast, item sales through demand meters, patterns gated by made-count, wool press, craft lesson and calendar slot (season 7), report flip of forecast and made. `craft.mjs` probe, `craft.test.ts`. Carry-overs: balance pass (policy crafts, breed prices), Phase 9 birds via `benchBonus`, lots are not blended in a job.
 - v3 Phase 4b, blind sim retune and woolshed wording (DESIGN-v3 §15 item 32; see git log): sim policy only (act 4 ignores fineness under 24 um and keeps blue sheep; act 1 weighs red/yellow paint 1.2 and buys a sheep that crosses well with a flock fixed on the wrong alleles); blind ending 70% to 97%, first true blue median 13, oracle 100%. No act 4 goal change was needed. Fleece lot lines drop a fineness word that repeats the wool type ("Strong, a heavy clip"), with a unit test over all types. Full probe re-run green. New sim helpers: `OUT=file.json` shards plus `scripts/merge.ts`, `MAXS=` season cap.
 
 - v3 Phase 4, wool store, raw sales and demand meters (see git log): `core/woolstore.ts` (spring/autumn shearing to fleece lots, washing, store cap, overflow, auto-sell), `core/demand.ts` (meters, refill, seasonal targets, boom as live x2), `woolshed` panel and market wool buyer with an after-you-sell forecast and Reveal, `sellLot`/`sellLots`/`autoSell` actions, `woolstore.mjs` probe. Carry-overs: visiting rams drawn from breed stock, Merino folds at the neck only, long-shot names from one source (`longShotNames`). Open: item meters exist (`item:` keys) but nothing sells items until Phase 5; wool press (store 40) with the woolshed.

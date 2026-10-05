@@ -1,5 +1,5 @@
 /** Farm improvements: one-time purchases with a clear effect, each shown with a forecast before buying. */
-import { FEED_COST, FEED_GROWTH, FEED_MAX, PET_FEED, PET_NAME, PET_SEX, SHEARING_BONUS, UPGRADES, WOLF_MIN_ACT, type UpgradeDef } from "./config.js";
+import { BENCH_CAP, BENCH_LABEL, BENCH_UPGRADES, STORE_CAP, STORE_CAP_PRESS, STORE_CAP_SHED, type BenchName, FEED_COST, FEED_GROWTH, FEED_MAX, PET_FEED, PET_NAME, PET_SEX, SHEARING_BONUS, UPGRADES, WOLF_MIN_ACT, type UpgradeDef } from "./config.js";
 import { fondWoolMultiplier, fondnessOf, isPetId } from "./care.js";
 import { woolIncome } from "./economy.js";
 import { ownedDogs, predatorRisk } from "./events.js";
@@ -64,9 +64,25 @@ export function chanceWords(p: number): string {
   return fractionWords(p);
 }
 
+/** What a woolshed upgrade changes, in numbers of kilos or stitches (the benches' tier tables are in config). */
+function craftUpgradeText(state: GameState, id: UpgradeId): string {
+  const d = upgradeDef(id);
+  if (id === "press") return `The wool store holds ${STORE_CAP_PRESS} fleeces instead of ${hasUpgrade(state, "shearing") ? STORE_CAP_SHED : STORE_CAP}, so you can keep wool back for the shed instead of selling it at once.`;
+  const u = BENCH_UPGRADES.find((x) => x.id === id)!;
+  const now = BENCH_CAP[u.bench][benchTierNow(state, u.bench)] ?? 0, next = BENCH_CAP[u.bench][u.tier]!;
+  const unit = u.bench === "card" || u.bench === "spin" ? "kg" : "stitches' worth of work";
+  return now > 0 ? `${d.blurb} (${BENCH_LABEL[u.bench]}: ${now} to ${next} ${unit} a season.)` : `${d.blurb} (${next} ${unit} a season.)`;
+}
+function benchTierNow(state: GameState, bench: BenchName): number {
+  let t = bench === "weave" || bench === "felt" ? 0 : 1;
+  for (const u of BENCH_UPGRADES) if (u.bench === bench && hasUpgrade(state, u.id)) t = Math.max(t, u.tier);
+  return t;
+}
+
 /** What buying this improvement would change for this farm, in one or two plain sentences (plus odds for dogs). */
 export function forecastUpgrade(state: GameState, id: UpgradeId): UpgradeForecast {
   const d = upgradeDef(id);
+  if (d.group === "craft") return { text: craftUpgradeText(state, id) };
   const ev = state.pendingEvent;
   switch (id) {
     case "paddock":
@@ -121,6 +137,9 @@ export function forecastUpgrade(state: GameState, id: UpgradeId): UpgradeForecas
       const past = ill ? ` Hard winters have laid up ${ill} sheep so far, each missing a season of lambing.` : "";
       return { text: `Nobody would fall ill in a hard winter, so every ewe could still lamb in spring.${past}${soon}` };
     }
+    case "drumCarder": case "millShare": case "wheel": case "wheel2": case "circle": case "knitHall":
+    case "tableLoom": case "floorLoom": case "feltTable": case "feltSink": case "press":
+      return { text: craftUpgradeText(state, id) };
     case "shearing": {
       const base = clipValue(state, 1);
       const gain = clipValue(state, SHEARING_BONUS) - base;

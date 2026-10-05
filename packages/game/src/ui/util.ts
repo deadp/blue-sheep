@@ -162,11 +162,12 @@ export const UNLOCK_WORDS: Record<Unlock, string> = {
   farm: "Farm improvements and winter weather",
   dogs: "Dogs at the market (and foxes)",
   cat: "A farm cat (and mice)",
+  craft: "The woolshed: card, spin and knit your wool",
 };
 
 /** An icon per concept, for the report's "new on the farm" banner. */
 export const UNLOCK_ICON: Record<Unlock, IconName> = {
-  cards: "book", vet: "vet", orders: "mail", numbers: "ruler", fair: "rosette", tree: "tree", visitor: "ram", farm: "barn", dogs: "dog", cat: "cat",
+  cards: "book", vet: "vet", orders: "mail", numbers: "ruler", fair: "rosette", tree: "tree", visitor: "ram", farm: "barn", dogs: "dog", cat: "cat", craft: "yarn",
 };
 
 export const LOCUS_FRIENDLY: Record<string, string> = {

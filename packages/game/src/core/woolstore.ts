@@ -6,7 +6,7 @@
  * A sale pays rate x kg x demand multiplier (core/demand.ts) x the shearing-shed bonus x the sheep's fondness, and
  * lowers the meter for that wool type. No RNG here.
  */
-import { CLIP_KG, RAW_STEP, SHEARING_BONUS, SHEAR_SEASONS, STORE_CAP, STORE_CAP_SHED, WASH_YIELD } from "./config.js";
+import { CLIP_KG, RAW_STEP, SHEARING_BONUS, SHEAR_SEASONS, STORE_CAP, STORE_CAP_PRESS, STORE_CAP_SHED, WASH_YIELD } from "./config.js";
 import { demandLevel, lowerDemand, rawKey, sellRun } from "./demand.js";
 import { woolOf } from "./colour.js";
 import { fondWoolMultiplier, fondnessOf } from "./care.js";
@@ -28,7 +28,7 @@ export function clipKg(s: Sheep): number {
 export { fleeceRate };
 
 export function storeCap(state: GameState): number {
-  return hasUpgrade(state, "shearing") ? STORE_CAP_SHED : STORE_CAP;
+  return hasUpgrade(state, "press") ? STORE_CAP_PRESS : hasUpgrade(state, "shearing") ? STORE_CAP_SHED : STORE_CAP;
 }
 export const storeOf = (state: GameState): FleeceLot[] => state.store ?? [];
 export const autoSellOn = (state: GameState): boolean => state.autoSell !== false;
@@ -47,6 +47,7 @@ export function makeLot(state: GameState, s: Sheep, t: number): FleeceLot {
   return {
     id: `L${n}`, sheep: s.id, name: s.name, season: t, greasy, clean: Math.round(greasy * (WASH_YIELD[type] ?? 0.7) * 10) / 10,
     type, family: w.family, word: w.word, hex: w.hex, microns: Number(s.phenotype["fineness"]), intensity: w.intensity,
+    staple: Number(s.phenotype["staple"] ?? 90),
     rate: fleeceRate(s), fond: fondWoolMultiplier(fondnessOf(state, s.id)),
   };
 }

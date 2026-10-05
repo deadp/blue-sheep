@@ -1,6 +1,6 @@
 /** Debug fast-forward for `?act=N`: a real game played with a greedy policy, then nudged into act N. */
 import {
-  ACTS, LESSONS, enterAct, grantUnlock, hireVisitingRam, enterFair, isAdult, newGame, seasonOfYear,
+  ACTS, LESSONS, giftFleece, enterAct, grantUnlock, hireVisitingRam, enterFair, isAdult, newGame, seasonOfYear,
   type ActNumber, type GameState, type SeasonReport,
 } from "./core/index.js";
 import { greedySeason } from "./ui/fixtures.js";
@@ -18,10 +18,10 @@ export function fastForward(seed: number, act: number): FastForward {
   let r: SeasonReport = greedySeason(s);
   for (let i = 0; i < 4; i++) r = greedySeason(s);
   if (s.act < 1) enterAct(s, 1, undefined, { grant: true });
-  else for (const u of ACTS[1]!.unlocks) grantUnlock(s, u);
+  else for (const u of ACTS[1]!.unlocks) grantUnlock(s, u, { fixture: true });
   for (let a = 2; a <= target; a++) {
     if (s.act < a) enterAct(s, a as ActNumber, undefined, { grant: true });
-    else for (const u of ACTS[a]!.unlocks) grantUnlock(s, u);
+    else for (const u of ACTS[a]!.unlocks) grantUnlock(s, u, { fixture: true });
     r = greedySeason(s);
     if (a === 2) {
       r = greedySeason(s);
@@ -33,6 +33,8 @@ export function fastForward(seed: number, act: number): FastForward {
       if (s.visitingRam && s.money >= s.visitingRam.fee) { try { hireVisitingRam(s); } catch { /* ignore */ } }
     }
   }
+  // The woolshed has Old Tom's spare fleece to start with (fixtures keep the store's auto-sell as it was).
+  if (s.unlocks.includes("craft") && !(s.store ?? []).length) giftFleece(s);
   // Everything up to act N at once, without lessons (a lesson started on the way is dropped).
   s.lesson = null;
   s.lessonsDone = LESSONS.filter((l) => s.unlocks.includes(l.id)).map((l) => l.id);

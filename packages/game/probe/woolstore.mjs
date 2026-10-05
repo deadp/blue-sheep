@@ -34,6 +34,8 @@ export const woolstore = {
     // --- selling three lots by clicking: pays the price on the button, lowers that meter
     await g.act({ type: "open", panel: "woolshed" });
     await g.waitPanel("woolshed");
+    await g.page.click('#overlay [data-tab="store"]'); // the woolshed opens on the workbench once crafting has arrived
+    await g.page.waitForTimeout(100);
     ctx.artifact(await g.screenshot("woolshed"));
     await g.act({ type: "open", panel: "market" });
     await g.waitPanel("market");
@@ -46,6 +48,8 @@ export const woolstore = {
     for (const lot of lots) {
       await g.act({ type: "open", panel: "woolshed" });
       await g.waitPanel("woolshed");
+      await g.page.click('#overlay [data-tab="store"]');
+      await g.page.waitForTimeout(100);
       const price = await g.page.evaluate((id) => {
         const b = document.querySelector(`#overlay [data-lot="${id}"] [data-selllot]`);
         return b ? Number((b.textContent ?? "").replace(/\D+/g, " ").trim().split(" ").pop()) : NaN;

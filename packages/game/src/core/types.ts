@@ -31,6 +31,8 @@ export interface FleeceLot {
   rate: number;
   /** The donor's fondness multiplier at shearing. */
   fond: number;
+  /** Staple length (mm) of the fleece; absent in older saves (treated as medium). */
+  staple?: number;
 }
 
 export interface Sheep {
@@ -60,7 +62,8 @@ export interface Pairing { ewe: string; ram: string }
 export interface LogEntry { season: number; text: string }
 
 /** Farm improvements (definitions and prices in config.ts). The three dogs and the cat are animals too (PetId). */
-export type UpgradeId = "terrier" | "collie" | "maremma" | "cat" | "barn" | "paddock" | "shearing" | "meadow";
+export type UpgradeId = "terrier" | "collie" | "maremma" | "cat" | "barn" | "paddock" | "shearing" | "meadow"
+  | "drumCarder" | "millShare" | "wheel" | "wheel2" | "circle" | "knitHall" | "tableLoom" | "floorLoom" | "feltTable" | "feltSink" | "press";
 
 /** Farm animals that are not sheep: bought as improvements, each with its own fondness. */
 export type PetId = "terrier" | "collie" | "maremma" | "cat";
@@ -86,7 +89,7 @@ export interface CareRecord {
  * Concepts that open up over the game, one at a time (core/pacing.ts): `farm` = farm improvements and winter
  * weather, `dogs` = dogs at the market and foxes, `cat` = the cat and mice.
  */
-export type Unlock = "numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards" | "farm" | "dogs" | "cat";
+export type Unlock = "numbers" | "vet" | "orders" | "fair" | "tree" | "visitor" | "cards" | "farm" | "dogs" | "cat" | "craft";
 
 /** Genes the vet can test and facts can be about: W (hidden colour), a pigment channel, Dl (pale), S, P. */
 export type Locus = "W" | "red" | "yellow" | "blue" | "Dl" | "S" | "P";
@@ -308,6 +311,16 @@ export interface GameState {
   store?: FleeceLot[];
   /** Sell each clip to the wool buyer at shearing (default true; core/woolstore.ts). */
   autoSell?: boolean;
+  /** Woolshed: jobs in the queue, finished items, stock fibre, hands per bench, counters, patterns known (core/craft.ts). */
+  jobs?: Job[];
+  items?: Item[];
+  fibre?: Fibre[];
+  hands?: Partial<Record<BenchId, number>>;
+  craft?: CraftStats;
+  patterns?: string[];
+  nextJob?: number;
+  nextItem?: number;
+  nextFibre?: number;
   /** Next fleece lot number. */
   nextLot?: number;
   /** Demand meters by key ("raw:fine", "item:socks"); a key not here sits at its seasonal target (core/demand.ts). */
@@ -406,6 +419,90 @@ export interface ShearingReport {
   auto: boolean;
 }
 
+// ---- The woolshed queue (core/craft.ts) ------------------------------------
+
+export type BenchId = "card" | "spin" | "knit" | "weave" | "felt";
+/** What a job makes: a finished item (core/wool.ts ItemId), or stock for later (a batt or a ball of yarn). */
+export type CraftKind = string;
+export type CraftStage = "card" | "spin" | "knit" | "weave" | "felt";
+
+/** A forecast the player saw when queueing: star band and coin band (what the report flips against the result). */
+export interface SeenForecast {
+  starsLo: number;
+  starsHi: number;
+  coinsLo: number;
+  coinsHi: number;
+  /** Q band, shown with the numbers unlock. */
+  qLo: number;
+  qHi: number;
+  finish: number;
+}
+
+/** The wool in a job or a stock of fibre: the lot's look and measures, snapshotted at queue time. */
+export interface Material {
+  lot: string;
+  name: string;
+  type: string;
+  family: string;
+  word: string;
+  hex: string;
+  microns: number;
+  intensity: number;
+  staple: number;
+  fond: number;
+  /** Kg of clean fibre. */
+  kg: number;
+}
+
+export interface Fibre extends Material {
+  id: string;
+  /** "batt" (carded) or "yarn" (spun). */
+  form: "batt" | "yarn";
+}
+
+export interface Job {
+  id: number;
+  item: CraftKind;
+  /** The stages still to do, first is current. */
+  route: CraftStage[];
+  /** Units left in the current stage (kg for card and spin, points for knit, weave, felt). */
+  left: number;
+  /** Has any stage begun (cancel refunds only before). */
+  started: boolean;
+  /** What it was made from, and whether the wool goes through the wheel (a lot or batt, or already yarn). */
+  from: "lot" | "batt" | "yarn";
+  spins: boolean;
+  queued: number;
+  mat: Material;
+  seen: SeenForecast;
+}
+
+export interface Item {
+  id: number;
+  kind: string;
+  q: number;
+  stars: number;
+  season: number;
+  hex: string;
+  family: string;
+  word: string;
+  type: string;
+  seen: SeenForecast | null;
+}
+
+export interface CraftStats { made: number; spun: number }
+
+export interface CraftReport {
+  /** Items finished this turn, each with the forecast the player saw. */
+  done: { item: Item; name: string }[];
+  /** Stock made (batts, yarn). */
+  stock: { form: "batt" | "yarn"; kg: number; word: string }[];
+  /** Jobs that moved on a stage this turn. */
+  advanced: { job: number; name: string; stage: CraftStage }[];
+  /** Patterns learned this turn, with the reason. */
+  newPatterns: { item: string; why: string }[];
+}
+
 export interface SeasonReport {
   /** The season that has just begun (state.season after the advance). */
   season: number;
@@ -422,6 +519,8 @@ export interface SeasonReport {
   feed: number;
   /** The shearing this season (null in a season without one; absent in old reports). */
   shearing?: ShearingReport | null;
+  /** The woolshed this turn (absent: nothing happened there; absent in old reports). */
+  crafted?: CraftReport | null;
   deaths: Sheep[];
   /** Sheep the trader took because feed could not be paid or the flock was over its cap. */
   autoSold: { id: string; name: string; price: number; reason: "feed" | "room" }[];

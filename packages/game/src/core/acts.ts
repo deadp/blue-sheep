@@ -114,7 +114,12 @@ export function enterAct(state: GameState, act: ActNumber, baseline?: ActBaselin
   const b = baseline ?? state.stats;
   state.actStart = { season: state.season, ordersFilled: b.ordersFilled, fairsWon: b.fairsWon };
   const def = ACTS[act]!;
-  if (opts.grant) for (const a of ACTS) if (a.act <= act) for (const u of a.unlocks) grantUnlock(state, u);
+  if (opts.grant) {
+    // The woolshed's arrival turns auto-sell off in play; a fast-forward fixture keeps the setting it had.
+    const auto = state.autoSell;
+    for (const a of ACTS) if (a.act <= act) for (const u of a.unlocks) grantUnlock(state, u, { fixture: true });
+    if (auto === undefined) delete state.autoSell; else state.autoSell = auto;
+  }
   state.flockCap = Math.max(state.flockCap, def.flockCap + upgradeCapBonus(state));
   addLog(state, `“${def.line}”`);
 }

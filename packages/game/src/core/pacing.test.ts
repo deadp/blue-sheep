@@ -20,9 +20,9 @@ function run(g: GameState, seasons: number, each?: (g: GameState) => void): { se
 
 describe("pacing: a calendar, one new concept a season", () => {
   it("the order and the dates are fixed", () => {
-    expect(PACING.map((p) => p.id)).toEqual(["cards", "orders", "vet", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]);
+    expect(PACING.map((p) => p.id)).toEqual(["cards", "orders", "vet", "craft", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]);
     // Year 2 Spring, Year 2 Autumn, Year 3 Spring, Year 3 Autumn (season 0 = Year 1 Spring).
-    expect(CALENDAR).toEqual({ vet: 4, farm: 6, dogs: 8, cat: 10 });
+    expect(CALENDAR).toEqual({ vet: 4, craft: 7, farm: 6, dogs: 8, cat: 10 });
   });
 
   it("each dated concept arrives exactly on its season, letters in year 1, never two at once", () => {
@@ -45,7 +45,7 @@ describe("pacing: a calendar, one new concept a season", () => {
     expect(tutorialOver(g)).toBe("orders");
     expect(g.season).toBe(0);
     const got = run(g, 11);
-    expect(got.map((x) => `${x.id}@${x.season}`)).toEqual(expect.arrayContaining(["vet@4", "farm@6", "dogs@8", "cat@10"]));
+    expect(got.map((x) => `${x.id}@${x.season}`)).toEqual(expect.arrayContaining(["vet@4", "craft@7", "farm@6", "dogs@8", "cat@10"]));
   });
 
   it("letters never come during the tutorial; they come when it ends, or by Year 2 Summer if it never does", () => {
@@ -95,16 +95,19 @@ describe("pacing: a calendar, one new concept a season", () => {
     expect(nextUnlock(g)).toBe("farm");
     grantUnlock(g, "farm");
     g.season = 7;
-    expect(nextUnlock(g)).toBe("tree");
-    grantUnlock(g, "tree");
+    expect(nextUnlock(g)).toBe("craft"); // the woolshed's season, not the tree's
+    grantUnlock(g, "craft");
     g.season = 8;
     expect(nextUnlock(g)).toBe("dogs");
     grantUnlock(g, "dogs");
     g.season = 9;
-    expect(nextUnlock(g)).toBe("visitor");
-    grantUnlock(g, "visitor");
+    expect(nextUnlock(g)).toBe("tree");
+    grantUnlock(g, "tree");
     g.season = 10;
     expect(nextUnlock(g)).toBe("cat");
+    grantUnlock(g, "cat");
+    g.season = 11;
+    expect(nextUnlock(g)).toBe("visitor");
   });
 
   it("in play, an early blue lamb's concepts still never share a season with the calendar", () => {
@@ -158,12 +161,14 @@ describe("pacing: a calendar, one new concept a season", () => {
     expect(nextDated(g)).toEqual({ id: "vet", season: 4 });
     grantUnlock(g, "vet");
     expect(nextDated(g)).toEqual({ id: "farm", season: 6 });
+    grantUnlock(g, "farm");
+    expect(nextDated(g)).toEqual({ id: "craft", season: 7 });
   });
 
   it("the fast-forward grants everything up to the act at once, with no lesson", () => {
     const g = newGame(8);
     enterAct(g, 3, undefined, { grant: true });
-    for (const u of ["cards", "orders", "vet", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]) expect(g.unlocks).toContain(u);
+    for (const u of ["cards", "orders", "vet", "craft", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]) expect(g.unlocks).toContain(u);
     expect(g.lesson ?? null).toBeNull();
     expect(nextUnlock(g)).toBeNull();
   });

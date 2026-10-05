@@ -22,6 +22,8 @@ export const PANELS = [
   { name: "market", act: 3, shot: "market-improvements", scrollTo: '#overlay [data-upgrade-card="paddock"]' },
   { name: "animal" },
   { name: "woolshed", act: 3 },
+  { name: "woolshed", act: 3, shot: "woolshed-items", click: "#overlay [data-tab=\"items\"]" },
+  { name: "woolshed", act: 3, shot: "woolshed-store", click: "#overlay [data-tab=\"store\"]" },
   { name: "settings" },
   { name: "report" },
   { name: "orders", act: 1 },
@@ -51,6 +53,7 @@ export const panels = {
           if (!found) throw new ProbeError(`${sel} not found`);
           await g.page.waitForTimeout(100);
         }
+        if (p.click) { await g.page.click(p.click); await g.page.waitForTimeout(150); }
         if (p.name === "forecast") await assertSwatches(g, query);
         ctx.artifact(await g.screenshot(`panel-${p.shot ?? p.name}`));
         g.assertNoErrors(`on ${query}`);

@@ -805,6 +805,7 @@ and tuning is a separate commit only if a target is badly missed.
 - **Demo:** the woolshed store with fleece lots, and meters dipping as you sell.
 
 ### Phase 5: Woolshed queue, items and patterns
+- **Status:** built (feature commit), balance pass in a separate commit. See CONTRACTS §13.
 - **Scope:** `core/craft.ts` (recipes, benches, jobs, one stage per season, quality, hands,
   `forecastJob`); pattern unlocks and cards; item sales through demand; bench upgrades in
   `UPGRADES`; the woolshed panel (three bench columns with job cards, locked pattern silhouettes);

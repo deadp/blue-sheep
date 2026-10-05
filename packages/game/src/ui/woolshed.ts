@@ -1,10 +1,11 @@
 /** The wool store (the woolshed panel) and the wool buyer with its demand meters (in the market). DESIGN-v3 §5, §7. */
 import {
   WOOL_TYPES, WOOL_TYPE_LABEL, autoSellOn, boomColourNow, demandFraction, demandLevel, demandMult, demandWord, finenessWord, flockSheep, forecastSale, isAdult, isShearingSeason,
-  lotPrice, rawKey, seasonLabel, storeCap, storeOf, woolTypeOf, type FleeceLot, type GameState,
+  lotPrice, rawKey, craftOn, hasUpgrade, itemsOf, jobsOf, upgradeBlocked, upgradeDef, upgradeOffered, forecastUpgrade, seasonLabel, storeCap, storeOf, woolTypeOf, type FleeceLot, type GameState,
 } from "../core/index.js";
 import { btn, head, icon, tag } from "./felt/index.js";
 import { esc, numbersOn, swatch } from "./util.js";
+import { itemsTabHtml, workbenchHtml } from "./craft.js";
 import type { View } from "./view.js";
 
 /** A demand meter: ten felt dots filled to the level, the word beside it; the price multiplier only with numbers. */
@@ -94,19 +95,38 @@ function lotCard(state: GameState, l: FleeceLot): string {
   </div>`;
 }
 
-/** The woolshed: the wool store with its fleece lots, auto-sell, and a way to the wool buyer. */
-export function woolshedHtml(state: GameState, view: View): string {
-  const store = storeOf(state), cap = storeCap(state), auto = autoSellOn(state);
+/** The store tab: fleece lots, auto-sell and the wool buyer (the whole woolshed before the craft concept arrives). */
+function storeTabHtml(state: GameState, view: View): string {
+  const store = storeOf(state), auto = autoSellOn(state);
   const next = isShearingSeason(state.season) ? "at the end of this season" : "next spring or autumn";
   const lots = store.length
     ? `<div class="lots">${store.map((l) => lotCard(state, l)).join("")}</div>`
     : `<p class="meta">${auto ? "Auto-sell is on, so each clip goes straight to the wool buyer." : "The store is empty."} Your sheep are shorn ${next}.</p>`;
-  return `<div class="panel-head">${head("yarn", "Woolshed", 2)}<div class="tags">${tag(`${store.length} of ${cap} fleeces`, { icon: "store", tone: store.length >= cap ? "rose" : "sage", title: "Fleeces in the store" })}${tag(String(state.money), { icon: "coin", tone: "butter", title: "Your coins" })}</div></div>
-    <p class="meta">Every adult is shorn in spring and autumn. Each fleece is washed and kept here until you sell it, so you can wait for the wool buyer to want it. A full store sends the extra fleeces straight to the buyer.</p>
+  const press = hasUpgrade(state, "press") ? "" : (() => {
+    if (!state.unlocks.includes("craft") || !upgradeOffered(state, "press")) return "";
+    const why = upgradeBlocked(state, "press");
+    return `<div class="row">${btn(`${upgradeDef("press").name} · ${upgradeDef("press").price}`, { kind: why ? "ghost" : "secondary", icon: "store", cls: "small", data: { upgrade: "press" }, title: why ?? forecastUpgrade(state, "press").text })}<span class="meta">${esc(upgradeDef("press").blurb)}</span></div>`;
+  })();
+  return `<p class="meta">Every adult is shorn in spring and autumn. Each fleece is washed and kept here until you sell it or work it, so you can wait for the wool buyer to want it. A full store sends the extra fleeces straight to the buyer.</p>
     <div class="row autosell">${btn(`Auto-sell: ${auto ? "on" : "off"}`, { kind: auto ? "secondary" : "primary", icon: auto ? "check" : "yarn", data: { autosell: auto ? "off" : "on" }, title: "Sell each clip to the wool buyer at shearing" })}
       <span class="meta">${auto ? "Each clip is sold at shearing." : "Clips are kept here until you sell them."}</span></div>
+    ${press}
     ${revealLine(view)}
     ${head("store", "In the store")}
     ${lots}
     ${woolBuyerHtml(state, { ...view, sale: undefined })}`;
+}
+
+/** The woolshed: the wool store, and (once the craft concept has arrived) the workbench and the finished items. */
+export function woolshedHtml(state: GameState, view: View): string {
+  const store = storeOf(state), cap = storeCap(state);
+  const tags = `<div class="tags">${tag(`${store.length} of ${cap} fleeces`, { icon: "store", tone: store.length >= cap ? "rose" : "sage", title: "Fleeces in the store" })}${tag(String(state.money), { icon: "coin", tone: "butter", title: "Your coins" })}</div>`;
+  const headHtml = `<div class="panel-head">${head("yarn", "Woolshed", 2)}${tags}</div>`;
+  if (!craftOn(state)) return `${headHtml}${storeTabHtml(state, view)}`;
+  const tab = view.tab === "items" || view.tab === "store" ? view.tab : "bench";
+  const nItems = itemsOf(state).length, nJobs = jobsOf(state).length;
+  const chip = (id: string, label: string) => `<button class="chip ${tab === id ? "on" : ""}" data-tab="${id}" role="tab" aria-selected="${tab === id}"><span class="nm">${label}</span></button>`;
+  const tabs = `<div class="tabs" role="tablist" aria-label="Woolshed">${chip("bench", `Workbench${nJobs ? ` (${nJobs})` : ""}`)}${chip("items", `Items${nItems ? ` (${nItems})` : ""}`)}${chip("store", "Store")}</div>`;
+  const body = tab === "items" ? itemsTabHtml(state, view, revealLine(view)) : tab === "store" ? storeTabHtml(state, view) : `${revealLine(view)}${workbenchHtml(state, view)}`;
+  return `${headHtml}${tabs}<div class="shed-body" data-shed-tab="${tab}">${body}</div>`;
 }

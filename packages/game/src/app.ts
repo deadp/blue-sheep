@@ -9,7 +9,8 @@ import {
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
-  sellLot, forecastSale, storeOf,
+  sellLot, forecastSale, storeOf, allSources, queueJob, cancelJob, sellItem, itemsOf, itemName, itemPrice, itemKey, demandLevel, seasonLabel,
+  type Job,
   type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
 } from "./core/index.js";
 import { Hold, WorldView, type AreaId, type Hotspot, type LandInfo, type MoveMode, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
@@ -57,6 +58,13 @@ export type Action =
   | { type: "sellLots"; wool: string }
   /** Auto-sell each clip at shearing (default on); off keeps the lots in the store. */
   | { type: "autoSell"; on: boolean }
+  /** Woolshed: queue a job. `item` is a pattern (core/wool.ts ItemId) or "batt" / "yarn"; `source` is "lot:L3" or "fibre:F2" (default: the first wool in the shed). */
+  | { type: "queue"; item: string; source?: string }
+  /** Woolshed: cancel a job that has not begun, taking the wool back. */
+  | { type: "cancelJob"; id: number }
+  /** Sell one finished item, or `item` (a kind) for all of that kind, best first. */
+  | { type: "sellItem"; id: number }
+  | { type: "sellItems"; item: string }
   | { type: "test"; id: string; locus: string }
   | { type: "accept"; id: string }
   | { type: "decline"; id: string }
@@ -840,6 +848,11 @@ export class App {
       else if (d["sell"]) this.mutate(() => { const name = this.state.sheep[d["sell"]!]?.name; const p = sellSheep(this.state, d["sell"]!); toast(`Sold ${name ?? "the sheep"} for ${p} coins.`); });
       else if (d["selllot"]) this.guard(() => this.sellLotIds([d["selllot"]!]));
       else if (d["selltype"]) this.guard(() => this.sellLotType(d["selltype"]!));
+      else if (d["src"]) this.view.src = d["src"];
+      else if (d["queue"]) this.guard(() => this.queueItem(d["queue"]!, this.view.src));
+      else if (d["cancel"]) this.mutate(() => cancelJob(this.state, Number(d["cancel"])));
+      else if (d["sellitem"]) this.guard(() => this.sellItemIds([Number(d["sellitem"])]));
+      else if (d["sellitems"]) this.guard(() => this.sellItemKind(d["sellitems"]!));
       else if (d["autosell"]) this.mutate(() => { this.state.autoSell = d["autosell"] === "on"; });
       else if (d["hire"]) this.mutate(() => hireVisitingRam(this.state));
       else if (d["upgrade"]) { const opened = this.buyUpgrade(d["upgrade"]!); if (opened) { this.render(); return; } }
@@ -897,6 +910,34 @@ export class App {
     toast(`Sold ${n} fleece${n === 1 ? "" : "s"} for ${paid} coins.`);
   }
 
+  /** Queue a woolshed job from the picked wool (or the first wool in the shed). */
+  private queueItem(item: string, source: string | undefined): void {
+    const src = (source && allSources(this.state).some((x) => x.key === source) ? source : allSources(this.state)[0]?.key) ?? "";
+    let job: Job | undefined;
+    this.mutate(() => { job = queueJob(this.state, { item, source: src }); });
+    this.view.src = undefined;
+    if (job) toast(`${itemName(item)} queued: ready ${seasonLabel(job.seen.finish)}.`);
+  }
+
+  /** Sell finished items in this order, and set the Reveal: the coins the forecast said next to those paid. */
+  private sellItemIds(ids: number[]): void {
+    const mine = ids.map((id) => itemsOf(this.state).find((i) => i.id === id));
+    if (mine.some((i) => !i)) throw new Error("That isn't in the shed.");
+    let d = demandLevel(this.state, itemKey(mine[0]!.kind)), forecast = 0;
+    for (const it of mine) { const p = itemPrice(it!.kind, it!.q, d); forecast += p.coins; d = p.after; }
+    let paid = 0;
+    this.mutate(() => { for (const id of ids) paid += sellItem(this.state, id); });
+    const n = ids.length, name = itemName(mine[0]!.kind).toLowerCase();
+    this.view.sale = { forecast, paid, text: `Sold ${n} ${name}${n === 1 ? "" : "s"} to the village.` };
+    toast(`Sold ${n} ${name}${n === 1 ? "" : "s"} for ${paid} coins.`);
+  }
+
+  private sellItemKind(kind: string): void {
+    const ids = itemsOf(this.state).filter((i) => i.kind === kind).sort((a, b) => b.q - a.q).map((i) => i.id);
+    if (!ids.length) throw new Error("You have none of those to sell.");
+    this.sellItemIds(ids);
+  }
+
   private sellLotType(wool: string): void {
     const ids = storeOf(this.state).filter((l) => wool === "all" || l.type === wool).map((l) => l.id);
     if (!ids.length) throw new Error("There's no wool of that kind in the store.");
@@ -913,6 +954,10 @@ export class App {
       case "sell": this.mutate(() => { sellSheep(this.state, a.id); }); break;
       case "sellLot": this.sellLotIds([a.id]); break;
       case "sellLots": this.sellLotType(a.wool); break;
+      case "queue": this.queueItem(a.item, a.source); break;
+      case "cancelJob": this.mutate(() => cancelJob(this.state, a.id)); break;
+      case "sellItem": this.sellItemIds([a.id]); break;
+      case "sellItems": this.sellItemKind(a.item); break;
       case "autoSell": this.mutate(() => { this.state.autoSell = a.on; }); break;
       case "test": this.mutate(() => vetTest(this.state, a.id, a.locus)); break;
       case "accept": this.mutate(() => acceptOrder(this.state, a.id)); break;

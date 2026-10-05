@@ -1,5 +1,6 @@
 /** Every balance number in one place, so the oracle scripts can tune them. */
 import type { BreedId } from "@blue-sheep/genetics";
+import type { ItemId } from "./wool.js";
 import type { ActNumber, DogId, FairCategory, PetId, SheepOrigin, Unlock, UpgradeId } from "./types.js";
 
 export const SEASONS = ["Spring", "Summer", "Autumn", "Winter"] as const;
@@ -72,6 +73,8 @@ export interface UpgradeDef {
   blurb: string;
   /** Said when it is bought. */
   done: string;
+  /** "craft": a woolshed bench or store upgrade, bought in the woolshed rather than at the market. */
+  group?: "craft";
 }
 export const UPGRADES: UpgradeDef[] = [
   { id: "paddock", name: "Open the far paddock", icon: "🌿", price: 120, minAct: 0, unlock: "farm", requires: null, cap: 4, blurb: "Mend the fence on the second paddock: room for four more sheep.", done: "The far paddock is open — room for four more sheep." },
@@ -82,6 +85,18 @@ export const UPGRADES: UpgradeDef[] = [
   { id: "barn", name: "A snug barn", icon: "🛖", price: 110, minAct: 0, unlock: "farm", requires: null, cap: 0, blurb: "Draught-proof the barn, so no sheep falls ill in a hard winter.", done: "The barn is snug and ready for winter." },
   { id: "shearing", name: "A shearing shed", icon: "✂️", price: 220, minAct: 1, unlock: "farm", requires: null, cap: 0, blurb: "Cleaner, better-sorted fleeces: all wool fetches a quarter more.", done: "The shearing shed is built. Your wool will fetch more." },
   { id: "meadow", name: "Rent the long meadow", icon: "🌾", price: 300, minAct: 3, unlock: "farm", requires: "paddock", cap: 6, blurb: "Graze the meadow by the river: room for six more sheep.", done: "The long meadow is yours to graze — room for six more sheep." },
+  // The woolshed (core/craft.ts): bench upgrades and the wool press, bought from the woolshed panel.
+  { id: "drumCarder", name: "A drum carder", icon: "🧶", price: 60, minAct: 0, unlock: "craft", requires: null, cap: 0, group: "craft", blurb: "Cards six kilos of wool a season instead of two.", done: "The drum carder is bolted to the bench." },
+  { id: "millShare", name: "A share in the carding mill", icon: "🏭", price: 200, minAct: 2, unlock: "craft", requires: "drumCarder", cap: 0, group: "craft", blurb: "The mill cards fifteen kilos a season for you.", done: "The mill will card for you now." },
+  { id: "wheel", name: "A spinning wheel", icon: "🎡", price: 80, minAct: 0, unlock: "craft", requires: null, cap: 0, group: "craft", blurb: "Spins three kilos of yarn a season instead of one.", done: "The spinning wheel hums in the corner." },
+  { id: "wheel2", name: "A second wheel", icon: "🎡", price: 180, minAct: 2, unlock: "craft", requires: "wheel", cap: 0, group: "craft", blurb: "Spins six kilos a season.", done: "Two wheels, twice the yarn." },
+  { id: "circle", name: "A knitting circle", icon: "🧦", price: 40, minAct: 0, unlock: "craft", requires: null, cap: 0, group: "craft", blurb: "Friends to knit alongside: twice the knitting each season.", done: "The knitting circle meets on Thursdays." },
+  { id: "knitHall", name: "The village knitting hall", icon: "🏠", price: 150, minAct: 2, unlock: "craft", requires: "circle", cap: 0, group: "craft", blurb: "A whole hall of knitters: three times the knitting.", done: "The hall is full of clicking needles." },
+  { id: "tableLoom", name: "A table loom", icon: "🪡", price: 120, minAct: 1, unlock: "craft", requires: null, cap: 0, group: "craft", blurb: "Opens weaving: bush shirts and rugs.", done: "The table loom is warped and ready." },
+  { id: "floorLoom", name: "A floor loom", icon: "🪡", price: 300, minAct: 3, unlock: "craft", requires: "tableLoom", cap: 0, group: "craft", blurb: "Weaves more than twice as much a season.", done: "The big floor loom takes up half the shed." },
+  { id: "feltTable", name: "A felting table", icon: "🫧", price: 30, minAct: 0, unlock: "craft", requires: null, cap: 0, group: "craft", blurb: "Opens felting: dryer balls and tea cosies.", done: "A wet, soapy table for felting." },
+  { id: "feltSink", name: "A felting sink", icon: "🚰", price: 70, minAct: 0, unlock: "craft", requires: "feltTable", cap: 0, group: "craft", blurb: "Twice the felting, and slippers come out better.", done: "The felting sink is plumbed in." },
+  { id: "press", name: "A wool press", icon: "📦", price: 160, minAct: 2, unlock: "craft", requires: "shearing", cap: 0, group: "craft", blurb: "Packs forty fleeces in the store instead of twenty-four.", done: "The wool press is bolted down: room for forty fleeces." },
 ];
 
 // ---- Farm animals: dogs and the cat ----------------------------------------
@@ -157,9 +172,10 @@ export const CLIP_KG = 2;
 export const WASH_YIELD: Record<string, number> = { fine: 0.65, medium: 0.7, strong: 0.75, crossbred: 0.75, lustre: 0.75, carpet: 0.8, lopi: 0.8 };
 /** Raw-wool price factor by wool type (medium = 1), on top of colour and fineness. */
 export const RAW_TYPE_FACTOR: Record<string, number> = { fine: 1.15, medium: 1.05, strong: 1, crossbred: 1, lustre: 1.05, carpet: 0.9, lopi: 1.1 };
-/** Fleece lots the wool store holds: the start, with the shearing shed. (The wool press, 40, arrives with the woolshed.) */
+/** Fleece lots the wool store holds: the start, with the shearing shed. (The wool press holds 40.) */
 export const STORE_CAP = 12;
 export const STORE_CAP_SHED = 24;
+export const STORE_CAP_PRESS = 40;
 /** Demand meter range, and the price multiplier m(D) = DEMAND_FLOOR + DEMAND_SLOPE x D (0.4x saturated, 1.0 at rest, 1.3x in a spike). */
 export const DEMAND_MAX = 1.5;
 export const DEMAND_FLOOR = 0.4;
@@ -224,7 +240,7 @@ export const ACTS: ActDef[] = [
   },
   {
     act: 1, title: "Hidden colours", line: "Hidden colours! Breed me a true blue sheep.",
-    goalText: "Breed a true blue lamb.", unlocks: ["cards", "orders", "vet", "farm", "dogs", "cat"], flockCap: 10,
+    goalText: "Breed a true blue lamb.", unlocks: ["cards", "orders", "vet", "craft", "farm", "dogs", "cat"], flockCap: 10,
   },
   {
     act: 2, title: "The wool buyer", line: "I pay for fineness.",
@@ -249,3 +265,68 @@ export const ORDERS_FOR_ACT2 = 3;
 export const ORDERS_CARRIED = 2;
 /** How far raw-wool targets swing with the time of year (warm wools up in autumn, fine up in spring). */
 export const SEASON_SWING = 0.1;
+
+// ---- The woolshed (DESIGN-v3 §5, §6; core/craft.ts) ---------------------------------------------------------
+
+export type BenchName = "card" | "spin" | "knit" | "weave" | "felt";
+/** Capacity per season by tier (index 0 = no bench). Card and spin are kg of fibre; knit, weave and felt are work points. */
+export const BENCH_CAP: Record<BenchName, number[]> = {
+  card: [2, 2, 6, 15], spin: [1, 1, 3, 6], knit: [4, 4, 8, 14], weave: [0, 4, 10], felt: [0, 4, 8],
+};
+/** Noise (sd, quality points) at each tier of the bench that finishes the job; each level of hands trims it 8%. */
+export const BENCH_SIGMA = [10, 10, 6, 3];
+/** Completed jobs needed for each hands level at a bench. */
+export const HANDS_AT = [1, 3, 6, 10, 16];
+export const HANDS_TRIM = 0.08;
+/** Which upgrade lifts which bench to which tier. */
+export const BENCH_UPGRADES: { id: UpgradeId; bench: BenchName; tier: number }[] = [
+  { id: "drumCarder", bench: "card", tier: 2 }, { id: "millShare", bench: "card", tier: 3 },
+  { id: "wheel", bench: "spin", tier: 2 }, { id: "wheel2", bench: "spin", tier: 3 },
+  { id: "circle", bench: "knit", tier: 2 }, { id: "knitHall", bench: "knit", tier: 3 },
+  { id: "tableLoom", bench: "weave", tier: 1 }, { id: "floorLoom", bench: "weave", tier: 2 },
+  { id: "feltTable", bench: "felt", tier: 1 }, { id: "feltSink", bench: "felt", tier: 2 },
+];
+export const BENCH_LABEL: Record<BenchName, string> = { card: "Carding", spin: "Spinning", knit: "Knitting", weave: "Weaving", felt: "Felting" };
+export const MAX_JOBS = 12;
+/** Seasons a lot of fibre kg counts as one "batch" for stock jobs. */
+export const STOCK_KG = 0.5;
+/** Starting gift when the woolshed opens: Old Tom's spare fleece. */
+export const GIFT_FLEECE = { kg: 1, microns: 28, staple: 90 };
+
+export interface Recipe {
+  id: ItemId;
+  name: string;
+  /** Clean kg of fibre. */
+  kg: number;
+  /** The finishing bench and its work points. */
+  bench: "knit" | "weave" | "felt";
+  work: number;
+  /** Ideal fibre diameter (µm): coarser costs quality. */
+  micron: number;
+  /** Base coins at Q 50 and rest demand (price = base x (0.5 + Q/100) x m(D)). */
+  base: number;
+  /** Meter drop per item sold. */
+  step: number;
+  colour: "any" | "natural" | "pastel";
+  /** Shortest staple (mm) that is not penalised. */
+  minStaple?: number;
+  /** Plain line for the pattern card. */
+  blurb: string;
+}
+export const RECIPES: Recipe[] = [
+  { id: "socks", name: "Socks", kg: 0.2, bench: "knit", work: 2, micron: 23, base: 14, step: 0.1, colour: "any", blurb: "A warm pair. Soft wool, spun fine." },
+  { id: "beanie", name: "Beanie", kg: 0.15, bench: "knit", work: 1, micron: 28, base: 12, step: 0.1, colour: "any", blurb: "Quick to knit, and everyone wants one in winter." },
+  { id: "dryerBalls", name: "Dryer balls", kg: 0.2, bench: "felt", work: 0.5, micron: 35, base: 4, step: 0.05, colour: "any", blurb: "Felted balls. Any wool will do." },
+  { id: "teaCosy", name: "Tea cosy", kg: 0.2, bench: "felt", work: 1, micron: 30, base: 9, step: 0.12, colour: "any", blurb: "Felted and snug. Sells best in summer, oddly." },
+  { id: "gumbootSocks", name: "Gumboot socks", kg: 0.3, bench: "knit", work: 2, micron: 34, base: 10, step: 0.08, colour: "natural", blurb: "Thick and hard-wearing, in natural colours." },
+  { id: "mittens", name: "Mittens", kg: 0.15, bench: "knit", work: 1.5, micron: 29, base: 12, step: 0.1, colour: "any", blurb: "A pair for cold hands." },
+  { id: "slippers", name: "Felted slippers", kg: 0.35, bench: "felt", work: 2, micron: 28, base: 18, step: 0.12, colour: "any", blurb: "Felted to fit. Takes practice." },
+  { id: "scarf", name: "Scarf", kg: 0.3, bench: "knit", work: 2, micron: 25, base: 16, step: 0.1, colour: "any", blurb: "Long and soft." },
+  { id: "babyShawl", name: "Baby shawl", kg: 0.4, bench: "knit", work: 4, micron: 19, base: 30, step: 0.2, colour: "pastel", blurb: "Only the finest, palest wool." },
+  { id: "lopapeysa", name: "Lopapeysa", kg: 0.8, bench: "knit", work: 8, micron: 30, base: 60, step: 0.25, colour: "any", minStaple: 100, blurb: "The Icelandic yoke jersey. Wants long, double-coated wool." },
+  { id: "bushShirt", name: "Bush shirt", kg: 1, bench: "weave", work: 6, micron: 34, base: 55, step: 0.25, colour: "any", blurb: "A tough woven shirt, bush-proof." },
+  { id: "rug", name: "Rug", kg: 2.5, bench: "weave", work: 8, micron: 45, base: 70, step: 0.3, colour: "any", minStaple: 120, blurb: "Hearth rug from the coarsest carpet wool." },
+];
+/** Items seasonal targets: warm things want winter, tea cosies want summer (read by core/demand.ts). */
+export const ITEM_WINTER: string[] = ["beanie", "mittens", "gumbootSocks"];
+export const ITEM_SWING = 0.2;

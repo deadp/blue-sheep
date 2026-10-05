@@ -1028,3 +1028,27 @@ prints the breed table, the founder colour families per breed, and a selective-b
   forecast and shows the Reveal. Shots `woolshed`, `market-wool-before`, `market-wool-after`, `panel-woolshed`. Tests:
   `demand.test.ts`, `woolstore.test.ts` (shearing seasons, lots, auto-sell, overflow, forecast = paid, determinism, old saves,
   year-1 income within 15% of v2 on seeds 1-20, money >= 0 over 12 seasons).
+
+## 13. The woolshed: queue, items and patterns (DESIGN-v3 Phase 5)
+
+- **Core.** `core/craft.ts` (recipes in `config.ts` `RECIPES`, benches `BENCH_CAP`, noise `BENCH_SIGMA`, hands `HANDS_AT`). A job takes one
+  source (a fleece lot `lot:<id>`, a batt, or yarn) through a route: card, spin, then knit / weave / felt. Each season (step 5b of
+  `advanceSeason`, before ageing and demand refill) every job does at most one stage's work against what is left of that bench's
+  capacity, in queue order; a job queued in season t with ample benches is finished as t+3 begins. Quality
+  `Q = 100 x fit x fine x staple x colour x (1 + care) + noise`; noise is drawn from the game rng only when a job finishes (games that never
+  craft replay identically). Stars: under 35, 35, 55, 70, 85. Item price `base x (0.5 + Q/100) x (0.4 + 0.6 D)`; selling lowers the
+  `item:<id>` meter by the recipe `step`.
+- **State** (all optional, old saves load): `jobs`, `items`, `fibre` (batts and yarn kept for later), `hands` (finished jobs per finishing
+  bench), `craft` (made, spun counters), `patterns`, `nextJob/nextItem/nextFibre`. Unlock `"craft"` arrives at season 7 (`CALENDAR.craft`)
+  with Old Tom's gift fleece (`giftFleece`), and auto-sell goes off. Fixtures (`?act=N`) keep auto-sell as it was.
+- **Actions.** `{type:"queue", item, source}`, `{type:"cancelJob", id}` (refund only before the first stage), `{type:"sellItem", id}`,
+  `{type:"sellItems", kind}`. Panel `woolshed` has tabs `bench`, `items`, `store` (`data-tab`); `?panel=woolshed` opens on the bench once craft has
+  arrived, else the store only. Deep link actions `open` accept `tab`.
+- **Forecast.** `forecastJob(state, {item, source})` returns stars band, 10-90 quality band, coin band, finish season and notes before the commit;
+  the queued job keeps it as `job.seen` and the item as `item.seen`; the report's "The woolshed" block and the items tab show forecast and made side by side.
+  Quality numbers only with the "numbers" unlock.
+- **Upgrades** (`group:"craft"`, shown in the woolshed, not the market): drumCarder, millShare, wheel, wheel2, circle, knitHall, tableLoom,
+  floorLoom, feltTable, feltSink, press (store 40, needs shearing). `benchBonus(state, bench)` is the hook for Phase 9 bird workers (returns 0).
+- **Probe.** `craft.mjs` (queue socks by real clicks, sleep x3, Q inside the seen band with one retry seed, no job advances two stages in a season,
+  selling lowers the socks meter by exactly 0.10); `lessons.mjs` plays the craft lesson by clicks; `woolstore.mjs` opens the store tab; `panels.mjs`
+  adds `woolshed-items` and `woolshed-store`. Tests: `craft.test.ts`.

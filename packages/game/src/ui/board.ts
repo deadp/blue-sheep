@@ -22,7 +22,7 @@ export function goalCard(state: GameState): string {
 }
 
 const COMING: Partial<Record<Unlock, string>> = {
-  vet: "the vet's hut opens", farm: "the trader brings farm improvements", dogs: "dogs come to the market", cat: "a farm cat comes to the market",
+  vet: "the vet's hut opens", craft: "the woolshed opens", farm: "the trader brings farm improvements", dogs: "dogs come to the market", cat: "a farm cat comes to the market",
 };
 
 function upcoming(state: GameState): { icon: IconName; text: string }[] {

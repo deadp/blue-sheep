@@ -23,6 +23,7 @@ import { feedPerHead, hasUpgrade } from "./upgrades.js";
 import { departVisitingRam, offerVisitingRam } from "./visitor.js";
 import { tutorialHornsCard, tutorialLambGenome, tutorialLambIndex } from "./tutorial.js";
 import { checkPacing } from "./pacing.js";
+import { craftPatterns, craftSeason } from "./craft.js";
 
 /** Chance of twins for a mating whose lambs would have inbreeding f. */
 export function twinChance(f: number): number {
@@ -149,6 +150,9 @@ export function advanceSeason(state: GameState): SeasonReport {
   report.feed = Math.min(state.money, eaters() * perHead + extraFeed);
   state.money -= report.feed;
 
+  // 5b. The woolshed: each job does a stage's work (draws from the RNG only when a job finishes).
+  let crafted = craftSeason(state, rng, t);
+
   // 6. Ageing. The wool meters refill toward next season's targets.
   refillDemand(state, t + 1);
   state.season = t + 1;
@@ -194,6 +198,8 @@ export function advanceSeason(state: GameState): SeasonReport {
 
   // 11b. At most one new concept arrives with the new season (core/pacing.ts).
   report.unlocked = checkPacing(state);
+  crafted = craftPatterns(state, crafted);
+  report.crafted = crafted;
 
   // 12. Visitors, events, market, new orders for the new season.
   departVisitingRam(state);

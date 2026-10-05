@@ -1,8 +1,9 @@
 /** The season report: lambs next to the forecast the player saw, money, orders, fair, event, discoveries, act advance. */
 import {
-  FAIR_LABEL, MICE_ANNOUNCE, PET_NAME, paceStep, seasonLabel, woolOf, type CrossForecast, type GameState, type SeasonReport, type Sheep,
+  FAIR_LABEL, MICE_ANNOUNCE, itemName, PET_NAME, paceStep, seasonLabel, woolOf, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
 import { lambTile, litterLooks } from "./forecast.js";
+import { flipLine } from "./craft.js";
 import { cap, discoveryText, discoveryTitle, esc, portrait, UNLOCK_ICON, UNLOCK_WORDS } from "./util.js";
 import { btn, head, icon, iconize, nm, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
@@ -106,6 +107,17 @@ export function reportHtml(state: GameState, view: View): string {
     blocks.push(`${head("sparkle", "Discoveries")}<div class="dcards">${shown.map((d) =>
       `<div class="dcard sparkle"><div class="d-top">${icon("sparkle", "inl")} ${esc(discoveryTitle(d))}</div><div>${esc(discoveryText(state, d))}</div></div>`).join("")}</div>
       ${more > 0 ? `<p class="meta">…and ${more} more in the ${btn("codex", { kind: "ghost", icon: "book", cls: "inline", data: { open: "codex" } })}</p>` : ""}`);
+  }
+  const cr = r.crafted;
+  if (cr && (cr.done.length || cr.stock.length || cr.advanced.length || cr.newPatterns.length)) {
+    const done = cr.done.map((d) => `<div class="dcard sparkle craft-done" data-crafted="${esc(d.item.kind)}" style="--wool:${esc(d.item.hex)}"><div class="d-top">${icon("yarn", "inl")} ${esc(d.name)} finished</div>
+      <div>${flipLine(d.item, d.item.seen)}</div><div class="meta">${esc(d.item.word)} wool · now in the ${btn("woolshed", { kind: "ghost", cls: "inline", data: { open: "woolshed", tab: "items" } })}</div></div>`).join("");
+    const steps = [
+      ...cr.advanced.map((a) => `${esc(a.name)}: ${{ card: "carded", spin: "spun", knit: "knitted", weave: "woven", felt: "felted" }[a.stage]}, on to the next step.`),
+      ...cr.stock.map((x) => `${x.form === "batt" ? "A batt of " : "Yarn from "}${esc(x.word)} wool is ready to keep.`),
+    ];
+    const pats = cr.newPatterns.map((p) => `<div class="dcard sparkle new-pattern" data-new-pattern="${esc(p.item)}"><div class="d-top">${icon("sparkle", "inl")} New pattern: ${esc(itemName(p.item))}!</div><div class="meta">${esc(p.why)}</div></div>`).join("");
+    blocks.push(`${head("yarn", "The woolshed")}${done ? `<div class="dcards">${done}</div>` : ""}${steps.length ? `<ul class="plain">${steps.map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}${pats ? `<div class="dcards">${pats}</div>` : ""}`);
   }
   const money = (i: IconName, v: string, label: string, cls = "") => `<div class="money ${cls}">${icon(i)}<b>${v}</b><span>${label}</span></div>`;
   const lines: string[] = [];

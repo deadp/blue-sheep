@@ -689,4 +689,38 @@ body.gallery-mode #hud { position: sticky; top: 0; height: 110px; }
 .lot { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 14px; background: rgba(255, 255, 255, .6); }
 .lot .lot-sw { width: 28px; height: 28px; }
 .autosell { align-items: center; gap: 10px; }
+/* Woolshed crafting (core/craft.ts) */
+.cstars { color: #d9a441; letter-spacing: 1px; font-size: 15px; white-space: nowrap; }
+.cstars i { font-style: normal; color: rgba(86, 73, 74, .22); }
+.shed-body { margin-top: 6px; }
+.src-chips .chip .chip-sw { width: 18px; height: 18px; }
+.patterns { display: grid; gap: 8px; margin: 8px 0 14px; align-items: start; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.pattern { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: start; padding: 10px 12px; border-radius: 14px; background: rgba(255, 255, 255, .6); }
+.pattern.locked { grid-template-columns: 44px 1fr; opacity: .75; background: rgba(86, 73, 74, .08); }
+.pattern .p-act { display: flex; justify-content: flex-end; }
+.pattern .p-sil { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: rgba(86, 73, 74, .22); }
+.pattern .p-sil .ic { width: 22px; height: 22px; opacity: .6; }
+.cf-box { margin-top: 6px; padding: 6px 10px; border-radius: 12px; background: #eef4e6; display: grid; gap: 2px; }
+.cf-box.off { background: rgba(86, 73, 74, .07); }
+.cf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.cf-row .stars, .cf-row .star-band { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.cf-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.benches { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin: 8px 0; }
+.bench { padding: 10px 12px; border-radius: 14px; background: rgba(255, 255, 255, .6); display: grid; gap: 6px; align-content: start; }
+.bench.locked { background: rgba(86, 73, 74, .08); }
+.bench .b-head { display: flex; gap: 6px; align-items: center; }
+.bench .b-tier { margin-left: auto; display: inline-flex; gap: 3px; }
+.bench .b-tier i { width: 9px; height: 9px; border-radius: 50%; background: rgba(86, 73, 74, .2); }
+.bench .b-tier i.on { background: #8bb57c; }
+.bench .b-up { display: grid; gap: 2px; }
+.job { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: start; padding: 6px 8px; border-radius: 10px; background: #fbf6e8; margin-bottom: 4px; }
+.job .job-sw { width: 18px; height: 18px; }
+.item-group { margin: 8px 0 14px; }
+.item-group .ig-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.item { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 14px; background: rgba(255, 255, 255, .6); }
+.craft-done .flip, .item .flip { color: #4d6b3f; font-weight: 600; }
+.new-pattern { border-color: #d9a441; }
 @media (max-width: 700px) { .buyer-row { grid-template-columns: 1fr; } }
+.cstars { white-space: nowrap; }
+.dcards .craft-done { grid-column: span 2; }
+@media (max-width: 640px) { .dcards .craft-done { grid-column: auto; } }

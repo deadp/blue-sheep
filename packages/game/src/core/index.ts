@@ -70,3 +70,10 @@ export {
 } from "./wool.js";
 export * from "./demand.js";
 export { isShearingSeason, clipKg, storeCap, storeOf, autoSellOn, boomColourNow, makeLot, lotPrice, sellLotNow, sellLot, forecastSale, sellStoreForCash, shearFlock, type LotPrice, type SaleForecast } from "./woolstore.js";
+export {
+  recipeOf, itemName, craftOn, jobsOf, itemsOf, fibreOf, patternsOf, patternList, patternHint, benchTier, benchCapacity, benchOwned,
+  benchBonus, handsLevel, handsWord, sigmaAt, routeFor, jobKg, stageUnits, sourceOf, allSources, qualityFactors, qualityBase, evenFactor,
+  starsOf, starsWord, qualityWord, itemPrice, forecastJob, projectFinish, queueJob, cancelJob, sellItem, sellItems, forecastItemSale,
+  craftSeason, updatePatterns, onCraftArrives, giftFleece, STOCK_KINDS,
+  type JobForecast, type JobPlan, type Source, type PatternState, type ItemSaleForecast, type QFactors,
+} from "./craft.js";

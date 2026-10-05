@@ -11,6 +11,7 @@ import type { View } from "./view.js";
 import { crossCached } from "./cache.js";
 import { petForecastHtml } from "./pets.js";
 import { woolBuyerHtml } from "./woolshed.js";
+import { itemBuyerHtml } from "./craft.js";
 
 /** Best pairing of an outside sheep with the flock, by true blue chance, then vivid colour, then learning. */
 function bestMatch(state: GameState, s: Sheep): { mate: Sheep; f: CrossForecast } | null {
@@ -76,7 +77,7 @@ function upgradeCard(state: GameState, u: (typeof UPGRADES)[number]): string {
 /** Farm animals (dogs, the cat) and farm improvements, each with its forecast before buying. */
 function upgradesHtml(state: GameState): string {
   // Only what has arrived at the market so far (core/pacing.ts): improvements, then dogs, then the cat.
-  const offered = UPGRADES.filter((u) => upgradeOffered(state, u.id));
+  const offered = UPGRADES.filter((u) => u.group !== "craft" && upgradeOffered(state, u.id));
   const pets = offered.filter((u) => isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
   const rows = offered.filter((u) => !isPetId(u.id)).map((u) => upgradeCard(state, u)).join("");
   if (!pets && !rows) return "";
@@ -125,6 +126,7 @@ export function marketHtml(state: GameState, view: View): string {
     <div class="mcards">${stock.length ? stock.map((s) => marketCard(state, view, s)).join("") : `<p class="meta">Sold out. The trader comes back next season.</p>`}</div>
     ${visitor}
     ${woolBuyerHtml(state, view)}
+    ${itemBuyerHtml(state)}
     ${upgradesHtml(state)}
     ${more("market-sell", `Sell a sheep · ${state.flock.length} of ${state.flockCap}`, `<ul class="sell-list">${flock}</ul>`, { open: lambRoom(state) < 1 })}`;
 }

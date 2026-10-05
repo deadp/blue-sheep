@@ -20,6 +20,8 @@ export interface View {
   tab: string | null;
   /** The last wool sale, for the Reveal beside the forecast the player saw (cleared when a panel opens). */
   sale?: { forecast: number; paid: number; text: string } | undefined;
+  /** Woolshed: the wool picked to work, "lot:L3" or "fibre:F2" (the first source when unset or gone). */
+  src?: string | undefined;
   /** The report from the last sleep, for the report panel. */
   report: SeasonReport | null;
   /** PNG data URL for a sheep (from WorldView.portrait). */

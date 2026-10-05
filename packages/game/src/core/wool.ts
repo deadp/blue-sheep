@@ -1,8 +1,7 @@
 /**
  * Wool types and fleece words (DESIGN-v3 §3.3, §6.1). The classification itself is the pure
  * `woolType` in `@blue-sheep/genetics` (wooltype.ts); this file applies it to a sheep's measured fleece, says
- * the fleece in plain words, and holds the data on which items each wool type suits (used by the woolshed
- * phases; nothing reads it in play yet).
+ * the fleece in plain words, and holds the data on which items each wool type suits (read by core/craft.ts).
  */
 import { WOOL_TYPE_LABEL, coatLayers, fleeceFromPhenotype, woolType, type FleeceMeasures, type WoolType } from "@blue-sheep/genetics";
 import type { Sheep } from "./types.js";
@@ -74,12 +73,12 @@ export function fleeceWords(s: Pick<Sheep, "phenotype">, numbers: boolean): Flee
   return { type, label, short, line: `${type === "lustre" ? "Lustre longwool" : label} wool: ${short}${nums}.`, layers };
 }
 
-// ---- which items each wool type suits (DESIGN-v3 §6.1; data only until the woolshed phases) ------------------
+// ---- which items each wool type suits (DESIGN-v3 §6.1; read by core/craft.ts) ------------------
 
 export type ItemId =
-  | "socks" | "babyShawl" | "beanie" | "mittens" | "gumbootSocks" | "scarf" | "lopapeysa" | "bushShirt" | "rug" | "felted" | "dryerBalls";
+  | "socks" | "babyShawl" | "beanie" | "mittens" | "gumbootSocks" | "scarf" | "lopapeysa" | "bushShirt" | "rug" | "slippers" | "teaCosy" | "dryerBalls";
 
-export const ITEM_IDS: ItemId[] = ["socks", "babyShawl", "beanie", "mittens", "gumbootSocks", "scarf", "lopapeysa", "bushShirt", "rug", "felted", "dryerBalls"];
+export const ITEM_IDS: ItemId[] = ["socks", "babyShawl", "beanie", "mittens", "gumbootSocks", "scarf", "lopapeysa", "bushShirt", "rug", "slippers", "teaCosy", "dryerBalls"];
 
 /** Suitability factors: ideal 1.0, good 0.8, poor 0.55, not allowed 0. */
 export const SUIT = { ideal: 1, good: 0.8, poor: 0.55, no: 0 } as const;
@@ -89,7 +88,7 @@ const [I, G, P, N] = [SUIT.ideal, SUIT.good, SUIT.poor, SUIT.no];
 const SUIT_ROWS: Record<ItemId, [number, number, number, number, number, number, number]> = {
   socks: [I, G, P, N, N, P, G], babyShawl: [I, P, N, N, N, N, N], beanie: [G, I, G, P, N, G, I], mittens: [G, I, G, P, N, I, G],
   gumbootSocks: [P, G, I, G, N, G, I], scarf: [I, I, P, G, N, G, G], lopapeysa: [N, P, P, P, N, I, P], bushShirt: [N, G, I, G, P, P, G],
-  rug: [N, N, G, G, I, P, P], felted: [I, I, G, P, P, G, G], dryerBalls: [G, G, G, G, G, G, G],
+  rug: [N, N, G, G, I, P, P], slippers: [I, I, G, P, P, G, G], teaCosy: [I, I, G, P, P, G, G], dryerBalls: [G, G, G, G, G, G, G],
 };
 const ORDER: WoolType[] = ["fine", "medium", "strong", "lustre", "carpet", "lopi", "crossbred"];
 

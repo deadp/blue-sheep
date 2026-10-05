@@ -138,6 +138,30 @@ export const LESSONS: readonly LessonDef[] = [
     ],
   },
   {
+    id: "craft", title: "The woolshed", steps: [
+      opens("woolshed", undefined, "The woolshed", [
+        "The old woolshed is yours now. Wool you spin and knit yourself is worth far more than wool sold by the fleece.",
+        "Open the <b>woolshed</b> (🧶) in your bag.",
+      ]),
+      {
+        id: "queue", title: "Start a pair of socks",
+        done: (s) => (s.jobs ?? []).length > 0 || (s.items ?? []).length > 0,
+        say: (s, v) => at(v, "woolshed")
+          ? ["I've left you a fleece. Pick it, then press <b>Queue</b> on the socks pattern. The forecast says how good they should be and when they'll be done."]
+          : ["Open the woolshed (🧶) in your bag."],
+        point: (s, v) => (at(v, "woolshed") ? { sel: ['#overlay [data-queue="socks"]', "#overlay .cf-box"] } : { hud: "woolshed" }),
+      },
+      {
+        id: "slow", title: "It takes seasons", ack: "Got it",
+        say: () => [
+          "Wool is carded, then spun, then knitted, one step a season, so socks queued now are ready in three seasons. Sleep as usual and the report will show them.",
+          "Keep the wool in the store until you choose to sell it. Bigger benches speed it up, and new patterns turn up as you go.",
+        ],
+        point: () => null,
+      },
+    ],
+  },
+  {
     id: "farm", title: "Improvements", steps: [
       opens("market", "market", "The market", [
         "Winter's not far off. The trader has farm improvements for sale now.",

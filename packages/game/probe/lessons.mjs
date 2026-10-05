@@ -5,16 +5,16 @@
 // concepts in one season; every concept but the codex arrives with its lesson, shown once the report is
 // closed; no fox is announced or raids before dogs are on sale; the first letter asks for horns. The orders,
 // vet, farm, dogs and cat lessons are completed by real clicks where the arrow points (the vet's hut in the
-// world, HUD buttons, Accept, Test, "Got it", "Maybe later"); a lesson left mid-way resumes after a sleep.
+// world, HUD buttons, Accept, Test, "Got it", "Maybe later"); a lesson left mid-way (dogs) resumes after a sleep, while a new concept replaces an unfinished lesson.
 // Act concepts (numbers, fair, tree, visitor) are staged by setting the act and still arrive one a season.
 // The forecast keeps all ten lambs on one row and long names clear of the hint at 1280×800 and 1024×768.
 // Screenshots: lesson-<id>-1 (each lesson's first step), lesson-vet-2/-3, lesson-dogs-2, lesson-cat-2,
-// lesson-farm-resumed, forecast-1280, forecast-1024, forecast-lesson-1280.
+// lesson-dogs-resumed, forecast-1280, forecast-1024, forecast-lesson-1280.
 import { isMain, runSteps } from "./lib/harness.mjs";
 import { ProbeError } from "./lib/browser.mjs";
 import { arrowTip, assertLayout } from "./tutorial.mjs";
 
-const CALENDAR = { vet: 4, farm: 6, dogs: 8, cat: 10 };
+const CALENDAR = { vet: 4, farm: 6, craft: 7, dogs: 8, cat: 10 };
 const LABEL = (/** @type {number} */ s) => `Year ${Math.floor(s / 4) + 1} ${["Spring", "Summer", "Autumn", "Winter"][s % 4]}`;
 
 /** @param {import("./lib/browser.mjs").GamePage} g */
@@ -168,9 +168,6 @@ export const lessons = {
     await until("farm");
     await waitLesson(g, "farm", 1, "farm improvements arrived");
     await shot("lesson-farm-1");
-    await turn(); // Year 2 Winter: nothing new
-    await waitLesson(g, "farm", 1, "after sleeping mid-lesson");
-    await shot("lesson-farm-resumed");
     how.push(`farm:${await clickSpot(g, "market", "market")}`);
     await waitLesson(g, "farm", 2, "market opened");
     const fore = await g.page.locator("#overlay [data-upgrade-card=barn] .u-fore.tut-ring").count();
@@ -179,10 +176,28 @@ export const lessons = {
     await waitLesson(g, "farm", 0, "farm lesson");
     await g.act({ type: "close" });
 
+    // ---- Year 2 Winter: the woolshed, by real clicks: open it, queue socks from the gift fleece, Got it.
+    await until("craft");
+    await waitLesson(g, "craft", 1, "the woolshed arrived");
+    await shot("lesson-craft-1");
+    how.push(`craft:${await clickSpot(g, "woolshed", "woolshed")}`);
+    await waitLesson(g, "craft", 2, "woolshed opened");
+    await shot("lesson-craft-2");
+    await click(g, '#overlay [data-queue="socks"]', "queue socks");
+    await waitLesson(g, "craft", 3, "socks queued");
+    if (((await g.state()).jobs ?? []).length !== 1) throw new ProbeError("queueing in the lesson should start one job");
+    await shot("lesson-craft-3");
+    await click(g, "#mentor [data-lesson=ack]", "got it (craft)");
+    await waitLesson(g, "craft", 0, "craft lesson");
+    await g.act({ type: "close" });
+
     // ---- Year 3 Spring: dogs (fox odds, then Maybe later).
     await until("dogs");
     await waitLesson(g, "dogs", 1, "dogs arrived");
     await shot("lesson-dogs-1");
+    await turn(); // Year 3 Summer: nothing new arrives, so the unfinished lesson resumes
+    await waitLesson(g, "dogs", 1, "after sleeping mid-lesson");
+    await shot("lesson-dogs-resumed");
     how.push(`dogs:${await clickSpot(g, "market", "market")}`);
     await waitLesson(g, "dogs", 2, "market opened (dogs)");
     if (!(await g.page.locator("#overlay .pet-odds.tut-ring").count())) throw new ProbeError("the dogs lesson should ring the fox odds");

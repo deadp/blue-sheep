@@ -36,6 +36,9 @@ const VOCAB = new Set([
   "colour", "hex", "family", "wool", "key", "order-colour", "test-row", "new-season",
   // not actions: breed and wool-type markers on the card and market (CSS and probes)
   "breed", "wool-type",
+  // woolshed: actions (queue a pattern, cancel a job, sell items, pick the wool) and markers for probes and styles
+  "queue", "cancel", "sellitem", "sellitems", "src",
+  "shed-tab", "job", "bench", "pattern", "locked", "cf", "item", "kind", "item-kind", "crafted", "new-pattern",
 ]);
 /** A pigment genotype (never shown): "-/+", "+/+". */
 const PIGMENT_GENOTYPE = /[-+]\/[-+]/;

@@ -8,6 +8,7 @@
  *   orders   letters in the mailbox: the moment the tutorial ends or is skipped (`tutorialOver`; Year 1),
  *            or with the first season of a game without one (Year 2 Summer at the latest).
  *   vet      the vet's tests:                         Year 2, Spring (season 4).
+ *   craft    the woolshed: card, spin and knit wool into socks:  Year 2, Winter (season 7).
  *   farm     farm improvements and winter weather:     Year 2, Autumn (season 6).
  *   dogs     dogs at the market, and foxes in winter:  Year 3, Spring (season 8).
  *   cat      the farm cat, and mice in the barn:       Year 3, Autumn (season 10).
@@ -24,11 +25,12 @@
 import { generateOrders } from "./orders.js";
 import { addLog, fairCategoryFor, nextFairSeason, rngOf, saveRng } from "./state.js";
 import { startLesson } from "./lessons.js";
+import { onCraftArrives } from "./craft.js";
 import { tutorialActive } from "./tutorial.js";
 import type { GameState, Unlock } from "./types.js";
 
 /** Seasons (0 = Year 1 Spring) the dated concepts arrive. */
-export const CALENDAR: Readonly<Partial<Record<Unlock, number>>> = { vet: 4, farm: 6, dogs: 8, cat: 10 };
+export const CALENDAR: Readonly<Partial<Record<Unlock, number>>> = { vet: 4, craft: 7, farm: 6, dogs: 8, cat: 10 };
 /** Orders come once the tutorial is over, and by this season at the latest even if it never is (Year 2 Summer). */
 export const ORDERS_BY = 5;
 
@@ -56,6 +58,10 @@ export const PACING: readonly PaceStep[] = [
   {
     id: "vet", at: CALENDAR.vet!,
     intro: "The vet's hut is open. For a fee the vet can test one sheep for one hidden copy — handy when you only suspect it.",
+  },
+  {
+    id: "craft", at: CALENDAR.craft!,
+    intro: "The old woolshed out back is yours to use. Card, spin and knit your own wool into socks and more — it's slow work, but a pair of socks fetches far more than the raw wool does. I've left you a fleece to start.",
   },
   {
     id: "farm", at: CALENDAR.farm!,
@@ -121,10 +127,11 @@ export function nextDated(state: GameState): { id: Unlock; season: number } | nu
 }
 
 /** Open a concept now (records the season; the fair gets its first date). No lesson (see `checkPacing`). */
-export function grantUnlock(state: GameState, id: Unlock): void {
+export function grantUnlock(state: GameState, id: Unlock, opts: { fixture?: boolean } = {}): void {
   if (state.unlocks.includes(id)) return;
   state.unlocks.push(id);
   state.paced = { ...(state.paced ?? {}), [id]: state.season };
+  if (id === "craft") onCraftArrives(state, !opts.fixture);
   if (id === "fair") {
     // A season's notice: the first fair is the next autumn after this season.
     state.fair.nextSeason = nextFairSeason(state.season + 1);
