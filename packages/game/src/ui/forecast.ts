@@ -1,8 +1,8 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
   ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, isAdult, isIll, lambRoom,
-  litterOf, longShotsOf, longShotNames, orList as orWords, NAMED_MIN, oddsLabel, oddsText, pColour, ramLoad, woolOf,
-  type CrossForecast, type GameState, type Goal, type LambSwatch, type Sheep,
+  litterOf, longShotsOf, longShotNames, orList as orWords, NAMED_MIN, LONG_SHOT, oddsLabel, oddsText, pColour, ramLoad, woolOf,
+  type CrossForecast, type GameState, type Goal, type LambSwatch, type RareChance, type Sheep,
 } from "../core/index.js";
 import type { QuantForecast } from "@blue-sheep/inference";
 import {
@@ -121,6 +121,33 @@ export function litterWords(state: GameState, f: Pick<CrossForecast, "swatches" 
   const tbP = f.swatches.filter((x) => x.trueBlue).reduce((a, x) => a + x.p, 0);
   if (tbP >= NAMED_MIN && !named.slice(0, 3).some((x) => x.trueBlue)) tail.push(w("true blue", f.trueBlue));
   return [head, ...tail].join(", ");
+}
+
+/**
+ * The rare-wool line of a forecast, in words: "A long shot at steel wool", "About one lamb in four could have cloud wool".
+ * When the farm's records leave it open (a visiting ram who might carry it), the band is said too. Percentages only with numbers.
+ */
+export function rareWords(state: GameState, r: RareChance): string {
+  const nums = numbersOn(state);
+  const what = r.name.toLowerCase();
+  const lead = r.p >= LONG_SHOT ? `${fractionWords(r.p, "lamb")[0]!.toUpperCase()}${fractionWords(r.p, "lamb").slice(1)} could have ${what}` : `${oddsLabel(r.p)} at ${what}`;
+  const wide = r.hi > 0.02 && r.hi - r.lo > Math.max(0.05, r.p);
+  const band = wide ? `, but the records leave it open: from ${r.lo < 0.01 ? "none" : fractionWords(r.lo, "lamb")} to ${fractionWords(r.hi, "lamb")}` : "";
+  const n = nums ? ` · ${r.p < 0.01 ? "<1" : Math.round(r.p * 100)}%${wide ? ` (${Math.round(r.lo * 100)}–${Math.round(r.hi * 100)}%)` : ""}` : "";
+  return `${lead}${band}${n}`;
+}
+
+/** A small band graphic for a rare wool's chance: a track (0 to a half), the 10th to 90th percentile band and a tick at the expected chance. */
+function rareBand(r: RareChance): string {
+  const x = (v: number) => Math.max(0, Math.min(1, v / 0.5));
+  return `<span class="rband" aria-hidden="true"><span class="rb-band" style="${prop("l", x(r.lo))};${prop("w", Math.max(0.03, x(r.hi) - x(r.lo)))}"></span><span class="rb-tick" style="${prop("x", x(r.p))}"></span></span>`;
+}
+
+/** The rare-wool lines under a forecast's colour line: one per wool with a real chance (none for most crosses). */
+export function rareLines(state: GameState, f: Pick<CrossForecast, "rare">): string {
+  const live = f.rare.slice(0, 2);
+  if (!live.length) return "";
+  return live.map((r) => `<p class="rare-line" data-rare-chance="${esc(r.id)}">${icon("sparkle", "inl")}<span>${esc(rareWords(state, r))}.</span>${rareBand(r)}</p>`).join("");
 }
 
 export interface RangeMarks {
@@ -338,6 +365,7 @@ export function forecastPanelHtml(state: GameState, view: View): string {
       ${rel.warn ? `<p class="note-line warn">${icon("warn", "inl")} ${esc(rel.warn)}</p>` : ""}
       <p class="blue-line">${icon(line.i)}<span>${esc(line.t)}</span></p>
       ${goal === "trueblue" || goal === "learn" ? `<p class="colour-line meta">${esc(f.colourText)}</p>` : ""}
+      ${rareLines(state, f)}
       <div class="row commit">${planned ? tag("planned", { icon: "star", tone: "butter", cls: "planned" }) : ""}${commit}</div>
       ${more("forecast-more", "Colours, wool, kinship, what you'd learn", details)}
     </div>

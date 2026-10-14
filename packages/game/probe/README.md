@@ -8,10 +8,10 @@ passing unit tests do not prove the game runs. Spec: `docs/CONTRACTS.md` §7.
 
 | Command | What it does |
 |---|---|
-| `npm run probe` | build, then smoke → play → panels → ui → life → voices → tutorial → lessons → video; summary table; exit 1 on any failure |
+| `npm run probe` | build, then smoke → play → panels → colour → breeds → breedlooks → woolstore → craft → rare → ui → life → world → dressing → voices → tutorial → lessons → video; summary table; exit 1 on any failure |
 | `npm run probe:quick` | build, then smoke only |
 | `node packages/game/probe/run.mjs play panels` | build, then just the named steps |
-| `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, life, tutorial, video) |
+| `node packages/game/probe/<step>.mjs` | one step standalone (smoke, play, panels, life, tutorial, rare, video) |
 | `npm run probe:shot -- "?seed=7&panel=vet" vet` | build and screenshot any deep link to `out/vet.png` (`--no-ready` for builds without the controller) |
 | `npm run serve` | build and serve on `0.0.0.0:4173` for a human; prints the LAN URL |
 
@@ -68,6 +68,17 @@ explicitly to test the other modes.
 - **breeds.mjs**: breeds and wool types (DESIGN-v3 Phase 3): at `?act=3` the market offers >= 3 breeds and no
   Icelandic; at `?act=4` an Icelandic ewe is on offer; a bought sheep's card shows its breed and a known wool
   type; the world snapshot carries >= 3 breeds. Shots `breeds-*`.
+- **rare.mjs**: rare wools (DESIGN-v3 Phase 6) from the `?seed=7&act=4&rare=steel` fixture (a grown steel sheep, its carrier parents on record, a
+  steel fleece in the store). Asserts from game rules: the world draws the steel sheep with a metallic material (`debug.world().fantasy`, metalness
+  >= 0.5) and its card wears the "Steel wool" tag; the codex's Rare wools page has six silhouettes with exactly one filled (and a fresh farm shows
+  none); a steel-glove job is queued by a real click from the steel fleece and refused for an ordinary one; the vet's rare-gene screen forecasts
+  in words (and the forecast is positive; the unit test checks it equals the entropy a real screen removes), costs 20 coins, tests all six genes and lists each with its confidence dot, the carrier
+  parent being told it carries steel; the carrier pair's forecast says "about one lamb in four could have steel wool"; a steel lamb arrives
+  within 14 seasons and the report names it with Old Tom's line and a sparkling card. Then `?rare=all`: every fantasy sheep is in the snapshot
+  with its wool id, steel is metallic, pāua is a `MeshPhysicalMaterial` with iridescence, only cloud sheep lift off the grass, the glow-worm
+  fleece's emissive rises at night (`debug.night(1)`), pōhutukawa is crimson-tinged except in winter, and a contact sheet of the six portraits is
+  written. Shots: `rare-steel-card`, `rare-codex`, `rare-codex-empty`, `rare-gloves`, `rare-vet-before`, `rare-vet-after`, `rare-forecast`,
+  `rare-report`, `rare-glow-night`, `rare-looks`. `panels.mjs` also has `codex-rare` and `vet-screen` (both `rare=steel`).
 - **dressing.mjs**: the world dressing pass (DESIGN-v3 §15 item 27). Six fixed views at 1280×800 (boot walk
   view, home paddock with the flock, woolshed, creek/bush edge, winter, pan overview), full and lite, into
   `out/dressing/` with `perf.json` (draw calls, triangles, the world's `__game.debug.breakdown()`). Asserts lite

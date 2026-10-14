@@ -16,4 +16,4 @@ export function planAll(g: GameState): number {
 }
 
 /** Any genotype string, v2 or v3 (w/W, d/D, s/S, p/P, pigment -/+), which must never reach player text. */
-export const GENOTYPE_RE = /\b(Aw|a|B|b|D|d|S|s|P|p|W|w)\/(Aw|a|B|b|D|d|S|s|P|p|W|w)\b|[-+]\/[-+]/;
+export const GENOTYPE_RE = /\b(Aw|a|B|b|D|d|S|s|P|p|W|w)\/(Aw|a|B|b|D|d|S|s|P|p|W|w)\b|[-+]\/[-+]|\b(ST|st|CL|cl|GW|gw|PA|pa|PO|po|SO|so)\/(ST|st|CL|cl|GW|gw|PA|pa|PO|po|SO|so)\b/;

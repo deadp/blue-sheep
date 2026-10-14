@@ -724,3 +724,43 @@ body.gallery-mode #hud { position: sticky; top: 0; height: 110px; }
 .cstars { white-space: nowrap; }
 .dcards .craft-done { grid-column: span 2; }
 @media (max-width: 640px) { .dcards .craft-done { grid-column: auto; } }
+
+/* v3 phase 6: rare wools (DESIGN-v3 §4) */
+.tag.rare-wool { font-weight: 800; }
+.sc-rare { margin: 2px 8px; text-align: center; font: 700 12.5px/1.35 var(--f-ui); color: #5a3c7a; }
+.sc-rare .ic { width: 15px; height: 15px; vertical-align: -3px; }
+.rare-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 2px 0 0 !important; padding: 6px 12px; border-radius: 14px; background: rgba(235, 225, 242, .8); font: 700 14px/1.35 var(--f-ui); color: #4a3560; }
+.rare-line > .ic { width: 22px; height: 22px; flex: 0 0 auto; }
+.rare-line > span:not(.rband) { flex: 1 1 220px; }
+.rband { position: relative; flex: 0 0 120px; height: 12px; border-radius: 99px; background: rgba(74, 53, 96, .15); }
+.rband .rb-band { position: absolute; top: 0; bottom: 0; left: calc(var(--l) * 100%); width: calc(var(--w) * 100%); border-radius: 99px; background: linear-gradient(90deg, #9a7ec4, #6fb6c6); opacity: .7; }
+.rband .rb-tick { position: absolute; top: -3px; bottom: -3px; left: calc(var(--x) * 100%); width: 4px; margin-left: -2px; border-radius: 2px; background: #4a3560; }
+.tag.southern { font-weight: 800; }
+.vet-row.screen { --tone: var(--felt-lilac); }
+.vet-row.screen.done { --tone: var(--felt-sage); }
+.vet-row .rare-results { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 13px; }
+.vet-row .rare-results li { display: flex; gap: 8px; align-items: center; }
+.act-banner.rare-lamb { --tone: var(--felt-lilac); }
+.born.rare .f-front { background: var(--felt-lilac); box-shadow: 0 0 0 3px rgba(154, 126, 196, .55), var(--lift-sm); }
+.born.rare .surprise-tag { color: #5a3c7a; }
+.rare-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 8px; }
+.rare-card { padding: 12px 14px 12px; border-radius: 20px; --tone: var(--felt-hi); box-shadow: var(--lift-sm); outline: 1.5px dashed rgba(183, 110, 95, .35); outline-offset: -6px; text-align: center; }
+.rare-card.locked { --tone: var(--felt); opacity: .8; }
+#overlay .rare-card h4 { margin: 4px 0 2px; font-size: 20px; }
+.rare-card p { font-size: 13.5px; margin: 3px 0; }
+.rare-card .rc-lore { font-style: italic; color: var(--ink-soft); }
+.rc-sil { display: flex; justify-content: center; }
+.rare-sil { width: 150px; height: 100px; overflow: visible; }
+.rare-sil .rs-wool { fill: #f4efe6; stroke: #5e514d; stroke-width: 1.6; }
+.rare-sil .rs-head { fill: #6f5d52; stroke: #4a3f3d; stroke-width: 1.4; }
+.rare-sil .rs-leg { fill: #6f5d52; }
+.rare-sil .rs-mark { fill: none; stroke: #4a3f3d; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rare-sil g.rs-mark { fill: currentColor; stroke: none; }
+.rare-sil.unfound .rs-wool, .rare-sil.unfound .rs-head, .rare-sil.unfound .rs-leg { fill: #5e514d; stroke: none; opacity: .55; }
+.rare-sil.unfound .rs-mark { display: none; }
+.rare-sil.found.rs-steel .rs-wool { fill: #98a2ad; } .rare-sil.found.rs-steel .rs-mark { stroke: #3a424b; }
+.rare-sil.found.rs-cloud .rs-wool { fill: #ffffff; stroke: #8fb0d4; } .rare-sil.found.rs-cloud g.rs-mark { color: #cfe3f6; }
+.rare-sil.found.rs-glow .rs-wool { fill: #cdeee4; stroke: #3d8f86; filter: drop-shadow(0 0 6px rgba(80, 200, 190, .8)); } .rare-sil.found.rs-glow g.rs-mark { color: #2fb3a3; }
+.rare-sil.found.rs-paua .rs-wool { fill: #bfe4e8; stroke: #5c8fa6; } .rare-sil.found.rs-paua .rs-mark { stroke: #8a62c9; } .rare-sil.found.rs-paua .rs-mark.b { stroke: #2fae93; }
+.rare-sil.found.rs-pohutukawa .rs-wool { fill: #e9a0a8; stroke: #8f2438; } .rare-sil.found.rs-pohutukawa g.rs-mark { color: #b3122f; stroke: #b3122f; stroke-width: 2; stroke-linecap: round; }
+.rare-sil.found.rs-southerly .rs-wool { fill: #e8eef2; stroke: #5f7384; } .rare-sil.found.rs-southerly .rs-mark { stroke: #5f7384; }

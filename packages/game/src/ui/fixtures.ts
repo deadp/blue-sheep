@@ -27,7 +27,7 @@ export function greedySeason(s: GameState): SeasonReport {
   }
   const open = s.orders.find((o) => o.status === "open");
   if (open && s.acceptedOrders.length < 1) { try { acceptOrder(s, open.id); } catch { /* full */ } }
-  return advanceSeason(s);
+  return advanceSeason(s, { sports: false }); // fixtures play without sports, so their states stay stable
 }
 
 function clone(s: GameState): GameState { return deserialize(serialize(s)); }

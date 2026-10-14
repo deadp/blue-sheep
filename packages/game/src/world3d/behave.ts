@@ -35,6 +35,8 @@ export interface Ent {
   // animation state
   pose: SheepPose;
   faceColor: THREE.Color;
+  /** How far a cloud-wool sheep floats above the grass (world units; 0 for every other sheep). */
+  lift: number;
   speed: number;
   turnRate: number;
   stride: number;
@@ -108,10 +110,10 @@ const TEMPER: Record<Personality, Temper> = {
   bold: { reach: 6.5, speed: 0.72, graze: 0.3, idle: 0.2, nuzzle: 0.08 },
 };
 
-export function newAnimState(): Pick<Ent, "pose" | "speed" | "turnRate" | "stride" | "pitch" | "yaw" | "roll" | "hop" | "hopDur" | "hopH" | "hopBack" | "landed" | "fold" | "blinkIn" | "blinkT" | "earT" | "earIn" | "skip" | "nuzzle" | "attendT" | "look" | "follow" | "slot" | "flee"> {
+export function newAnimState(): Pick<Ent, "pose" | "speed" | "turnRate" | "stride" | "pitch" | "yaw" | "roll" | "hop" | "hopDur" | "hopH" | "hopBack" | "landed" | "fold" | "lift" | "blinkIn" | "blinkT" | "earT" | "earIn" | "skip" | "nuzzle" | "attendT" | "look" | "follow" | "slot" | "flee"> {
   return {
     pose: restPose(), speed: 0, turnRate: 0, stride: 0, pitch: 0, yaw: 0, roll: 0,
-    hop: -1, hopDur: 0.5, hopH: 0.3, hopBack: 0, landed: 99, fold: 0,
+    hop: -1, hopDur: 0.5, hopH: 0.3, hopBack: 0, landed: 99, fold: 0, lift: 0,
     blinkIn: rnd(1, 4), blinkT: -1, earT: [-1, -1], earIn: rnd(2, 7), skip: false, nuzzle: null, attendT: -1, look: null,
     follow: -1, slot: 0, flee: -1,
   };

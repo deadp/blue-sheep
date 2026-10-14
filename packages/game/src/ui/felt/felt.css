@@ -53,7 +53,7 @@ h1, h2, h3, h4 { font-family: var(--f-hand); font-weight: 400; color: var(--ink)
 .t-sage { --i1: url(#sat-sage) #9cc28d; }
 
 /* ---------- Felt surfaces and blanket stitch ---------- */
-.felt, #overlay .panel, #mentor, .tray, .pom, .pill.goal, .hud-hint, #toast, .tag, .fact, .note, .mcard, .order, .concept, .dcard, .slot, .vet-row, .fair-row, .fair-banner, .act-banner, .reveal, .care, .money, .goal-card, .setting, .confirm {
+.felt, #overlay .panel, #mentor, .tray, .pom, .pill.goal, .hud-hint, #toast, .tag, .fact, .note, .mcard, .order, .concept, .dcard, .slot, .rare-card, .vet-row, .fair-row, .fair-banner, .act-banner, .reveal, .care, .money, .goal-card, .setting, .confirm {
   background-color: var(--tone, var(--felt));
   background-image: var(--felt-noise), var(--felt-hair);
 }

@@ -4,7 +4,7 @@
 // driven entirely by WorldSnapshot, no game logic imports.
 import * as THREE from "three";
 import { buildFarm, HOTSPOT_DEF, HOTSPOT_LABEL, SEASON_U, ZONES, type FarmBuild, type Land, type Rect } from "./farm.js";
-import { applyPose, buildFullRig, buildRig, buildSheepGeos, disposeGeos, restPose, setSheepDetail, sheepKey, SheepMaterials } from "./sheepMesh.js";
+import { applyPose, buildFullRig, buildRig, buildSheepGeos, disposeGeos, makeEnvironment, restPose, setSheepDetail, sheepKey, SheepMaterials } from "./sheepMesh.js";
 import { Markers, type MarkerKind } from "./markers.js";
 import { CAM_YAW, computePose, FACE_CAMERA, FOND_SKITTISH, FOND_TRUSTING, flickEars, fondOf, newAnimState, startHop, stepSheep, type Ent, type FlockCtx } from "./behave.js";
 import { FlockParts } from "./parts.js";
@@ -198,6 +198,7 @@ export class WorldView {
     this.renderer.setPixelRatio(this.lite ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.sheepMats.setEnvironmentSource(() => makeEnvironment(this.renderer));
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = this.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -385,7 +386,7 @@ export class WorldView {
         }
         e.ws = ws;
         e.personality = personalityOf(ws);
-        e.rig.body.material = this.sheepMats.woolFor(ws.fineness);
+        e.rig.body.material = this.sheepMats.woolFor(ws.fineness, ws.fantasy);
       }
       this.applyMarker(e, s);
     }
@@ -757,6 +758,13 @@ export class WorldView {
   /** The live portrait's sheep has just had a full brushing: hearts and a contented bubble in the card. */
   portraitCheer(): void {
     if (!this.disposed) this.live?.cheer();
+  }
+
+  /** Not part of the contract: jump to night (1) or day (0) with no animation (probe sheets). */
+  debugNight(n: number): void {
+    this.nightAnim = null;
+    this.night = clamp(n, 0, 1);
+    this.updateLighting();
   }
 
   sleepTransition(): Promise<void> {
@@ -1332,6 +1340,8 @@ export class WorldView {
     camera: { x: number; z: number; halfW: number; gliding: boolean; held: boolean };
     land: Record<string, string>; reveal: { area: AreaId | null; t: number; done: AreaId[] }; prompt: string; keys: boolean;
     sheepAt: Record<string, { x: number; z: number; zone: Zone }>;
+    /** Sheep showing a rare wool: how each is drawn (material kind, metalness, glow, iridescence, lift off the grass, fleece colour). */
+    fantasy: { id: string; wool: string; material: string; metalness: number; emissive: number; iridescence: number; lift: number; hex: string }[];
   } {
     const i = this.renderer.info;
     const F = this.farmer;
@@ -1350,6 +1360,13 @@ export class WorldView {
       land: Object.fromEntries([...this.land.values()].map((l) => [l.id, l.state])),
       reveal: { area: this.reveal?.id ?? null, t: this.reveal?.t ?? 0, done: [...this.revealsDone] },
       prompt: this.promptTarget ? `${this.promptTarget.kind}:${this.promptTarget.id}` : "", keys: this.keysOn, sheepAt,
+      fantasy: [...this.ents.values()].filter((e) => e.ws.fantasy).map((e) => {
+        const m = e.rig.body.material as THREE.MeshStandardMaterial & { iridescence?: number };
+        return {
+          id: e.ws.id, wool: e.ws.fantasy!, material: m.type, metalness: m.metalness, emissive: +m.emissiveIntensity.toFixed(3),
+          iridescence: m.iridescence ?? 0, lift: +e.lift.toFixed(3), hex: e.ws.wool,
+        };
+      }),
     };
   }
 
@@ -1654,7 +1671,10 @@ export class WorldView {
   private poseEnt(e: Ent): void {
     const { rig, geos } = e;
     const d = geos.dims;
-    rig.root.position.set(e.x, groundY(e.x, -e.z), e.z);
+    // cloud wool is so light the sheep floats a finger's width off the grass, bobbing gently
+    const lift = e.ws.fantasy === "cloud" ? (0.1 + (this.reduced ? 0 : Math.sin(this.time * 1.7 + e.phase) * 0.035)) * d.rootScale : 0;
+    e.lift = lift;
+    rig.root.position.set(e.x, groundY(e.x, -e.z) + lift, e.z);
     rig.root.rotation.y = e.heading;
     let s = d.rootScale;
     if (e.spawn >= 0) s *= backOut(clamp(e.spawn / 0.45, 0, 1));
@@ -1905,6 +1925,7 @@ export class WorldView {
       }
     }
     this.flockCtx.night = this.night;
+    this.sheepMats.update(this.time, this.night);
     this.flockCtx.farmer = this.walkerOn() ? { x: this.farmer.x, z: this.farmer.z, moving: Math.hypot(this.farmer.vx, this.farmer.vz) > 0.5 } : null;
     // the farmer, brushing and the reveal keep real time even when frames are slow (software GL): small substeps
     const raw = this.lastRaw < 0 ? 0 : Math.min(0.25, (now - this.lastRaw) / 1000);

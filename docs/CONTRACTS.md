@@ -658,7 +658,9 @@ discovery/concept cards.
   `?seed=N` new game with seed (ignores save, does not overwrite it until the
   player acts), `?tutorial=1` a new tutorial game (with `?seed=N` if given; not saved until the player
   acts; `?tutorial=0` or no param keeps the normal start), `?panel=<name>` open a panel on boot, `?act=N` new game
-  fast-forwarded to act N with a fixture flock (debug), `?nomotion=1` disable
+  fast-forwarded to act N with a fixture flock (debug), `&rare=<id>[,<id>…]|all` (with `?act=N`, debug: a grown sheep that
+  shows that rare wool — `steel` `cloud` `glow` `paua` `pohutukawa` `southerly` — its carrier parents on record, and one of
+  its fleeces in the store; §14), `?nomotion=1` disable
   animation, `?fresh=1` clear save, `?lite=1` the cheaper world (no shadows, fewer tufts and wool locks, pixel
   ratio 1; same as `?detail=lite`), `?detail=auto|full|lite` pin the world's detail for this page (overrides the
   setting), `?move=walk|pan` override the saved walk/pan setting (`localStorage["blue-sheep-move-mode"]`).
@@ -671,7 +673,7 @@ discovery/concept cards.
   (`localStorage["blue-sheep-autolite-told"]`); later boots may switch again, silently.
 - **Probe hook**: `window.__game = { state(): GameState, act(action: Action): void, snapshot(): WorldSnapshot, version: string }`
   where `Action` mirrors the core actions:
-  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"sellLot", id} | {type:"sellLots", wool} | {type:"autoSell", on} | {type:"test", id, locus} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"brush", id} | {type:"newGame", seed} | {type:"open", panel, id?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?} | {type:"lesson", op:"ack"|"skip"}`.
+  `{type:"plan", ewe, ram} | {type:"sleep"} | {type:"buy", id} | {type:"sell", id} | {type:"sellLot", id} | {type:"sellLots", wool} | {type:"autoSell", on} | {type:"test", id, locus} | {type:"screen", id} | {type:"accept", id} | {type:"enter", id} | {type:"hire"} | {type:"upgrade", id} | {type:"treat", id} | {type:"brush", id} | {type:"newGame", seed} | {type:"open", panel, id?, tab?} | {type:"close"} | {type:"tutorial", op:"start"|"ack"|"skip", seed?} | {type:"lesson", op:"ack"|"skip"}`.
   Opening an own sheep's card (`open` sheep) or an animal's card (`open` animal with a PetId) greets it
   (fondness, once per season; hearts in the field; saved). The animal card also glides the camera to the
   animal, which speaks (bubble + bark/mew).
@@ -1052,3 +1054,66 @@ prints the breed table, the founder colour families per breed, and a selective-b
 - **Probe.** `craft.mjs` (queue socks by real clicks, sleep x3, Q inside the seen band with one retry seed, no job advances two stages in a season,
   selling lowers the socks meter by exactly 0.10); `lessons.mjs` plays the craft lesson by clicks; `woolstore.mjs` opens the store tab; `panels.mjs`
   adds `woolshed-items` and `woolshed-store`. Tests: `craft.test.ts`.
+
+## 14. Rare wools (DESIGN-v3 Phase 6)
+
+The six fantasy wools (steel, cloud, glow-worm, pāua, pōhutukawa, southerly: one biallelic gene each, built in genetics Phase 1)
+are now in the game. Everything is knowledge-limited (posteriors and farm records, never `sheep.genome`) and stays plain words
+with confidence dots; percentages only behind the `numbers` unlock; no genotype strings.
+
+- **Data** (`core/rare.ts`): `RARE` (id, locus, name, short, dominant, look, fibre, source, kiwiana lore), `rareWoolsOf(s)` /
+  `rareWoolOf(s)` (from the phenotype: a pāua gene is masked below lustre 5, so it is not shown on a dull fleece),
+  `state.rareSeen` (trait id -> season first seen on the farm or at the market; fills the codex page), `noteRareWools`,
+  `seasonalWool(s, season)` (pōhutukawa blends toward crimson: spring 0.3, summer 1, autumn 0.45, winter 0) and the fixture
+  `plantRareSheep(state, id)`.
+- **Sports** (`core/sim.ts`): lambing mates with `sheep3.SPORTS` (μ = 0.001 per lamb per fantasy gene, one gamete mutates, rng from the game
+  state; the tutorial's set lambs don't mutate; `advanceSeason(state, { sports: false })` is what the `?act=N` and UI fixtures use, so their states stay stable). A sport is just a hidden carrier until something contradicts it. In
+  `core/knowledge.ts` the six rare traits are in `DISCRETE_TRAITS`; when a rare trait's posterior throws "no consistent genotype assignment",
+  `findSports` (binary search over the pedigree in birth order, `inference.isConsistent`) finds the first sheep whose parents' evidence
+  conflicts and treats it as a founder for that gene, so the records are consistent. `posteriors()` stays a pure read: the sports it found are in
+  `Posteriors.sports`; `updateDiscoveries` (vet tests, the season turn) records them in `state.knownSports[id] = [locus]` and from then on that sheep
+  has no parents for that gene. Never throws (last resorts: every sheep stands alone for that gene; then only what it looks like). `updateDiscoveries` mints a card once per sport,
+  `{kind:"sport", text:"<Name> is a sport, a brand-new mutation! …"}`, titled "A sport!" in the codex. Pōhutukawa (dominant, sport-only) is
+  found the moment it shows.
+- **Inference** (`@blue-sheep/inference`): the rare genes use `posteriorDiscrete(..., { exact: true, initByPrior: true, samples: 1000 })`: exact independent samples by
+  variable elimination with backward sampling (falls back to the Gibbs chain, started at the typical state, when a table would pass 200 000 entries).
+  The Gibbs chain alone sticks on a carrier parent with many plain lambs (it reported hidden carriers as certain). `isConsistent` asks whether any assignment fits.
+- **Facts**: `rareFactsFor(state, id, all?)` gives `{kind: shows|carrier|clear|maybe, text, confidence, certain}` per gene ("carries a hidden steel wool
+  copy"; "clear" needs four in five, a one in four chance is a "maybe"); `factsFor` includes only the interesting ones (a wool it shows, a carrier or maybe at one in five or better). A hidden carrier earns a discovery
+  card; "clear" never does.
+- **Visiting rams** (`core/visitor.ts`): 40 % are "from down south, says he's got something special" (`VISITOR_SOUTHERN_CHANCE`): `Sheep.southern` /
+  `visitingRam.rare` name one non-dominant fantasy gene; he really carries it (one copy, never showing) with probability 0.25. The farm's prior for him at
+  that gene is a one-in-four carrier chance (`SOUTHERN_CARRIER_FREQ` = 1/7 allele frequency: 2q/(1+q) = 0.25), so his forecasts have a wide rare band.
+  The market card says "from down south".
+- **Forecast** (`core/forecast.ts`): `CrossForecast.rare: RareChance[]` = `{id, name, p, lo, hi}` (chance one lamb shows the wool; 10th to 90th percentile
+  over the records; pāua scaled by the chance the lamb's lustre reaches 5); only wools with p >= 1 % (`RARE_SHOWN_P`) or hi >= 4 %, so an ordinary cross has no rare line. The forecast panel shows one
+  `.rare-line[data-rare-chance=<id>]` per wool (at most two) with a small band graphic; wide bands say "the records leave it open".
+- **Vet screen** (`core/vet.ts`): `vetScreen(state, id)` / `{type:"screen", id}` / `data-screen=<id>`: all six genes of one sheep (or the visiting ram) for
+  `RARE_SCREEN_FEE` = 20 coins, from act 3 with the vet open (`screenOpen`). **Open item:** DESIGN-v3 says the screen opens with chapter 3; chapters
+  do not exist until Phase 7, so `RARE_SCREEN_ACT` = 3 is a stand-in for ch3 and Phase 7 should replace the act gate. `forecastScreen` returns
+  `{gainBits, entropyBits, text, genes}`: gainBits is the expected bits (the sum over untested genes of the posterior marginal's entropy: a screen
+  settles each gene completely, so it equals the entropy removed, which `rare.test.ts` checks against a real screen) and is <= 6 log2 3. The vet panel's rare row (`[data-test-row=rare]`) shows the sentence
+  (`[data-screen-forecast]`), a learn meter and the button; after the screen it shows `[data-screen-expected]` ("Before the screen: ...", the forecast sentence the player saw, kept in `View.screened[sheepId]` by the controller) above one `[data-rare-fact=<locus>]` line per gene (a gene with no copy reads "none").
+  Hook extras (not contract): `__game.forecast.screen(id)` and `__game.forecast.rare(id)`.
+- **Surprise lamb** (`SeasonReport.rareLambs`: `{id, wool, first, expected}`, `expected` = the chance the forecast the player saw gave that wool for the pair): the report adds an `.act-banner.rare-lamb[data-rare-lamb=<id>]` with a line "You expected steel wool: about one lamb in four" or, for a wool the forecast did not list, "The forecast had no word of steel wool." (`[data-rare-expected]`, the reveal next to the forecast) and Old
+  Tom's line (the first of each wool: "Well, I'll be. Never seen a fleece do that."; later: "There she goes again. That's another rare
+  fleece."), the lamb's reveal card wears `.born.rare` (sparkle burst), and a link to the codex page.
+- **Codex** (`ui/codex.ts`): two tabs, `data-tab=""` (ideas and cards) and `data-tab="rare"` ("Rare wools · n of 6": `open` with `tab:"rare"`).
+  `.rare-card[data-rare=<id>][data-found=0|1]`: six silhouettes (`svg.rare-sil`); unseen ones read "???" with a hint where to look, found ones show the
+  look, the kiwiana lore and (behind "more") what the fibre is good for and when it was first seen.
+- **Fleeces and items** (`core/woolstore.ts`, `core/craft.ts`, `core/config.ts`): `FleeceLot.fantasy` / `Material.fantasy` / `Item.fantasy`;
+  raw fleece fetches x`FANTASY_RAW_MULT` = 3; a sheep showing a rare wool is worth +`RARE_SHEEP_VALUE` = 40 on the market. Six recipes (one per
+  wool, prices from DESIGN-v3 §6.2): `steelGloves`, `cloudSocks` (needs the drum carder), `glowScarf`, `pauaShawl`, `christmasJersey` (meter 1.4 in
+  summer, 0.7 otherwise), `southerlyShirt`. A fantasy pattern is learned as soon as there is that wool in the shed or on a grown sheep; the job
+  can only be made from a fleece (or stock) of that wool. Locked rare patterns are hidden on the workbench until the wool has been seen.
+- **World** (`world3d`, `WorldSheep.fantasy` only): steel = gunmetal curls and a metallic `MeshStandardMaterial` (metalness 0.72, room environment
+  map, built the first time a steel or pāua sheep is drawn); cloud = whiter puffier fleece, slightly luminous, the sheep floats 0.1 world units off the grass and bobs; glow-worm = emissive teal that
+  rises with `night`; pāua = `MeshPhysicalMaterial` with iridescence and teal/blue/violet tints across the fleece; pōhutukawa = the controller blends
+  `wool` toward crimson by season; southerly = locks combed back toward the tail. `debugStats().fantasy` lists `{id, wool, material, metalness,
+  emissive, iridescence, lift, hex}` for every fantasy sheep in the world.
+- **Probe** `rare.mjs` (`?seed=7&act=4&rare=steel`): a steel sheep with a metallic material in `debugStats`; codex 1 of 6 filled; a steel-glove job
+  queued by a real click (and refused for an ordinary fleece); the vet screen forecasts and then reveals all six genes (the carrier parent is told it
+  carries steel, 20 coins); the carrier pair's forecast names steel wool in words; a steel lamb appears within 14 seasons with the report banner.
+  `panels.mjs` adds `codex-rare` and `vet-screen` (both with `rare=steel`). Tests: `core/rare.test.ts`, `ui.test.ts` ("rare wools in the panels").
+- **Not done / later**: the kiwi's yearly free screen (Phase 9), Kea and steel processing (Phase 9), steel's "Kea-proof" durability star, the
+  signature knit's fantasy band (Phase 7), the steel "ting" in the bleat, a steel gaiters recipe, pōhutukawa counting as vivid red in summer for orders and the fair.

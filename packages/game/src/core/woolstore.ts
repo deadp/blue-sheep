@@ -14,6 +14,7 @@ import { fleeceRate } from "./economy.js";
 import { addLog, flockSheep, isAdult, seasonOfYear } from "./state.js";
 import { hasUpgrade } from "./upgrades.js";
 import { woolTypeOf } from "./wool.js";
+import { rareWoolOf } from "./rare.js";
 import type { FleeceLot, GameState, Sheep, ShearingReport } from "./types.js";
 
 export function isShearingSeason(season: number): boolean {
@@ -41,7 +42,7 @@ export function boomColourNow(state: GameState): string | null {
 
 /** Make a lot from a sheep's clip. */
 export function makeLot(state: GameState, s: Sheep, t: number): FleeceLot {
-  const w = woolOf(s), type = woolTypeOf(s), greasy = clipKg(s);
+  const w = woolOf(s), type = woolTypeOf(s), greasy = clipKg(s), rare = rareWoolOf(s);
   const n = state.nextLot ?? 1;
   state.nextLot = n + 1;
   return {
@@ -49,6 +50,7 @@ export function makeLot(state: GameState, s: Sheep, t: number): FleeceLot {
     type, family: w.family, word: w.word, hex: w.hex, microns: Number(s.phenotype["fineness"]), intensity: w.intensity,
     staple: Number(s.phenotype["staple"] ?? 90),
     rate: fleeceRate(s), fond: fondWoolMultiplier(fondnessOf(state, s.id)),
+    ...(rare ? { fantasy: rare } : {}),
   };
 }
 

@@ -20,6 +20,7 @@ import {
 } from "./config.js";
 import { demandLevel, demandMult, itemKey, lowerDemand, projectDemand, sellRun } from "./demand.js";
 import { storeOf } from "./woolstore.js";
+import { rareDef, rareWoolsOf } from "./rare.js";
 import { addLog, flockSheep, isAdult } from "./state.js";
 import { hasUpgrade } from "./upgrades.js";
 import { woolSuit, woolTypeOf, type ItemId } from "./wool.js";
@@ -95,7 +96,7 @@ export function sourceOf(state: GameState, key: string): Source | null {
   if (k === "lot") {
     const l = storeOf(state).find((x) => x.id === id);
     if (!l) return null;
-    return { key, from: "lot", label: `${l.name}'s ${l.word} fleece`, mat: { lot: l.id, name: l.name, type: l.type, family: l.family, word: l.word, hex: l.hex, microns: l.microns, intensity: l.intensity, staple: l.staple ?? 90, fond: l.fond, kg: l.clean } };
+    return { key, from: "lot", label: `${l.name}'s ${l.word} fleece`, mat: { lot: l.id, name: l.name, type: l.type, family: l.family, word: l.word, hex: l.hex, microns: l.microns, intensity: l.intensity, staple: l.staple ?? 90, fond: l.fond, kg: l.clean, rate: l.rate, ...(l.fantasy ? { fantasy: l.fantasy } : {}) } };
   }
   if (k === "fibre") {
     const f = fibreOf(state).find((x) => x.id === id);
@@ -154,18 +155,24 @@ export function itemPrice(kind: string, q: number, d: number): { coins: number; 
 
 export interface PatternState { item: ItemId; known: boolean; hint: string }
 
-function ownedTypes(state: GameState): { types: Set<string>; minMicrons: number } {
-  const types = new Set<string>();
+function ownedTypes(state: GameState): { types: Set<string>; minMicrons: number; fantasy: Set<string> } {
+  const types = new Set<string>(), fantasy = new Set<string>();
   let minMicrons = 99;
-  for (const l of storeOf(state)) { types.add(l.type); minMicrons = Math.min(minMicrons, l.microns); }
-  for (const f of fibreOf(state)) { types.add(f.type); minMicrons = Math.min(minMicrons, f.microns); }
-  for (const s of flockSheep(state)) if (isAdult(s, state.season)) { types.add(woolTypeOf(s)); minMicrons = Math.min(minMicrons, Number(s.phenotype["fineness"])); }
-  return { types, minMicrons };
+  for (const l of storeOf(state)) { types.add(l.type); minMicrons = Math.min(minMicrons, l.microns); if (l.fantasy) fantasy.add(l.fantasy); }
+  for (const f of fibreOf(state)) { types.add(f.type); minMicrons = Math.min(minMicrons, f.microns); if (f.fantasy) fantasy.add(f.fantasy); }
+  for (const s of flockSheep(state)) if (isAdult(s, state.season)) {
+    types.add(woolTypeOf(s)); minMicrons = Math.min(minMicrons, Number(s.phenotype["fineness"]));
+    for (const w of rareWoolsOf(s)) fantasy.add(w);
+  }
+  return { types, minMicrons, fantasy };
 }
 
 /** Why a pattern isn't known yet, in plain words, or null when its conditions hold. */
 export function patternHint(state: GameState, item: ItemId): string | null {
   const made = state.craft?.made ?? 0, spun = state.craft?.spun ?? 0, own = ownedTypes(state);
+  // A fantasy item is learned as soon as you have its rare wool (shorn, or on a grown sheep).
+  const fantasy = recipeOf(item)?.fantasy;
+  if (fantasy) return own.fantasy.has(fantasy) ? null : `Needs ${rareDef(fantasy)?.name.toLowerCase() ?? "a rare wool"}.`;
   const need = (n: number, what = "item"): string | null => (made >= n ? null : `Finish ${n - made} more ${what}${n - made === 1 ? "" : "s"}.`);
   switch (item) {
     case "socks": return null;
@@ -179,6 +186,7 @@ export function patternHint(state: GameState, item: ItemId): string | null {
     case "lopapeysa": return need(4) ?? (own.types.has("lopi") ? null : "Needs a double-coated sheep.");
     case "bushShirt": return need(5) ?? (!hasUpgrade(state, "tableLoom") ? "Get a table loom." : own.types.has("strong") ? null : "Needs a strong fleece.");
     case "rug": return need(5) ?? (!hasUpgrade(state, "tableLoom") ? "Get a table loom." : own.types.has("carpet") ? null : "Needs a carpet-wool fleece.");
+    default: return null;
   }
 }
 
@@ -196,7 +204,7 @@ export function updatePatterns(state: GameState): { item: string; why: string }[
   for (const r of RECIPES) {
     if (known.includes(r.id) || patternHint(state, r.id) !== null) continue;
     known.push(r.id);
-    if (r.id !== "socks") fresh.push({ item: r.id, why: WHY[r.id]! });
+    if (r.id !== "socks") fresh.push({ item: r.id, why: WHY[r.id] ?? (r.fantasy ? `You have ${rareDef(r.fantasy)?.name.toLowerCase()} to work with.` : "Something new to make.") });
   }
   return fresh;
 }
@@ -286,6 +294,8 @@ export function forecastJob(state: GameState, plan: JobPlan): JobForecast {
   const kg = jobKg(plan.item);
   if (src.mat.kg + 1e-9 < kg) return bad(`Not enough wool: ${plan.item === "batt" || plan.item === "yarn" ? "a batch" : r!.name.toLowerCase()} needs ${kg} kg and this has ${src.mat.kg.toFixed(1)}.`);
   if (r && woolSuit(src.mat.type as WoolType, r.id) === 0) return bad("This wool can't be made into that.");
+  if (r?.fantasy && src.mat.fantasy !== r.fantasy) return bad(`${r.name} needs ${rareDef(r.fantasy)?.name.toLowerCase() ?? "a rare wool"}.`);
+  if (r?.needs && !hasUpgrade(state, r.needs)) return bad(`${r.name} needs ${r.needs === "drumCarder" ? "a drum carder" : "an upgrade"} first.`);
   const seasons = projectFinish(state, { route, left: stageUnits(plan.item, route[0]!), item: plan.item });
   const finish = state.season + seasons;
   if (stock) {
@@ -351,7 +361,7 @@ export function cancelJob(state: GameState, id: number): void {
   const m = j.mat;
   if (j.from === "lot") {
     // Nothing has been done to it: the wool goes back to the store as a lot.
-    (state.store ??= []).push({ id: `L${n}`, sheep: "", name: m.name, season: state.season, greasy: Math.round((m.kg / 0.7) * 100) / 100, clean: m.kg, type: m.type, family: m.family, word: m.word, hex: m.hex, microns: m.microns, intensity: m.intensity, rate: 5, fond: m.fond, staple: m.staple });
+    (state.store ??= []).push({ id: `L${n}`, sheep: "", name: m.name, season: state.season, greasy: Math.round((m.kg / 0.7) * 100) / 100, clean: m.kg, type: m.type, family: m.family, word: m.word, hex: m.hex, microns: m.microns, intensity: m.intensity, rate: m.rate ?? 5, fond: m.fond, staple: m.staple, ...(m.fantasy ? { fantasy: m.fantasy } : {}) });
   } else {
     const fid = state.nextFibre ?? 1;
     state.nextFibre = fid + 1;
@@ -431,7 +441,7 @@ export function craftSeason(state: GameState, rng: Rng, t: number): CraftReport 
     const q = Math.max(0, Math.min(100, Math.round(qualityBase(f) + rng.normal() * sigmaAt(state, st as BenchName))));
     const id = state.nextItem ?? 1;
     state.nextItem = id + 1;
-    const item: Item = { id, kind: j.item, q, stars: starsOf(q), season: t + 1, hex: j.mat.hex, family: j.mat.family, word: j.mat.word, type: j.mat.type, seen: j.seen };
+    const item: Item = { id, kind: j.item, q, stars: starsOf(q), season: t + 1, hex: j.mat.hex, family: j.mat.family, word: j.mat.word, type: j.mat.type, seen: j.seen, ...(j.mat.fantasy ? { fantasy: j.mat.fantasy } : {}) };
     (state.items ??= []).push(item);
     state.craft = { made: (state.craft?.made ?? 0) + 1, spun: state.craft?.spun ?? 0 };
     rep.done.push({ item, name: r.name });

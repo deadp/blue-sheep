@@ -36,6 +36,12 @@ export interface WorldSheep {
   family: string;
   pattern: "solid" | "spotted";
   horns: "polled" | "horned";
+  /**
+   * The rare wool this sheep shows (DESIGN-v3 §4), if any: "steel" | "cloud" | "glow" | "paua" | "pohutukawa" | "southerly".
+   * Drives the looks only: a metallic gunmetal fleece, a sheep that hovers, a night glow, a pāua shimmer, a crimson summer
+   * fleece (the controller blends `wool` toward crimson by season) and a fleece swept by the wind.
+   */
+  fantasy?: string;
   /** kg, typically 40–80 → body scale */
   size: number;
   /** kg, typically 2–6 → wool puffiness */

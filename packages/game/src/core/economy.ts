@@ -1,8 +1,9 @@
 /** Prices, wool income, buying and selling, and the money floor. */
-import { BREED_STOCK, BUY_MARKUP, CLIP_KG, RAW_TYPE_FACTOR, FINE_REF, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE } from "./config.js";
+import { BREED_STOCK, BUY_MARKUP, CLIP_KG, FANTASY_RAW_MULT, RARE_SHEEP_VALUE, RAW_TYPE_FACTOR, FINE_REF, LAMB_PRICE_FACTOR, SELL_DECAY, SELL_FACTOR, SELL_FACTOR_MIN, SHEEP_BASE_PRICE } from "./config.js";
 import { breedOf } from "./breeds.js";
 import { colourValue, woolOf, woolPricePerKg } from "./colour.js";
 import { woolTypeOf } from "./wool.js";
+import { rareWoolOf } from "./rare.js";
 import { addLog, flockSheep, isAdult } from "./state.js";
 import type { GameState, Sheep } from "./types.js";
 
@@ -10,7 +11,7 @@ import type { GameState, Sheep } from "./types.js";
 function marketWorth(s: Sheep): number {
   const fine = Math.max(0, FINE_REF - Number(s.phenotype["fineness"])) * 2;
   const heavy = Math.max(0, Number(s.phenotype["fleeceWeight"]) - 4) * 3;
-  return SHEEP_BASE_PRICE + colourValue(woolOf(s)) + fine + heavy + s.rosettes.length * 10;
+  return SHEEP_BASE_PRICE + colourValue(woolOf(s)) + fine + heavy + s.rosettes.length * 10 + (rareWoolOf(s) ? RARE_SHEEP_VALUE : 0);
 }
 
 /** Share of a sheep's worth the trader pays in a given season: sheep get cheaper as the valley fills up. */
@@ -43,7 +44,7 @@ export function finenessMultiplier(microns: number): number {
 
 /** Coins per greasy kg at rest demand: colour, fineness and wool type (before fondness, the shed and the meters). */
 export function fleeceRate(s: Sheep): number {
-  return woolPricePerKg(woolOf(s)) * finenessMultiplier(Number(s.phenotype["fineness"])) * (RAW_TYPE_FACTOR[woolTypeOf(s)] ?? 1);
+  return woolPricePerKg(woolOf(s)) * finenessMultiplier(Number(s.phenotype["fineness"])) * (RAW_TYPE_FACTOR[woolTypeOf(s)] ?? 1) * (rareWoolOf(s) ? FANTASY_RAW_MULT : 1);
 }
 
 /** Coins from one adult's clip (one shearing) at rest demand. `boomColour` is a colour family whose wool fetches double. */

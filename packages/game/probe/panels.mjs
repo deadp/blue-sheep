@@ -7,7 +7,8 @@ import { ProbeError } from "./lib/browser.mjs";
  * panel has content (?act=N). Keep in sync with CONTRACTS.md §5.
  * `shot` + `scrollTo` (a CSS selector) take an extra screenshot of a lower part of the panel.
  * `noUi` keeps an entry out of ui.mjs's layout sweep (the same panel is already swept; keeps that step short).
- * @type {{ name: string, act?: number, shot?: string, scrollTo?: string, noUi?: boolean }[]}
+ * `rare` adds `&rare=<wool>` (the fixture's rare sheep, see rare.mjs).
+ * @type {{ name: string, act?: number, rare?: string, shot?: string, scrollTo?: string, click?: string, noUi?: boolean }[]}
  */
 export const PANELS = [
   { name: "title" },
@@ -29,6 +30,8 @@ export const PANELS = [
   { name: "orders", act: 1 },
   { name: "vet", act: 1 },
   { name: "codex", act: 1 },
+  { name: "codex", act: 4, rare: "steel", shot: "codex-rare", noUi: true, click: '#overlay [data-tab="rare"]' },
+  { name: "vet", act: 4, rare: "steel", shot: "vet-screen", scrollTo: '#overlay [data-test-row="rare"]' },
   { name: "fair", act: 2 },
   { name: "tree", act: 3 },
   { name: "ending", act: 4 },
@@ -42,7 +45,7 @@ export const panels = {
     const failures = [];
     for (const p of PANELS) {
       const g = await ctx.newPage();
-      const query = `?seed=7&fresh=1&nomotion=1${p.act !== undefined ? `&act=${p.act}` : ""}&panel=${p.name}`;
+      const query = `?seed=7&fresh=1&nomotion=1${p.act !== undefined ? `&act=${p.act}` : ""}${p.rare ? `&rare=${p.rare}` : ""}&panel=${p.name}`;
       try {
         await g.boot(query);
         await g.waitPanel(p.name);

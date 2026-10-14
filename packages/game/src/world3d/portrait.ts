@@ -2,7 +2,7 @@
 // animated only while mounted. Breathes, blinks, looks around, flicks its ears,
 // watches the cursor, and bleats with a hop when clicked.
 import * as THREE from "three";
-import { buildFullRig, buildSheepGeos, disposeGeos, EAR_REST, restPose, sheepKey, SheepMaterials, type FullRig, type SheepGeos, type SheepPose } from "./sheepMesh.js";
+import { buildFullRig, buildSheepGeos, disposeGeos, EAR_REST, makeEnvironment, restPose, sheepKey, SheepMaterials, type FullRig, type SheepGeos, type SheepPose } from "./sheepMesh.js";
 import { Bubble } from "./fx.js";
 import { woolHex } from "./palette.js";
 import { HOLD_CLICK_MS, HOLD_MS, Hold } from "./hold.js";
@@ -381,6 +381,7 @@ export class LivePortrait {
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.setClearColor(0x000000, 0);
+    this.mats.setEnvironmentSource(() => makeEnvironment(r));
     const cv = r.domElement;
     cv.dataset.livePortrait = "1";
     cv.className = "live-portrait";
@@ -557,6 +558,7 @@ export class LivePortrait {
     head.project(this.camera);
     const w = L.el.clientWidth, h = L.el.clientHeight;
     L.bubble.place(clamp(((head.x + 1) / 2) * w, 36, w - 36), clamp(((1 - head.y) / 2) * h, 34, h));
+    this.mats.update(performance.now() / 1000, 0.45); // a glow-worm fleece glows a little in its portrait
     r.render(this.scene, this.camera);
     this.frames++;
   }

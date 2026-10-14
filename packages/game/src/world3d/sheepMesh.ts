@@ -5,6 +5,7 @@
 // meshes in portraits (buildFullRig). SheepPose drives both.
 import * as THREE from "three";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GeoBatch, mat, type V3 } from "./builder.js";
 import { hashString, mulberry32 } from "./rng.js";
 import { woolHex } from "./palette.js";
@@ -114,7 +115,7 @@ export function breedLook(w: WorldSheep): BreedLook {
 
 export function sheepKey(w: WorldSheep): string {
   return [
-    w.id, w.breed ?? "farm", (w.breedMix ?? []).map((m) => `${m.breed}${Math.round(m.share * 20)}`).join("+"), woolHex(w), w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
+    w.id, w.fantasy ?? "", w.breed ?? "farm", (w.breedMix ?? []).map((m) => `${m.breed}${Math.round(m.share * 20)}`).join("+"), woolHex(w), w.pattern, w.horns, w.sex, w.adult ? 1 : 0,
     Math.round(num(w.size, 60)), Math.round(num(w.fleeceWeight, 4) * 4), Math.round(num(w.crimp, 5) * 2),
   ].join("|");
 }
@@ -146,6 +147,8 @@ export function faceHex(w: WorldSheep): string {
 }
 
 const HORN = "#dcc59a";
+/** Pāua shimmer: three tints (teal, blue, violet) laid across the fleece by position. */
+const PAUA_TINTS = [new THREE.Color("#6fd8cf"), new THREE.Color("#7f9fee"), new THREE.Color("#b58fe8")];
 const _c = new THREE.Color();
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
@@ -191,6 +194,14 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   const d = sheepDims(w);
   const rng = mulberry32(hashString(w.id) ^ 0x5eed);
   const wool = new THREE.Color(woolHex(w));
+  // Rare wools (DESIGN-v3 §4) change the fleece itself: steel is gunmetal in tight curls, cloud is whiter and puffier,
+  // glow-worm and pāua lean cool (pāua also varies teal / blue / violet across the body), southerly locks are swept back.
+  const fantasy = w.fantasy ?? "";
+  if (fantasy === "steel") wool.lerp(new THREE.Color("#7f8a96"), 0.82);
+  else if (fantasy === "cloud") wool.lerp(new THREE.Color("#ffffff"), 0.55);
+  else if (fantasy === "glow") wool.lerp(new THREE.Color("#bfeee4"), 0.3);
+  else if (fantasy === "paua") wool.lerp(new THREE.Color("#b9dfe6"), 0.5);
+  const swept = fantasy === "southerly", paua = fantasy === "paua";
   const face = faceHex(w);
   const faceC = new THREE.Color(face);
   const spotHex = w.family === "white" ? "#6b5646" : "#f6f1e6";
@@ -209,8 +220,8 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   const bb = new GeoBatch(0, rng);
   bb.ico(look0.under > 0 ? new THREE.Color(wool).multiplyScalar(1 - 0.16 * look0.under) : wool, 1, 2, [0, 0, 0], [L, H, W]);
   const look = breedLook(w);
-  const n = Math.round(LOCKS * (0.85 + curl * 0.35) * look.locks);
-  const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS) * look.lockR;
+  const n = Math.round(LOCKS * (0.85 + curl * 0.35) * look.locks * (fantasy === "steel" ? 1.3 : 1));
+  const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS) * look.lockR * (fantasy === "steel" ? 0.8 : fantasy === "cloud" ? 1.15 : 1);
   const lite = LOCKS < 40;
   // Icelandic: the base layer is a short dense under-wool a shade darker than the long outer locks laid over it
   const under = new THREE.Color(wool).multiplyScalar(1 - 0.16 * look.under);
@@ -220,7 +231,10 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
     if (y < -0.72) continue;
     _c.set(isSpot(x, y, z) ? spotHex : look.under > 0 ? under : wool).multiplyScalar(0.97 + rng() * 0.06);
     const r = lockR * (0.85 + rng() * 0.4);
-    bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], [1.2, (0.85 + curl * 0.2) * look.stretch, 1], [rng() * 3, rng() * 3, rng() * 3]);
+    if (paua) _c.lerp(PAUA_TINTS[(((Math.floor((x * 2 + y * 3 + z * 2) * 2) % 3) + 3) % 3)]!, 0.5);
+    const rot: V3 = [rng() * 3, rng() * 3, rng() * 3];
+    // a southerly fleece: every lock combed long and low toward the tail, as if leaning into a gale
+    bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], swept ? [2.1, 0.8, 1] : [1.2, (0.85 + curl * 0.2) * look.stretch, 1], swept ? [0, 0, 0.45 + (rot[2] - 1.5) * 0.08] : rot);
   }
   // rump and breast fullness, a woolly neck carrying the head forward, a short docked tail
   const woolAt = (x: number, y: number, z: number) => (isSpot(x, y, z) ? spotHex : wool);
@@ -448,6 +462,20 @@ export function applyPose(rig: SheepRig, geos: SheepGeos, pose: SheepPose): void
 
 // ---------------------------------------------------------------- materials
 
+/** A soft room environment map for the metallic and iridescent wools; null where the renderer can't make one. */
+export function makeEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture | null {
+  try {
+    const pm = new THREE.PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    const env = pm.fromScene(room, 0.04).texture;
+    room.dispose();
+    pm.dispose();
+    return env;
+  } catch {
+    return null;
+  }
+}
+
 /** Shared flock materials and unit part geometries. Wool sheen is bucketed by fineness so materials stay shared. */
 export class SheepMaterials {
   readonly wool: THREE.MeshStandardMaterial[];
@@ -484,19 +512,73 @@ export class SheepMaterials {
     .add(new THREE.IcosahedronGeometry(0.16, 0).translate(0.2, -0.42, 0), "#ffffff")
     .build()!;
 
+  /**
+   * Rare wool materials (DESIGN-v3 §4), shared by every sheep that shows that wool: steel is metallic (reflecting the room
+   * environment when there is one), glow-worm is emissive (its glow follows the night), pāua is iridescent, cloud is a touch
+   * luminous. Pōhutukawa and southerly use the ordinary wool (their look is in the colour and the shape).
+   */
+  readonly steel = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.34, metalness: 0.72, emissive: "#2b3440", emissiveIntensity: 0.35 });
+  readonly glow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, emissive: "#2cc4ad", emissiveIntensity: 0.12 });
+  readonly paua = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.05, iridescence: 1, iridescenceIOR: 1.7, iridescenceThicknessRange: [180, 640], emissive: "#6a7fd8", emissiveIntensity: 0.08 });
+  readonly cloud = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.98, metalness: 0, emissive: "#dff0ff", emissiveIntensity: 0.16 });
+
   constructor() {
     this.wool = [0.62, 0.8, 0.96].map(
       (roughness) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness, metalness: 0 }),
     );
   }
 
-  woolFor(fineness: number): THREE.MeshStandardMaterial {
+  /**
+   * Where the room environment steel and pāua reflect comes from (the owner's renderer makes it). It is built the first time a
+   * steel or pāua sheep is drawn, so a farm without them never pays for it; absent, those wools still shade with the lights.
+   */
+  private envSource: (() => THREE.Texture | null) | null = null;
+  private env: THREE.Texture | null = null;
+  setEnvironmentSource(make: () => THREE.Texture | null): void {
+    this.envSource = make;
+  }
+  private ensureEnvironment(): void {
+    const make = this.envSource;
+    if (!make) return;
+    this.envSource = null;
+    this.env = make();
+    for (const m of [this.steel, this.paua]) { m.envMap = this.env; m.envMapIntensity = m === this.steel ? 1.15 : 0.7; m.needsUpdate = true; }
+  }
+
+  /** Which animated rare materials have been handed out (a farm without glow-worm or pāua wool pays nothing per frame). */
+  private inUse = { glow: false, paua: false };
+
+  /** Per frame: the glow-worm fleece brightens as it gets dark, and pāua slowly shifts its colours. */
+  update(time: number, night: number): void {
+    if (this.inUse.glow) this.glow.emissiveIntensity = 0.1 + 0.55 * night + Math.sin(time * 1.3) * 0.04 * night;
+    if (this.inUse.paua) {
+      const r = this.paua.iridescenceThicknessRange;
+      r[0] = 180 + Math.sin(time * 0.8) * 90; r[1] = 640 + Math.cos(time * 0.6) * 90;
+      this.paua.emissive.setHSL((0.55 + 0.12 * Math.sin(time * 0.5)) % 1, 0.55, 0.6);
+    }
+  }
+
+  /** The material for a rare wool, or null for the ordinary wool of the sheep's fineness. */
+  fantasyFor(id: string | undefined): THREE.MeshStandardMaterial | null {
+    if (id === "glow") this.inUse.glow = true;
+    else if (id === "paua") this.inUse.paua = true;
+    return id === "steel" ? this.steel : id === "glow" ? this.glow : id === "paua" ? this.paua : id === "cloud" ? this.cloud : null;
+  }
+
+  woolFor(fineness: number, fantasy?: string): THREE.MeshStandardMaterial {
+    const rare = this.fantasyFor(fantasy);
+    if (rare) {
+      if (fantasy === "steel" || fantasy === "paua") this.ensureEnvironment();
+      return rare;
+    }
     const f = num(fineness, 26);
     return this.wool[f < 21 ? 0 : f < 28 ? 1 : 2]!;
   }
 
   dispose(): void {
     for (const m of this.wool) m.dispose();
+    for (const m of [this.steel, this.glow, this.paua, this.cloud]) m.dispose();
+    this.env?.dispose();
     this.skin.dispose();
     this.part.dispose();
     this.eye.dispose();
@@ -531,7 +613,7 @@ export function buildRig(geos: SheepGeos, w: WorldSheep, mats: SheepMaterials, s
   root.scale.setScalar(d.rootScale);
   const bob = new THREE.Group();
   root.add(bob);
-  const body = new THREE.Mesh(geos.body, mats.woolFor(w.fineness));
+  const body = new THREE.Mesh(geos.body, mats.woolFor(w.fineness, w.fantasy));
   body.position.y = d.bodyY;
   body.castShadow = shadows;
   bob.add(body);

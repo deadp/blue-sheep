@@ -51,7 +51,14 @@ export const SELL_FACTOR_MIN = 0.5;
 export const BUY_MARKUP = 1.8;
 
 export const VET_FEE = 12;
+/** The vet's rare-gene screen (all six rare-wool genes of one sheep at once; DESIGN-v3 §4) and the first act it is offered. */
+export const RARE_SCREEN_FEE = 20;
+export const RARE_SCREEN_ACT = 3;
 export const VISITOR_FEE = 25;
+/** Chance a visiting ram is "from down south, says he's got something special": he may carry one rare-wool gene (core/visitor.ts). */
+export const VISITOR_SOUTHERN_CHANCE = 0.4;
+/** …and the chance he really does carry it. */
+export const VISITOR_SOUTHERN_CARRIER = 0.25;
 /** Vet tests: hidden colour, one pigment colour (both its genes), pale, spots, horns. */
 export const TEST_LOCI = ["W", "red", "yellow", "blue", "Dl", "S", "P"] as const;
 
@@ -310,6 +317,10 @@ export interface Recipe {
   colour: "any" | "natural" | "pastel";
   /** Shortest staple (mm) that is not penalised. */
   minStaple?: number;
+  /** Made only from this rare wool (core/rare.ts RareId). */
+  fantasy?: string;
+  /** A farm improvement the job can't be queued without. */
+  needs?: UpgradeId;
   /** Plain line for the pattern card. */
   blurb: string;
 }
@@ -326,7 +337,20 @@ export const RECIPES: Recipe[] = [
   { id: "lopapeysa", name: "Lopapeysa", kg: 0.8, bench: "knit", work: 8, micron: 30, base: 90, step: 0.25, colour: "any", minStaple: 100, blurb: "The Icelandic yoke jersey. Wants long, double-coated wool." },
   { id: "bushShirt", name: "Bush shirt", kg: 1, bench: "weave", work: 6, micron: 34, base: 80, step: 0.25, colour: "any", blurb: "A tough woven shirt, bush-proof." },
   { id: "rug", name: "Rug", kg: 2.5, bench: "weave", work: 8, micron: 45, base: 105, step: 0.3, colour: "any", minStaple: 120, blurb: "Hearth rug from the coarsest carpet wool." },
+  // Fantasy wools (DESIGN-v3 §4, §6.2): one item each, made only from that rare fleece. Prices as the design table.
+  { id: "steelGloves", name: "Steel fencing gloves", kg: 0.2, bench: "knit", work: 2, micron: 32, base: 70, step: 0.35, colour: "any", fantasy: "steel", blurb: "Fencing gloves that Number 8 wire can't get through." },
+  { id: "cloudSocks", name: "Cloud socks", kg: 0.06, bench: "knit", work: 2, micron: 21, base: 80, step: 0.35, colour: "any", fantasy: "cloud", needs: "drumCarder", blurb: "Weightless socks to tramp all day in. Cloud wool must be drum carded." },
+  { id: "glowScarf", name: "Glow-worm scarf", kg: 0.3, bench: "knit", work: 2, micron: 27, base: 90, step: 0.35, colour: "any", fantasy: "glow", blurb: "A scarf that glows softly in the dark." },
+  { id: "pauaShawl", name: "Pāua shawl", kg: 0.4, bench: "knit", work: 5, micron: 24, base: 150, step: 0.4, colour: "any", fantasy: "paua", blurb: "A shawl that shimmers blue, green and violet." },
+  { id: "christmasJersey", name: "Christmas jersey", kg: 0.8, bench: "knit", work: 8, micron: 28, base: 140, step: 0.4, colour: "any", fantasy: "pohutukawa", blurb: "Crimson for the summer. Everyone wants one by December." },
+  { id: "southerlyShirt", name: "Southerly bush shirt", kg: 1, bench: "weave", work: 6, micron: 32, base: 130, step: 0.4, colour: "any", fantasy: "southerly", blurb: "Windproof, for when the southerly buster comes." },
 ];
 /** Items seasonal targets: warm things want winter, tea cosies want summer (read by core/demand.ts). */
 export const ITEM_WINTER: string[] = ["beanie", "mittens", "gumbootSocks"];
+/** Raw fleece of a rare wool fetches this much more than the same fleece without it (DESIGN-v3 §7). */
+export const FANTASY_RAW_MULT = 3;
+/** Coins a sheep showing a rare wool is worth on the market on top of its colour, fineness and fleece. */
+export const RARE_SHEEP_VALUE = 40;
 export const ITEM_SWING = 0.2;
+/** Items that sell best in summer: the meter's target in summer and in the other seasons (tea cosies, and the pōhutukawa Christmas jersey). */
+export const ITEM_SUMMER: Record<string, [number, number]> = { teaCosy: [1.3, 1], christmasJersey: [1.4, 0.7] };

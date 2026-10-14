@@ -12,6 +12,22 @@ export interface PosteriorOptions {
   samples?: number;
   burnIn?: number;
   seed?: number;
+  /**
+   * Start the chain at a typical state instead of a uniformly random consistent one: each sheep's candidate genotypes are tried in
+   * a random order weighted by their founder prior. For genes with a rare allele (the fantasy wools) this matters: a uniform start
+   * makes half the founders carriers, and single-site Gibbs moves then can't get back (a carrier parent with ten plain lambs can't
+   * become a non-carrier until every lamb is, which takes about 2^10 sweeps), so the posterior sticks at the wrong answer.
+   * Off by default: it changes the random draws, and the colour traits mix fine from a uniform start.
+   */
+  initByPrior?: boolean;
+  /**
+   * Draw exact independent samples (variable elimination with backward sampling) instead of running the Gibbs chain, when the
+   * pedigree's interaction graph is narrow enough (otherwise it falls back to the chain). Exact sampling has no mixing problem, which a
+   * rare allele needs: a carrier parent with many plain lambs traps the chain. The marginals and the pair statistics come from the same `samples`.
+   */
+  exact?: boolean;
+  /** Largest table `exact` may build (entries); a test can lower it to force the fallback. Default: 3^13. */
+  maxTable?: number;
 }
 
 export interface DiscretePosterior {
@@ -57,7 +73,7 @@ export function jointTransmission(child: Joint, dam: Joint, sire: Joint): number
 }
 
 /** Find one fully consistent assignment over the support (parents before children), with conflict-directed backjumping. */
-function initialAssignment(inds: Individual[], support: Support, rng: Rng): number[] {
+function initialAssignment(inds: Individual[], support: Support, rng: Rng, weight?: (i: number, joint: number) => number): number[] {
   const { all, cand } = support;
   const index = new Map(all.map((j, i) => [j, i]));
   const pos = new Map(inds.map((ind, i) => [ind.id, i]));
@@ -90,8 +106,12 @@ function initialAssignment(inds: Individual[], support: Support, rng: Rng): numb
   const rec = (k: number): number => {
     if (k === inds.length) return SUCCESS;
     conf[k] = new Set<number>();
-    const options = [...cand.get(inds[k]!.id)!];
-    for (let n = options.length - 1; n > 0; n--) { const m = rng.int(n + 1); [options[n], options[m]] = [options[m]!, options[n]!]; }
+    let options = [...cand.get(inds[k]!.id)!];
+    if (weight) {
+      // a weighted random order (Efraimidis-Spirakis: sort by u^(1/w), biggest first): likely genotypes first
+      options = options.map((j) => ({ j, key: Math.pow(Math.max(rng.next(), 1e-12), 1 / Math.max(1e-12, weight(k, index.get(j)!))) }))
+        .sort((a, b) => b.key - a.key).map((x) => x.j);
+    } else for (let n = options.length - 1; n > 0; n--) { const m = rng.int(n + 1); [options[n], options[m]] = [options[m]!, options[n]!]; }
     for (const j of options) {
       const c = conflicts(k, j);
       if (c.length) { for (const x of c) conf[k]!.add(x); continue; }
@@ -108,6 +128,154 @@ function initialAssignment(inds: Individual[], support: Support, rng: Rng): numb
   };
   if (rec(0) !== SUCCESS) throw new Error("no consistent genotype assignment exists");
   return assign;
+}
+
+/**
+ * Is there any genotype assignment that fits every phenotype, test and family link? `posteriorDiscrete` throws
+ * "no consistent genotype assignment" when there is none (a new mutation, or a test the pedigree can't explain);
+ * this asks first, cheaply, without sampling.
+ */
+export function isConsistent(map: GenomeMap, trait: DiscreteTrait, individuals: Individual[]): boolean {
+  if (!individuals.length) return true;
+  const support = discreteSupport(map, trait, individuals);
+  if (individuals.some((i) => support.cand.get(i.id)!.length === 0)) return false;
+  try { initialAssignment(individuals, support, createRng(1)); return true; } catch { return false; }
+}
+
+
+// ---- Exact sampling (variable elimination) --------------------------------------------------------------------------
+
+/** Largest table (entries) variable elimination may build; a wider pedigree falls back to the Gibbs chain. */
+const EXACT_MAX_TABLE = 1_600_000; // 3^13: elimination degree up to 12 stays exact (late-game pedigrees reach 11)
+
+interface Factor { vars: number[]; t: Float64Array }
+
+/** Product of factors over `scope` (scope[0] most significant), as a table. */
+function product(fs: Factor[], scope: number[], n: number): Float64Array {
+  const k = scope.length, size = n ** k;
+  const out = new Float64Array(size).fill(1);
+  const where = new Map(scope.map((v, i) => [v, i]));
+  for (const f of fs) {
+    const fstr = new Int32Array(k);
+    let s = 1;
+    for (let a = f.vars.length - 1; a >= 0; a--) { fstr[where.get(f.vars[a]!)!] = s; s *= n; }
+    const digits = new Int32Array(k);
+    let fi = 0;
+    for (let idx = 0; idx < size; idx++) {
+      out[idx]! *= f.t[fi]!;
+      for (let p = k - 1; p >= 0; p--) {
+        digits[p]!++; fi += fstr[p]!;
+        if (digits[p]! < n) break;
+        fi -= fstr[p]! * n; digits[p] = 0;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Exact joint samples of every individual's genotype: variable elimination (min-degree order) over the pedigree's factors, then
+ * backward sampling in reverse elimination order. Null when a table would be too big. Throws "no consistent genotype assignment
+ * exists" when the evidence is impossible.
+ */
+function exactSamples(
+  m: number, n: number, candIdx: number[][], parents: { dam: number | null; sire: number | null }[],
+  T: Float64Array, U: Float64Array, priors: number[], ownPrior: (number[] | null)[], rng: Rng, count: number, maxTable: number,
+): Int16Array[] | null {
+  const pool = new Set<Factor>();
+  const mask = (i: number) => { const a = new Float64Array(n); for (const c of candIdx[i]!) a[c] = 1; return a; };
+  for (let i = 0; i < m; i++) {
+    const { dam, sire } = parents[i]!, ok = mask(i);
+    let f: Factor;
+    if (dam !== null && sire !== null) {
+      const t = new Float64Array(n * n * n);
+      for (let c = 0; c < n; c++) for (let d = 0; d < n; d++) for (let s = 0; s < n; s++) t[(c * n + d) * n + s] = T[(c * n + d) * n + s]! * ok[c]!;
+      f = { vars: [i, dam, sire], t };
+    } else if (dam !== null || sire !== null) {
+      const t = new Float64Array(n * n), par = (dam ?? sire)!;
+      for (let c = 0; c < n; c++) for (let d = 0; d < n; d++) t[c * n + d] = U[c * n + d]! * ok[c]!;
+      f = { vars: [i, par], t };
+    } else {
+      const pr = ownPrior[i] ?? priors, t = new Float64Array(n);
+      for (let c = 0; c < n; c++) t[c] = pr[c]! * ok[c]!;
+      f = { vars: [i], t };
+    }
+    pool.add(f);
+  }
+  // the elimination order: repeatedly take the variable with the fewest neighbours; refuse if any table would be too big
+  const adj: Set<number>[] = Array.from({ length: m }, () => new Set<number>());
+  for (const f of pool) for (const a of f.vars) for (const b of f.vars) if (a !== b) adj[a]!.add(b);
+  const alive = new Set<number>(Array.from({ length: m }, (_, i) => i));
+  const order: number[] = [];
+  const scopes: number[][] = [];
+  while (alive.size) {
+    let best = -1, bd = Infinity;
+    for (const v of alive) { const d = adj[v]!.size; if (d < bd) { bd = d; best = v; } }
+    if (n ** (bd + 1) > maxTable) return null;
+    const nb = [...adj[best]!].sort((a, b) => a - b);
+    for (const a of nb) { adj[a]!.delete(best); for (const b of nb) if (a !== b) adj[a]!.add(b); }
+    alive.delete(best);
+    order.push(best); scopes.push([best, ...nb]);
+  }
+  // eliminate, keeping each variable's product table for the backward pass
+  const byVar: Set<Factor>[] = Array.from({ length: m }, () => new Set<Factor>());
+  for (const f of pool) for (const v of f.vars) byVar[v]!.add(f);
+  const psi: Float64Array[] = [];
+  for (let k = 0; k < order.length; k++) {
+    const v = order[k]!, scope = scopes[k]!;
+    const fs = [...byVar[v]!];
+    for (const f of fs) { pool.delete(f); for (const u of f.vars) byVar[u]!.delete(f); }
+    const tab = product(fs, scope, n);
+    psi.push(tab);
+    const rest = n ** (scope.length - 1), msg = new Float64Array(rest);
+    for (let a = 0; a < n; a++) for (let r = 0; r < rest; r++) msg[r]! += tab[a * rest + r]!;
+    // normalise every message (the largest entry becomes 1) so long pedigrees never underflow; sampling only needs ratios
+    let mx = 0;
+    for (let r = 0; r < rest; r++) if (msg[r]! > mx) mx = msg[r]!;
+    if (mx <= 0) throw new Error("no consistent genotype assignment exists");
+    for (let r = 0; r < rest; r++) msg[r]! /= mx;
+    const nf: Factor = { vars: scope.slice(1), t: msg };
+    pool.add(nf);
+    for (const u of nf.vars) byVar[u]!.add(nf);
+  }
+  // backward sampling
+  const out: Int16Array[] = [];
+  const vals = new Int16Array(m);
+  for (let s = 0; s < count; s++) {
+    for (let k = order.length - 1; k >= 0; k--) {
+      const v = order[k]!, scope = scopes[k]!, tab = psi[k]!;
+      const rest = n ** (scope.length - 1);
+      let r = 0;
+      for (let q = 1; q < scope.length; q++) r = r * n + vals[scope[q]!]!;
+      let total = 0;
+      for (let a = 0; a < n; a++) total += tab[a * rest + r]!;
+      let u = rng.next() * total, pick = n - 1;
+      for (let a = 0; a < n; a++) { u -= tab[a * rest + r]!; if (u <= 0) { pick = a; break; } }
+      vals[v] = pick;
+    }
+    out.push(Int16Array.from(vals));
+  }
+  return out;
+}
+
+/** Marginals (per locus genotype, and per joint genotype) from `margSamples`; `samples` are the draws kept for pair statistics. */
+function summarise(trait: DiscreteTrait, support: Support, inds: Individual[], samples: Int16Array[], margSamples: Int16Array[]): DiscretePosterior {
+  const { all } = support;
+  const marginals: DiscretePosterior["marginals"] = {};
+  const jointMarginals: DiscretePosterior["jointMarginals"] = {};
+  inds.forEach((ind, i) => {
+    const jm = new Map<number, number>();
+    for (const s of margSamples) jm.set(s[i]!, (jm.get(s[i]!) ?? 0) + 1 / margSamples.length);
+    jointMarginals[ind.id] = jm;
+    const per: Record<string, Record<string, number>> = {};
+    support.loci.forEach((l, li) => {
+      const m: Record<string, number> = {};
+      for (const [jIdx, p] of jm) { const g = support.gstr(l, all[jIdx]![li]!); m[g] = (m[g] ?? 0) + p; }
+      per[l.id] = m;
+    });
+    marginals[ind.id] = per;
+  });
+  return { trait, support, ids: inds.map((x) => x.id), samples, marginals, jointMarginals };
 }
 
 export function posteriorDiscrete(map: GenomeMap, trait: DiscreteTrait, individuals: Individual[], opts: PosteriorOptions = {}): DiscretePosterior {
@@ -179,7 +347,12 @@ export function posteriorDiscrete(map: GenomeMap, trait: DiscreteTrait, individu
   };
   const swapped = new Int32Array(inds.length);
 
-  const state = initialAssignment(inds, support, rng);
+  if (opts.exact) {
+    const ex = exactSamples(inds.length, n, candIdx, parents, T, U, priors, ownPrior, rng, samplesN, opts.maxTable ?? EXACT_MAX_TABLE);
+    if (ex) return summarise(trait, support, inds, ex, ex);
+  }
+
+  const state = initialAssignment(inds, support, rng, opts.initByPrior ? (i, c) => (ownPrior[i] ?? priors)[c]! : undefined);
   const samples: Int16Array[] = [];
   const weights = new Float64Array(all.length);
 
@@ -220,21 +393,7 @@ export function posteriorDiscrete(map: GenomeMap, trait: DiscreteTrait, individu
     if (sweep >= burn) samples.push(Int16Array.from(state));
   }
 
-  const marginals: DiscretePosterior["marginals"] = {};
-  const jointMarginals: DiscretePosterior["jointMarginals"] = {};
-  inds.forEach((ind, i) => {
-    const jm = new Map<number, number>();
-    for (const s of samples) jm.set(s[i]!, (jm.get(s[i]!) ?? 0) + 1 / samples.length);
-    jointMarginals[ind.id] = jm;
-    const per: Record<string, Record<string, number>> = {};
-    support.loci.forEach((l, li) => {
-      const m: Record<string, number> = {};
-      for (const [jIdx, p] of jm) { const g = support.gstr(l, all[jIdx]![li]!); m[g] = (m[g] ?? 0) + p; }
-      per[l.id] = m;
-    });
-    marginals[ind.id] = per;
-  });
-  return { trait, support, ids: inds.map((x) => x.id), samples, marginals, jointMarginals };
+  return summarise(trait, support, inds, samples, samples);
 }
 
 /** Phenotype distribution for a hypothetical lamb of dam × sire, given current knowledge. */

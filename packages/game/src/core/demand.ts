@@ -6,7 +6,7 @@
  * spike a meter's price (the wool boom) without moving the meter. The meters live in `state.demand`; a key that isn't
  * there sits at its seasonal target. Pure of RNG: nothing here draws.
  */
-import { DEMAND_FLOOR, DEMAND_MAX, DEMAND_SLOPE, ITEM_REFILL_DOWN, ITEM_REFILL_UP, ITEM_SWING, ITEM_WINTER, RAW_REFILL, SEASON_SWING } from "./config.js";
+import { DEMAND_FLOOR, DEMAND_MAX, DEMAND_SLOPE, ITEM_REFILL_DOWN, ITEM_REFILL_UP, ITEM_SUMMER, ITEM_SWING, ITEM_WINTER, RAW_REFILL, SEASON_SWING } from "./config.js";
 import { seasonOfYear } from "./state.js";
 import type { GameState } from "./types.js";
 
@@ -23,7 +23,8 @@ export function demandTarget(key: string, season: number): number {
   if (key.startsWith("item:")) {
     const item = key.slice(5), y = seasonOfYear(season);
     if (ITEM_WINTER.includes(item)) return y === 3 ? 1 + ITEM_SWING : y === 1 ? 1 - ITEM_SWING : 1;
-    if (item === "teaCosy") return y === 1 ? 1.3 : 1;
+    const summer = ITEM_SUMMER[item];
+    if (summer) return y === 1 ? summer[0] : summer[1];
     return 1;
   }
   if (!key.startsWith("raw:")) return 1;

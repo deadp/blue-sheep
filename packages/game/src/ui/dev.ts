@@ -6,7 +6,7 @@
  */
 import "./styles.css";
 import {
-  acceptOrder, advanceSeason, buySheep, declineOrder, enterFair, hireVisitingRam, planMating, sellSheep, vetTest,
+  acceptOrder, advanceSeason, buySheep, declineOrder, enterFair, hireVisitingRam, planMating, sellSheep, vetScreen, vetTest,
   type GameState, type Goal,
 } from "../core/index.js";
 import { fixtures } from "./fixtures.js";
@@ -55,6 +55,7 @@ const overlay = new Overlay((d) => {
     else if (d["sell"]) sellSheep(state, d["sell"]);
     else if (d["hire"]) hireVisitingRam(state);
     else if (d["test"]) { const [id, l] = d["test"].split(":"); vetTest(state, id!, l!); }
+    else if (d["screen"]) vetScreen(state, d["screen"]);
     else if (d["accept"]) acceptOrder(state, d["accept"]);
     else if (d["decline"]) declineOrder(state, d["decline"]);
     else if (d["enter"]) enterFair(state, d["enter"] === "none" ? null : d["enter"]);

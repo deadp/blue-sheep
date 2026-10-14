@@ -1,11 +1,11 @@
 /** Market (buy, sell, visiting ram), vet and fair panels. */
 import {
-  lambRoom, FAIR_LABEL, FAIR_PRIZES, PET_NAME, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, fondnessOf, forecastUpgrade, hasUpgrade, isPetId, upgradeBlocked, upgradeOffered, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor,
+  lambRoom, FAIR_LABEL, FAIR_PRIZES, PET_NAME, TEST_LOCI, UPGRADES, VET_FEE, buyPrice, feedPerHead, fondnessOf, forecastUpgrade, hasUpgrade, isPetId, upgradeBlocked, upgradeOffered, canBreed, factsFor, forecastFair, forecastVet, forecastVisitor, forecastScreen, rareFactsFor, screenOpen, wasScreened, RARE_SCREEN_FEE,
   fleeceWords, isAdult, oddsLabel, seasonLabel, sheepValue, wasTested, woolOf, yearOf,
   type CrossForecast, type GameState, type Sheep,
 } from "../core/index.js";
 import { litterRow, litterWords } from "./forecast.js";
-import { ageWords, breedWords, woolTypeTag, chip, dot, esc, has, heartMeter, learnMeter, learnWord, numbersOn, oddsScale, pigmentDots, pips, portrait, sexMark, swatch, traitWords, woolSwatch, LEARN_SCALE, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, breedWords, woolTypeTag, chip, dot, esc, has, heartMeter, learnMeter, learnWord, numbersOn, oddsScale, pigmentDots, pips, portrait, sexMark, swatch, traitWords, woolSwatch, rareWoolTag, LEARN_SCALE, LOCUS_FRIENDLY, RARE_FRIENDLY } from "./util.js";
 import { btn, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 import { crossCached } from "./cache.js";
@@ -41,7 +41,7 @@ function marketCard(state: GameState, view: View, s: Sheep): string {
     ${portrait(view, s, "md")}
     <div class="m-body">
       <div class="m-name">${nm(esc(s.name))} ${sexMark(s)} ${tag(`${woolSwatch(s)}${esc(woolOf(s).word)}`, { cls: "sw" })} ${s.phenotype["horns"] === "horned" ? icon("horn", "inl") : ""}</div>
-      <div class="m-breed" data-breed="${esc(s.breed ?? "farm")}"><b>${esc(breedWords(state, s))}</b> ${woolTypeTag(state, s)}</div>
+      <div class="m-breed" data-breed="${esc(s.breed ?? "farm")}"><b>${esc(breedWords(state, s))}</b> ${woolTypeTag(state, s)} ${rareWoolTag(s)}</div>
       <div class="meta">${esc(fleeceWords(s, numbersOn(state)).short)}</div>
       ${wouldAdd(state, view, s)}
       ${more(`buy-${s.id}`, "More", `<div class="meta">${esc(traits)} · ${esc(ageWords(state, s))}</div><div class="meta">What we know: nothing but looks — bought in, no pedigree.</div>`, { cls: "mini" })}
@@ -106,7 +106,7 @@ export function marketHtml(state: GameState, view: View): string {
     const hired = state.hiredRam === vr.id;
     visitor = `${head("ram", "Visiting ram")}
       <div class="mcard visitor">${portrait(view, vr, "md")}
-        <div class="m-body"><div class="m-name">${nm(esc(vr.name))} ${sexMark(vr)} ${tag(`${woolSwatch(vr)}${esc(woolOf(vr).word)}`)}</div>
+        <div class="m-body"><div class="m-name">${nm(esc(vr.name))} ${sexMark(vr)} ${tag(`${woolSwatch(vr)}${esc(woolOf(vr).word)}`)}${v.rare ? tag("from down south", { icon: "sparkle", tone: "lilac", cls: "southern", title: "Says he's got something special" }) : ""}</div>
           <div class="visitor-fore">${esc(forecastVisitor(state).text)}</div>
           ${wouldAdd(state, view, vr)}
           ${more("visitor-more", "About him", `<div class="meta">From over the hills, here this season only. Nothing is known about his family, so forecasts with him are wide — fresh blood, though, and no shared kin.</div>`, { cls: "mini" })}</div>
@@ -162,11 +162,36 @@ export function vetHtml(state: GameState, view: View): string {
       <div class="v-act">${tested ? tag(`Tested ${icon("check", "sm")}`, { tone: "sage", cls: "ok" }) : btn(`Test · ${VET_FEE}`, { kind: l === best && fv.gainBits > 0.02 ? "primary" : "secondary", icon: "vet", data: { test: `${chosen.id}:${l}` }, disabled: state.money < VET_FEE, title: fv.text })}</div>
     </div>`;
   }).join("");
-  return `<div class="panel-head">${head("vet", "Vet", 2)}<div class="tags">${tag(`${VET_FEE} a test`, { icon: "coin", tone: "butter" })}</div></div>
+  const screen = screenOpen(state) ? screenRow(state, view, chosen) : "";
+  return `<div class="panel-head">${head("vet", "Vet", 2)}<div class="tags">${tag(`${VET_FEE} a test`, { icon: "coin", tone: "butter" })}${screenOpen(state) ? tag(`${RARE_SCREEN_FEE} a rare-gene screen`, { icon: "sparkle", tone: "lilac" }) : ""}</div></div>
     <div class="chips" role="tablist" aria-label="Which sheep?">${picker}</div>
     <div class="vet-sheep">${portrait(view, chosen, "sm")}<div>${nm(esc(chosen.name))} ${sexMark(chosen)} <span class="meta">${esc(woolOf(chosen).word)}${chosen.phenotype["pattern"] === "spotted" ? ", spotted" : ""}, ${esc(String(chosen.phenotype["horns"]))}</span></div>${pigmentDots(chosen)}</div>
     <div class="vet-scale meta">${icon("lens", "inl")} How much a test would teach you: <span class="m-scale learn solo"><span class="w0">${LEARN_SCALE[0]}</span><span class="w2">${LEARN_SCALE[1]}</span></span></div>
-    <div class="vet-rows">${rows}</div>`;
+    <div class="vet-rows">${rows}${screen}</div>`;
+}
+
+/**
+ * The rare-gene screen row (DESIGN-v3 §4): one test for all six rare-wool genes. Before: the forecast in words and a
+ * learn meter. After: what it found, a line per gene, with the confidence dots.
+ */
+function screenRow(state: GameState, view: View, s: Sheep): string {
+  const done = wasScreened(s);
+  const fv = forecastScreen(state, s.id);
+  const val = Math.min(1, fv.gainBits * 0.5);
+  if (done) {
+    const facts = rareFactsFor(state, s.id, true);
+    const lines = facts.map((f) => `<li class="${f.certain ? "certain" : ""}" data-rare-fact="${esc(f.locus)}">${dot(f.confidence, f.certain)} <span><b>${esc(LOCUS_FRIENDLY[f.locus] ?? RARE_FRIENDLY[f.locus] ?? f.label)}</b>: ${esc(f.kind === "clear" ? "none" : f.text)}</span></li>`).join("");
+    const seen = view.screened?.[s.id];
+    const expected = seen ? `<div class="meta" data-screen-expected>Before the screen: ${esc(seen)}</div>` : "";
+    return `<div class="vet-row screen done" data-test-row="rare" data-screened="1">
+      <div class="v-label"><b>${icon("sparkle", "inl")} Rare-gene screen</b>${expected}<ul class="facts rare-results">${lines}</ul></div>
+      <div class="v-act">${tag(`Screened ${icon("check", "sm")}`, { tone: "sage", cls: "ok" })}</div></div>`;
+  }
+  return `<div class="vet-row screen" data-test-row="rare">
+    <div class="v-label"><b>${icon("sparkle", "inl")} Rare-gene screen</b><div class="meta">Six rare wool genes at once: steel, cloud, glow-worm, pāua, pōhutukawa and southerly.</div><div class="meta v-q" data-screen-forecast>${esc(fv.text)}</div></div>
+    <div class="v-fore" title="${esc(fv.text)}">${learnMeter(val, learnWord(val), { label: "how much you'd learn", compact: true })}</div>
+    <div class="v-act">${btn(`Screen · ${RARE_SCREEN_FEE}`, { kind: "secondary", icon: "vet", data: { screen: s.id }, disabled: state.money < RARE_SCREEN_FEE, title: fv.text })}</div>
+  </div>`;
 }
 
 // ---- Fair -------------------------------------------------------------------

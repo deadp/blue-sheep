@@ -33,6 +33,8 @@ export interface FleeceLot {
   fond: number;
   /** Staple length (mm) of the fleece; absent in older saves (treated as medium). */
   staple?: number;
+  /** The fantasy wool this fleece is (core/rare.ts RareId: "steel", "cloud"…), if it is one. */
+  fantasy?: string;
 }
 
 export interface Sheep {
@@ -55,6 +57,12 @@ export interface Sheep {
   origin: SheepOrigin;
   /** Founder breed of a bought-in sheep (core/breeds.ts). Absent: the Farm breed (starter flock, visitors, bred lambs take their parents' mix). */
   breed?: BreedId;
+  /**
+   * A visiting ram "from down south, with something special" (core/visitor.ts): the fantasy locus he might carry.
+   * The drover's word is public (the farmer's prior for him at that gene is a 1-in-4 carrier chance), so this is
+   * knowledge, not the genome. Absent: nothing was said.
+   */
+  southern?: string;
 }
 
 export interface Pairing { ewe: string; ram: string }
@@ -103,6 +111,8 @@ export interface Discovery {
   loci?: string[];
   /** Plain sentence, e.g. "Clover passes one red dose to every lamb." */
   text: string;
+  /** "sport": a brand-new mutation was found in this sheep (core/knowledge.ts); absent: an ordinary fact card. */
+  kind?: "sport";
 }
 
 // ---- Orders ---------------------------------------------------------------
@@ -214,7 +224,13 @@ export interface MiceReport {
   text: string;
 }
 
-export interface VisitingRam { id: string; fee: number; season: number }
+export interface VisitingRam {
+  id: string;
+  fee: number;
+  season: number;
+  /** "From down south, says he's got something special": the fantasy locus he might carry (25 % carrier chance). */
+  rare?: string;
+}
 
 // ---- Progression ----------------------------------------------------------
 
@@ -323,6 +339,10 @@ export interface GameState {
   nextFibre?: number;
   /** Next fleece lot number. */
   nextLot?: number;
+  /** Sheep the farm's records show to be sports (brand-new mutations): sheep id -> fantasy loci. They count as founders for that gene. */
+  knownSports?: Record<string, string[]>;
+  /** The season each rare wool (trait id: "steel", "cloud"…) was first seen, on the farm or at the market. Fills the codex's Rare wools page. */
+  rareSeen?: Record<string, number>;
   /** Demand meters by key ("raw:fine", "item:socks"); a key not here sits at its seasonal target (core/demand.ts). */
   demand?: Record<string, number>;
   /** Legacy v1 notebook/achievements, kept for old saves. */
@@ -395,6 +415,18 @@ export interface CrossForecast {
   colourText: string;
   /** Short sentence about what the cross would teach. */
   learnText: string;
+  /** Rare wools a lamb might show (core/rare.ts `forecastRare`): only the ones with a real chance, widest band first. Empty for most crosses. */
+  rare: RareChance[];
+}
+
+/** One rare wool's chance in a cross: the chance one lamb shows it, and the band the farm's records leave it in (10th to 90th percentile). */
+export interface RareChance {
+  /** Trait id: "steel", "cloud", "glow", "paua", "pohutukawa", "southerly". */
+  id: string;
+  name: string;
+  p: number;
+  lo: number;
+  hi: number;
 }
 
 /** What a shearing did (core/woolstore.ts `shearFlock`). */
@@ -452,6 +484,10 @@ export interface Material {
   fond: number;
   /** Kg of clean fibre. */
   kg: number;
+  /** The fantasy wool it is, if any. */
+  fantasy?: string;
+  /** Coins per greasy kg the lot was worth (kept so a cancelled job's wool goes back to the store at its own price). */
+  rate?: number;
 }
 
 export interface Fibre extends Material {
@@ -488,6 +524,8 @@ export interface Item {
   word: string;
   type: string;
   seen: SeenForecast | null;
+  /** The fantasy wool it was made from, if any. */
+  fantasy?: string;
 }
 
 export interface CraftStats { made: number; spun: number }
@@ -536,6 +574,8 @@ export interface SeasonReport {
   actAdvanced: ActInfo | null;
   /** The concept that opened up this season (at most one; core/pacing.ts), or null. Absent in old reports. */
   unlocked?: Unlock | null;
+  /** Lambs born this turn that show a rare wool (surprise lambs): `first` when it is the first of that wool the farm has seen. */
+  rareLambs?: { id: string; wool: string; first: boolean; /** The chance the forecast the player saw gave this wool for the lamb's pair (0 when it wasn't on the forecast). */ expected: number }[];
   /** True if the act-4 registry goal was reached this season. */
   endingReached: boolean;
   messages: string[];

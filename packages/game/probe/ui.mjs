@@ -107,10 +107,10 @@ export const ui = {
         }
       }
       // ---- every panel
-      for (const p of [...PANELS.filter((x) => !x.scrollTo && !x.noUi), ...EXTRA]) {
+      for (const p of /** @type {any[]} */ ([...PANELS.filter((x) => !x.scrollTo && !x.noUi), ...EXTRA])) {
         const name = `${p.shot ?? p.name}-${w}`;
         try {
-          await g.boot(`?seed=7&fresh=1&nomotion=1${p.act !== undefined ? `&act=${p.act}` : ""}&panel=${p.name}`);
+          await g.boot(`?seed=7&fresh=1&nomotion=1${p.act !== undefined ? `&act=${p.act}` : ""}${p.rare ? `&rare=${p.rare}` : ""}&panel=${p.name}`);
           await g.waitPanel(p.name);
           await g.page.waitForTimeout(200);
           const m = await measure(g.page);

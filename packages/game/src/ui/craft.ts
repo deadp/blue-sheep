@@ -10,7 +10,7 @@ import {
   type BenchName, type GameState, type Job, type JobForecast, type Item, type SeenForecast,
 } from "../core/index.js";
 import { btn, head, icon, tag } from "./felt/index.js";
-import { esc, numbersOn, swatch } from "./util.js";
+import { esc, numbersOn, rareTagFor, swatch } from "./util.js";
 import { demandMeter } from "./woolshed.js";
 import type { View } from "./view.js";
 
@@ -122,7 +122,8 @@ export function workbenchHtml(state: GameState, view: View): string {
   const chips = sources.length
     ? sources.map((s) => `<button class="chip ${s.key === srcKey ? "on" : ""}" data-src="${esc(s.key)}" aria-pressed="${s.key === srcKey}">${swatch(s.mat.hex, "chip-sw")}<span class="nm">${esc(s.label)}</span><span class="meta">${s.mat.kg.toFixed(1)} kg</span></button>`).join("")
     : `<p class="meta">No wool in the shed. Your sheep are shorn in spring and autumn; with auto-sell off the clip waits in the store.</p>`;
-  const pats = patternList(state);
+  // Locked rare-wool patterns stay hidden until that wool has been seen (no clutter, no spoilers).
+  const pats = patternList(state).filter((p) => { const f = recipeOf(p.item)?.fantasy; return !f || p.known || state.rareSeen?.[f] !== undefined; });
   return `${head("yarn", "Wool to work")}
     <div class="chips src-chips" role="group" aria-label="Wool to work">${chips}</div>
     ${head("pencil", "Patterns")}
@@ -146,7 +147,7 @@ function itemCard(state: GameState, it: Item): string {
   const p = itemPrice(it.kind, it.q, demandLevel(state, itemKey(it.kind)));
   return `<div class="item" data-item="${it.id}" style="--wool:${esc(it.hex)}">
     ${swatch(it.hex, "lot-sw")}
-    <div class="i-body"><b>${esc(itemName(it.kind))}</b> <span class="meta">${esc(it.word)} wool</span>
+    <div class="i-body"><b>${esc(itemName(it.kind))}</b> <span class="meta">${esc(it.word)} wool</span> ${rareTagFor(it.fantasy)}
       <div>${starsHtml(it.stars)} <span class="meta">${esc(qualityWord(it.stars))}${numbersOn(state) ? ` · quality ${it.q}` : ""}</span></div>
       ${it.seen ? `<div class="meta flip">${flipLine(it, it.seen)}</div>` : ""}</div>
     <div class="i-act">${btn(`Sell · ${p.coins}`, { kind: "secondary", icon: "coin", cls: "small", data: { sellitem: String(it.id) } })}</div>

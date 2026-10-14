@@ -1,6 +1,6 @@
 /** Small shared bits for panel HTML: escaping, swatches, dots, pips, words. No DOM. */
 import {
- ageOf, finenessWord, strengthFraction, strengthWord, WOOL_TYPE_BLURB, fleeceWords, breedFractions, breedLine, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, woolOf, type GameState, type Sheep, type Unlock,
+ RARE, rareDef, rareWoolOf, ageOf, finenessWord, strengthFraction, strengthWord, WOOL_TYPE_BLURB, fleeceWords, breedFractions, breedLine, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, woolOf, type GameState, type Sheep, type Unlock,
 } from "../core/index.js";
 import { icon, type IconName } from "./felt/icons.js";
 import { tag } from "./felt/components.js";
@@ -174,6 +174,20 @@ export const LOCUS_FRIENDLY: Record<string, string> = {
   W: "hidden colour", red: "red paint", yellow: "yellow paint", blue: "blue paint", Dl: "pale", S: "spots", P: "horns",
 };
 
+/** The rare-wool genes' friendly names ("steel wool"), by locus; kept apart from LOCUS_FRIENDLY (the codex's six discovery slots). */
+export const RARE_FRIENDLY: Record<string, string> = Object.fromEntries(RARE.map((r) => [r.locus, r.name.toLowerCase()]));
+
+/** A felt tag naming the rare wool a sheep shows ("Steel wool"), with how it looks as the hover text; "" for an ordinary sheep. */
+export function rareWoolTag(s: Pick<Sheep, "phenotype">): string {
+  return rareTagFor(rareWoolOf(s));
+}
+
+/** The same tag from a rare wool's id (a fleece lot's `fantasy`). */
+export function rareTagFor(id: string | null | undefined): string {
+  const def = id ? rareDef(id) : undefined;
+  return def ? tag(esc(def.name), { icon: "sparkle", tone: "lilac", cls: `rare-wool rw-${def.id}`, title: `${def.name}: ${def.look}` }) : "";
+}
+
 /**
  * Pigment dots (DESIGN-v3 §12): three rows of four felt dots for red, yellow and blue doses, a pale/full chip
  * and the colour-strength bar. A white sheep's pigment is hidden: the rows show a "?" instead. Doses are
@@ -224,8 +238,9 @@ export function stars(rep: number): string {
 }
 
 /** Card heading: the friendly names of every hidden trait on the card. */
-export function discoveryTitle(d: { locus: string; loci?: string[] }): string {
-  const names = (d.loci ?? [d.locus]).map((l) => LOCUS_FRIENDLY[l] ?? "discovery");
+export function discoveryTitle(d: { locus: string; loci?: string[]; kind?: string }): string {
+  if (d.kind === "sport") return `A sport! · ${RARE_FRIENDLY[d.locus] ?? "rare wool"}`;
+  const names = (d.loci ?? [d.locus]).map((l) => LOCUS_FRIENDLY[l] ?? RARE_FRIENDLY[l] ?? "discovery");
   return [...new Set(names)].join(" · ");
 }
 

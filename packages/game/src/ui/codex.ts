@@ -1,5 +1,5 @@
 /** Codex: discovery card collection and concept cards that unlock with the story. */
-import { PUNNET_GENES, TUTORIAL_STEPS, punnetSquare, seasonLabel, type GameState } from "../core/index.js";
+import { PUNNET_GENES, RARE, TUTORIAL_STEPS, punnetSquare, rareSeenCount, seasonLabel, type GameState, type RareId } from "../core/index.js";
 import { punnetHtml } from "./punnet.js";
 import { discoveryText, discoveryTitle, esc, numbersOn, LOCUS_FRIENDLY } from "./util.js";
 import { btn, head, icon, more, type IconName } from "./felt/index.js";
@@ -62,6 +62,52 @@ export const CONCEPTS: Concept[] = [
 
 const SHOW_CARDS = 12;
 
+/**
+ * A sheep silhouette for each rare wool (the codex's Rare wools page): the same woolly body with the wool's own mark on
+ * it. Unfound wools are a flat dark shape. Inline SVG, drawn in a 120 x 80 box.
+ */
+export function rareSilhouette(id: RareId, found: boolean): string {
+  const body = (extra = "", lift = 0) =>
+    `<g transform="translate(0 ${-lift})"><ellipse class="rs-wool" cx="56" cy="40" rx="30" ry="19"/>` +
+    `<circle class="rs-wool" cx="36" cy="33" r="11"/><circle class="rs-wool" cx="50" cy="26" r="12"/><circle class="rs-wool" cx="68" cy="27" r="12"/><circle class="rs-wool" cx="80" cy="36" r="10"/>` +
+    `<ellipse class="rs-head" cx="92" cy="40" rx="9" ry="8"/><path class="rs-head" d="M88 33l-3-8 7 4z"/>` +
+    `<rect class="rs-leg" x="40" y="54" width="4" height="${16 + lift}" rx="2"/><rect class="rs-leg" x="50" y="54" width="4" height="${16 + lift}" rx="2"/>` +
+    `<rect class="rs-leg" x="68" y="54" width="4" height="${16 + lift}" rx="2"/><rect class="rs-leg" x="78" y="54" width="4" height="${16 + lift}" rx="2"/>${extra}</g>`;
+  const marks: Record<RareId, string> = {
+    steel: body(`<path class="rs-mark" d="M32 36c2-6 8-6 8 0s-6 6-8 0M46 30c2-6 8-6 8 0s-6 6-8 0M60 34c2-6 8-6 8 0s-6 6-8 0"/>`),
+    cloud: body(`<g class="rs-mark"><circle cx="46" cy="76" r="4"/><circle cx="54" cy="74" r="5"/><circle cx="62" cy="76" r="4"/><circle cx="70" cy="75" r="4"/></g>`, 5),
+    glow: body(`<g class="rs-mark"><circle cx="44" cy="38" r="2.4"/><circle cx="58" cy="30" r="2.4"/><circle cx="66" cy="42" r="2.4"/><circle cx="52" cy="46" r="2.4"/><circle cx="76" cy="32" r="2.4"/></g>`),
+    paua: body(`<path class="rs-mark" d="M36 44c8-12 16-14 26-10s14 8 16 4"/><path class="rs-mark b" d="M40 48c8-8 16-10 24-6s12 6 14 3"/>`),
+    pohutukawa: body(`<g class="rs-mark"><path d="M52 26l-5-9M56 24v-11M60 26l5-9M64 28l8-7M48 28l-8-6"/><circle cx="56" cy="26" r="2.6"/></g>`),
+    southerly: body(`<path class="rs-mark" d="M24 30h-12M26 38h-16M26 46h-12M30 24h-10"/><path class="rs-mark b" d="M64 26l-14 10"/>`),
+  };
+  return `<svg class="rare-sil ${found ? "found" : "unfound"} rs-${id}" viewBox="0 0 120 80" aria-hidden="true" focusable="false">${marks[id]}</svg>`;
+}
+
+/** The Rare wools page: six silhouettes that fill in when the wool is first seen, each with a line of kiwiana lore. */
+export function rareWoolsHtml(state: GameState): string {
+  const seen = state.rareSeen ?? {};
+  const cards = RARE.map((r) => {
+    const at = seen[r.id];
+    const found = at !== undefined;
+    if (!found) {
+      const hint = r.dominant ? "Nobody has ever bred one on purpose. If it exists, it will simply turn up." : r.source;
+      return `<div class="rare-card locked" data-rare="${r.id}" data-found="0" aria-label="A rare wool you haven't seen yet">
+        <div class="rc-sil">${rareSilhouette(r.id, false)}</div>
+        <h4>???</h4><p class="meta">${esc(hint)}</p></div>`;
+    }
+    return `<div class="rare-card" data-rare="${r.id}" data-found="1">
+      <div class="rc-sil">${rareSilhouette(r.id, true)}</div>
+      <h4>${esc(r.name)}</h4>
+      <p>${esc(r.look)}</p>
+      <p class="rc-lore">${esc(r.lore)}</p>
+      ${more(`rare-${r.id}`, "What it is good for", `<p>${esc(r.fibre)}</p><p class="meta">${esc(r.source)} First seen ${esc(seasonLabel(at))}.</p>`, { cls: "mini" })}</div>`;
+  }).join("");
+  const n = rareSeenCount(state);
+  return `<p class="meta">Six wools that nobody expects. Each one is a gene that hides in a carrier until two of them meet. ${n} of ${RARE.length} found.</p>
+    <div class="rare-cards">${cards}</div>`;
+}
+
 /** First sentence of a concept (shown), and the rest (behind "more"). */
 function split(text: string): [string, string] {
   const m = text.match(/^(.+?[.!?])\s+(.+)$/);
@@ -69,6 +115,11 @@ function split(text: string): [string, string] {
 }
 
 export function codexHtml(state: GameState, view: View): string {
+  const rareOn = view.tab === "rare";
+  const tabs = `<div class="tabs" role="tablist" aria-label="Codex pages">
+    <button class="tab ${rareOn ? "" : "on"}" role="tab" aria-selected="${!rareOn}" data-tab="">${icon("book")}<span>Ideas and cards</span></button>
+    <button class="tab ${rareOn ? "on" : ""}" role="tab" aria-selected="${rareOn}" data-tab="rare">${icon("sparkle")}<span>Rare wools · ${rareSeenCount(state)} of ${RARE.length}</span></button></div>`;
+  if (rareOn) return `${head("book", "Codex", 2)}${tabs}${head("sparkle", `Rare wools · ${rareSeenCount(state)} of ${RARE.length}`)}${rareWoolsHtml(state)}`;
   const byLocus = new Map<string, number>();
   for (const d of state.discoveries) for (const l of d.loci ?? [d.locus]) byLocus.set(l, (byLocus.get(l) ?? 0) + 1);
   const slots = Object.entries(LOCUS_FRIENDLY).map(([l, name]) => {
@@ -86,7 +137,7 @@ export function codexHtml(state: GameState, view: View): string {
     const [first, rest] = split(c.text);
     return `<div class="concept${c.figure ? " wide" : ""}" data-concept="${esc(c.id)}"><span class="c-icon">${icon(c.icon, "lg")}</span><h4>${esc(c.title)}</h4><p>${esc(first)}</p>${c.figure ? `<div class="c-figure">${c.figure(state)}</div>` : ""}${rest ? more(`concept-${c.id}`, "Read more", `<p>${esc(rest)}</p>`, { cls: "mini" }) : ""}</div>`;
   }).join("");
-  return `${head("book", "Codex", 2)}
+  return `${head("book", "Codex", 2)}${tabs}
     ${head("sparkle", "Ideas")}
     <div class="concepts">${concepts}</div>
     ${head("lens", `Discoveries · ${state.discoveries.length}`)}

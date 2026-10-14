@@ -1,8 +1,9 @@
 /** The visiting ram: fresh blood for one season, no pedigree, nothing known. */
-import { genotypeAt, sampleFounder, type Rng } from "@blue-sheep/genetics";
-import { VISITOR_FEE } from "./config.js";
+import { genotypeAt, genomeFromJSON, genomeToJSON, sampleFounder, type Rng } from "@blue-sheep/genetics";
+import { VISITOR_FEE, VISITOR_SOUTHERN_CARRIER, VISITOR_SOUTHERN_CHANCE } from "./config.js";
+import { RARE, rareOfLocus } from "./rare.js";
 import { forecastCross, candidates } from "./forecast.js";
-import { addLog, addSheep, blueCopies, hasOffspring, marketFreqs, sampleFounderSheep, species } from "./state.js";
+import { addLog, addSheep, blueCopies, hasOffspring, marketFreqs, sampleFounderSheep, setLocus, species } from "./state.js";
 import { marketBreeds } from "./breeds.js";
 import { woolOf } from "./colour.js";
 import { oddsLabel } from "./words.js";
@@ -30,6 +31,24 @@ export function offerVisitingRam(state: GameState, rng: Rng): void {
   ram ??= sampleFounderSheep(state, rng, "ram", born, "visitor", pool[first]);
   state.visitingRam = { id: ram.id, fee: VISITOR_FEE, season: state.season };
   state.hiredRam = null;
+  // Sometimes "from down south, says he's got something special" (DESIGN-v3 §4): he may carry one rare-wool gene.
+  // The drover's word is public (a one-in-four chance) and exactly true: whatever his breed's own frequency made him, he carries
+  // that gene (one copy) with probability 1/4 and not at all otherwise. A gene he already has two copies of (a wool he shows, or
+  // a pāua gene under a dull fleece) can't be the one.
+  if (rng.chance(VISITOR_SOUTHERN_CHANCE)) {
+    const g = genomeFromJSON(ram.genome);
+    const choices = RARE.filter((r) => !r.dominant && !genotypeAt(g, species.map, r.locus).every((x) => x === 1));
+    const def = choices[rng.int(choices.length)];
+    if (def) {
+      ram.southern = def.locus;
+      state.visitingRam.rare = def.locus;
+      const [common, mutant] = species.map.loci.get(def.locus)!.alleles as [string, string];
+      setLocus(g, def.locus, rng.chance(VISITOR_SOUTHERN_CARRIER) ? [common, mutant] : [common, common]);
+      ram.genome = genomeToJSON(g);
+      addLog(state, `A travelling drover has brought ${ram.name}, a ram from down south who says he's got something special: he might be carrying ${def.name.toLowerCase()}. He's for hire this season only.`);
+      return;
+    }
+  }
   addLog(state, `A travelling drover has brought ${ram.name}, a ram from over the hills, where the sheep run every colour and blue paint is common. He's for hire this season only.`);
 }
 
@@ -70,5 +89,7 @@ export function forecastVisitor(state: GameState): { bestBlue: number; ewe: stri
   }
   const name = state.sheep[v.id]!.name;
   const odds = bestBlue > 0 ? ` Best true blue chance${ewe ? ` with ${state.sheep[ewe]!.name}` : ""}: ${oddsLabel(bestBlue).toLowerCase()}.` : "";
-  return { bestBlue, ewe, text: `${name} is no kin to your flock — fresh blood, but nobody knows what he carries.${odds}` };
+  const def = v.rare ? rareOfLocus(v.rare) : undefined;
+  const south = def ? ` He's from down south and says he's got something special: about one chance in four he carries ${def.name.toLowerCase()}.` : "";
+  return { bestBlue, ewe, text: `${name} is no kin to your flock — fresh blood, but nobody knows what he carries.${south}${odds}` };
 }

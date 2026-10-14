@@ -10,21 +10,32 @@
  */
 import { breedFreqs, sheep3, type DiscreteTrait } from "@blue-sheep/genetics";
 import {
-  jointPhenotype, jointTransmission, posteriorDiscrete, type DiscretePosterior, type Individual,
+  isConsistent, jointPhenotype, jointTransmission, posteriorDiscrete, type DiscretePosterior, type Individual,
 } from "@blue-sheep/inference";
-import { species } from "./state.js";
-import type { Discovery, GameState, Phenotype } from "./types.js";
+import { RARE, RARE_LOCI, rareOfLocus, type RareDef } from "./rare.js";
+import { addLog, species } from "./state.js";
+import type { Discovery, GameState, Phenotype, Sheep } from "./types.js";
 
-/** The discrete traits the game reasons about (the fleece and fantasy traits come in later phases). */
+/** The six rare-wool traits (fantasy genes, one locus each; DESIGN-v3 §4). */
+export const RARE_TRAITS: DiscreteTrait[] = [sheep3.steel, sheep3.cloud, sheep3.glow, sheep3.paua, sheep3.pohutukawa, sheep3.southerly];
+
+/** The discrete traits the game reasons about: colour, horns and the six rare wools (the fleece traits are quantitative). */
 export const DISCRETE_TRAITS: DiscreteTrait[] = [
-  sheep3.white, sheep3.red, sheep3.yellow, sheep3.blue, sheep3.dilute, sheep3.pattern, sheep3.horns,
+  sheep3.white, sheep3.red, sheep3.yellow, sheep3.blue, sheep3.dilute, sheep3.pattern, sheep3.horns, ...RARE_TRAITS,
 ];
 
 export type Channel = "red" | "yellow" | "blue";
 export const CHANNELS: Channel[] = ["red", "yellow", "blue"];
-/** What a fact (and a vet test) is about: one gene, or a pigment channel's two genes. */
-export type GeneId = "W" | Channel | "Dl" | "S" | "P";
+/** A rare-wool gene (locus id): ST steel, CL cloud, GW glow-worm, PA pāua, PO pōhutukawa, SO southerly. */
+export type RareLocus = "ST" | "CL" | "GW" | "PA" | "PO" | "SO";
+/** What a fact (and a vet test) is about: one gene, a pigment channel's two genes, or a rare-wool gene. */
+export type GeneId = "W" | Channel | "Dl" | "S" | "P" | RareLocus;
+/** The colour and horns genes (a fact each, the vet tests them one at a time). The rare genes are `RARE_LOCI`. */
 export const GENES: GeneId[] = ["W", "red", "yellow", "blue", "Dl", "S", "P"];
+
+export function isRareGene(g: string): g is RareLocus {
+  return (RARE_LOCI as readonly string[]).includes(g);
+}
 
 export function isChannel(g: string): g is Channel {
   return g === "red" || g === "yellow" || g === "blue";
@@ -37,38 +48,114 @@ export function geneLoci(g: GeneId): string[] {
 
 /** The trait whose posterior holds a gene. */
 export function geneTrait(g: GeneId): string {
+  if (isRareGene(g)) return rareOfLocus(g)!.id;
   return isChannel(g) ? g : g === "W" ? "white" : g === "Dl" ? "dilute" : g === "S" ? "pattern" : "horns";
 }
 
-export interface Posteriors { byTrait: Map<string, DiscretePosterior>; key: string }
+export interface Posteriors {
+  byTrait: Map<string, DiscretePosterior>;
+  key: string;
+  /** Sports the records' contradictions revealed while these were made (sheep id -> rare loci), not yet on `state.knownSports`; `updateDiscoveries` records them. */
+  sports: Record<string, string[]>;
+}
 
 const cache = new WeakMap<GameState, Posteriors>();
 
-function individuals(state: GameState): Individual[] {
-  // A bought-in sheep's breed is on its tag, so the farmer knows the allele frequencies its breed runs on.
-  return Object.values(state.sheep).map((s) => ({
-    id: s.id, dam: s.dam, sire: s.sire, phenotype: s.phenotype, tested: s.tested,
-    ...(s.breed && s.breed !== "farm" ? { priorFreq: breedFreqs(s.breed) } : {}),
-  }));
+/** The prior for a visiting ram "from down south": one fantasy gene he may carry (1 in 4 of the unseen ones do). */
+export const SOUTHERN_CARRIER_FREQ = 1 / 7; // 2q/(1+q) = 0.25: a carrier chance of one in four, given he shows nothing
+
+function individuals(state: GameState, rare?: DiscreteTrait, found?: Record<string, string[]>): Individual[] {
+  const locus = rare?.loci[0];
+  return Object.values(state.sheep).map((s) => {
+    // A bought-in sheep's breed is on its tag, so the farmer knows the allele frequencies its breed runs on.
+    const priorFreq: Record<string, number[]> = s.breed && s.breed !== "farm" ? { ...breedFreqs(s.breed) } : {};
+    // A ram "from down south": the drover said he might carry one fantasy gene.
+    if (s.southern) priorFreq[s.southern] = [1 - SOUTHERN_CARRIER_FREQ, SOUTHERN_CARRIER_FREQ];
+    // A known sport counts as a founder for its gene: whatever its parents' records say, it is where the gene started.
+    const sport = locus !== undefined && (!!state.knownSports?.[s.id]?.includes(locus) || !!found?.[s.id]?.includes(locus));
+    return {
+      id: s.id, dam: sport ? null : s.dam, sire: sport ? null : s.sire, phenotype: s.phenotype, tested: s.tested,
+      ...(Object.keys(priorFreq).length ? { priorFreq } : {}),
+    };
+  });
 }
 
 function knowledgeKey(state: GameState): string {
   let tests = 0;
   for (const s of Object.values(state.sheep)) tests += Object.keys(s.tested).length;
-  return `${state.seed}:${state.season}:${state.nextId}:${Object.keys(state.sheep).length}:${tests}`;
+  return `${state.seed}:${state.season}:${state.nextId}:${Object.keys(state.sheep).length}:${tests}:${Object.keys(state.knownSports ?? {}).length}`;
 }
 
-/** Posteriors for every discrete trait, recomputed only when the pedigree or tests change. */
+/**
+ * The records contradict each other at a rare gene: some lamb has a gene its parents' records say neither can pass on
+ * (a brand-new mutation, a sport). Find the oldest sheep the records first fail at, one at a time (the first prefix of
+ * the pedigree, in birth order, that is inconsistent ends in a lamb whose parents' evidence conflicts), and call it a
+ * sport for this gene. Pure: returns the sports it found (sheep id -> loci), on top of `state.knownSports`. Gives up
+ * (leaving the rest to the caller's fallback) when the first failure is a founder, or after a dozen sports.
+ */
+function findSports(state: GameState, trait: DiscreteTrait): Record<string, string[]> {
+  const locus = trait.loci[0]!;
+  const found: Record<string, string[]> = {};
+  const sorted = (): Individual[] => individuals(state, trait, found).sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+  for (let round = 0; round < 12; round++) {
+    const inds = sorted();
+    if (isConsistent(species.map, trait, inds)) break;
+    // Smallest prefix that is inconsistent (inconsistency only grows with more sheep): binary search.
+    let lo = 1, hi = inds.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (isConsistent(species.map, trait, inds.slice(0, mid))) lo = mid + 1; else hi = mid;
+    }
+    const culprit = inds[lo - 1]!;
+    if (culprit.dam === null && culprit.sire === null) break; // a founder can't be a sport: give up, the caller falls back
+    found[culprit.id] = [...(found[culprit.id] ?? []), locus];
+  }
+  return found;
+}
+
+/** Is this the inference engine's "the records can't all be true" error (as opposed to a bug)? */
+const isContradiction = (e: unknown): boolean => e instanceof Error && /no consistent genotype assignment/.test(e.message);
+
+/** Posteriors for every discrete trait, recomputed only when the pedigree or tests change. Pure: sports found on the way are reported in `.sports`. */
 export function posteriors(state: GameState, force = false): Posteriors {
   const key = knowledgeKey(state);
   const hit = cache.get(state);
   if (!force && hit && hit.key === key) return hit;
-  const inds = individuals(state);
   const byTrait = new Map<string, DiscretePosterior>();
+  const sports: Record<string, string[]> = {};
+  const opts = { samples: 300, burnIn: 50, seed: state.seed * 31 + state.season };
+  // A rare allele can't be sampled by the Gibbs chain (a carrier parent with many plain lambs traps it): draw exact samples
+  // (`exact`; more of them, since the forecast reads small chances from them), and where the pedigree is too wide for that, start
+  // the chain at the typical state (`initByPrior`).
+  const rareOpts = { ...opts, samples: 1000, initByPrior: true, exact: true };
+  const base = individuals(state);
   for (const t of DISCRETE_TRAITS) {
-    byTrait.set(t.id, posteriorDiscrete(species.map, t, inds, { samples: 300, burnIn: 50, seed: state.seed * 31 + state.season }));
+    if (!RARE_TRAITS.includes(t)) { byTrait.set(t.id, posteriorDiscrete(species.map, t, base, opts)); continue; }
+    // A rare gene can contradict the records (a sport): never throw on that, find the sports and treat them as founders.
+    // (Any other error is a bug and is not swallowed.)
+    try {
+      byTrait.set(t.id, posteriorDiscrete(species.map, t, individuals(state, t), rareOpts));
+    } catch (e) {
+      if (!isContradiction(e)) throw e;
+      const found = findSports(state, t);
+      for (const [id, loci] of Object.entries(found)) sports[id] = [...new Set([...(sports[id] ?? []), ...loci])];
+      try {
+        if (!Object.keys(found).length) throw e; // nothing found to change: go straight to the fallback
+        byTrait.set(t.id, posteriorDiscrete(species.map, t, individuals(state, t, found), rareOpts));
+      } catch (e2) {
+        if (!isContradiction(e2)) throw e2;
+        // Last resort: the pedigree can't be trusted for this gene at all, so every sheep stands alone (and if even that
+        // contradicts a sheep's own tests, only what it looks like is kept).
+        const lone = individuals(state, t, found).map((i) => ({ ...i, dam: null, sire: null }));
+        try { byTrait.set(t.id, posteriorDiscrete(species.map, t, lone, rareOpts)); }
+        catch (e3) {
+          if (!isContradiction(e3)) throw e3;
+          byTrait.set(t.id, posteriorDiscrete(species.map, t, lone.map((i) => ({ ...i, tested: {} })), rareOpts));
+        }
+      }
+    }
   }
-  const out = { byTrait, key };
+  const out = { byTrait, key, sports };
   cache.set(state, out);
   return out;
 }
@@ -168,6 +255,7 @@ export const LOCUS_WORDS: Record<"W" | "Dl" | "S" | "P", { label: string; recess
 /** Short labels per gene (the card's one-line "what you know", discovery headings, vet tests). */
 export const GENE_LABEL: Record<GeneId, string> = {
   W: "hidden colour", red: "red", yellow: "yellow", blue: "blue", Dl: "pale", S: "spots", P: "horns",
+  ST: "steel wool", CL: "cloud wool", GW: "glow-worm wool", PA: "pāua wool", PO: "pōhutukawa wool", SO: "southerly wool",
 };
 
 const DOSE_WORD = ["no", "one", "two", "three", "four"];
@@ -223,6 +311,72 @@ function locusFact(gene: "W" | "Dl" | "S" | "P", dist: Record<string, number>): 
   return { locus: gene, label: words.label, text, confidence: best[1], certain, genotype: certain ? best[2] : null };
 }
 
+/** The three cases of a rare gene's genotype for a sheep: its distribution as none / one copy / two copies of the rare allele. */
+export function rareCases(def: RareDef, dist: Record<string, number>): { none: number; one: number; two: number; keys: [string, string, string] } {
+  const [c, m] = species.map.loci.get(def.locus)!.alleles as [string, string];
+  const keys: [string, string, string] = [`${c}/${c}`, `${c}/${m}`, `${m}/${m}`];
+  return { none: dist[keys[0]] ?? 0, one: dist[keys[1]] ?? 0, two: dist[keys[2]] ?? 0, keys };
+}
+
+/** Chance a sheep carries (or shows) a rare gene: at least one copy of the rare allele. */
+export function rareCarrierChance(state: GameState, sheepId: string, locus: string): number {
+  const def = rareOfLocus(locus);
+  if (!def) return 0;
+  const c = rareCases(def, marginal(state, sheepId, locus));
+  return c.one + c.two;
+}
+
+/**
+ * What the farm's records say about one rare gene of a sheep, in words; null when the sheep has no posterior. `kind`:
+ * "shows" (the wool is on the sheep, or a dominant gene it has), "carrier" (a hidden copy), "clear" (no copy), "maybe" (can't tell).
+ */
+export type RareFact = Fact & { kind: "shows" | "carrier" | "clear" | "maybe" };
+
+export function rareFact(state: GameState, s: Sheep, def: RareDef): RareFact | null {
+  const dist = marginal(state, s.id, def.locus);
+  if (!Object.keys(dist).length) return null;
+  const c = rareCases(def, dist);
+  const wool = def.name.toLowerCase(), copy = `${def.short} wool`;
+  const mk = (kind: "shows" | "carrier" | "clear" | "maybe", text: string, p: number, certain: boolean, genotype: string | null) =>
+    ({ locus: def.locus as GeneId, label: GENE_LABEL[def.locus as GeneId], text, confidence: p, certain, genotype: certain ? genotype : null, kind });
+  const carry = c.one + c.two;
+  const cases: [number, string][] = [[c.none, c.keys[0]], [c.one, c.keys[1]], [c.two, c.keys[2]]];
+  const [bp, bg] = cases.sort((a, b) => b[0] - a[0])[0]!;
+  const certain = bp > 0.999;
+  const q = qualifier(bp, certain);
+  // "Clear" needs real confidence (four in five or better): a one in four chance of a hidden copy is a "maybe", not "no copy".
+  const clear = c.none >= 0.8;
+  if (def.dominant) {
+    if (carry >= 0.6) return mk("shows", `${q}has ${wool}`, carry, certain, bg);
+    if (clear) return mk("clear", `${q}has no ${def.short} copy`, c.none, certain, bg);
+    return mk("maybe", `may have ${wool}`, carry, false, null);
+  }
+  if (bg === c.keys[2] && bp >= 0.6) {
+    const hidden = s.phenotype[def.id] === undefined; // pāua under a dull fleece
+    return mk("shows", `${q}has ${wool}${hidden ? ", hidden by a dull fleece" : ""}`, bp, certain, bg);
+  }
+  if (bg === c.keys[1] && bp >= 0.6) return mk("carrier", `${q}carries a hidden ${copy} copy`, bp, certain, bg);
+  if (clear) return mk("clear", `${q}has no ${copy} copy`, c.none, certain, bg);
+  return mk("maybe", `may carry a hidden ${copy} copy`, carry, false, null);
+}
+
+/**
+ * Rare-wool facts for a sheep. By default only the interesting ones: a wool it shows, a carrier the records prove
+ * or make likely (a one in five chance or better). With `all`, every gene (the vet's screen result lists them all).
+ */
+export function rareFactsFor(state: GameState, sheepId: string, all = false): RareFact[] {
+  const s = state.sheep[sheepId];
+  if (!s) return [];
+  const out: RareFact[] = [];
+  for (const def of RARE) {
+    const f = rareFact(state, s, def);
+    if (!f) continue;
+    if (!all && (f.kind === "clear" || (f.kind === "maybe" ? f.confidence < 0.2 : false))) continue;
+    out.push(f);
+  }
+  return out;
+}
+
 export function factsFor(state: GameState, sheepId: string): Fact[] {
   const s = state.sheep[sheepId];
   if (!s) return [];
@@ -230,14 +384,19 @@ export function factsFor(state: GameState, sheepId: string): Fact[] {
   for (const gene of GENES) {
     const dist = geneDist(state, sheepId, gene);
     if (!Object.keys(dist).length) continue;
-    facts.push(isChannel(gene) ? channelFact(s.phenotype, gene, dist) : locusFact(gene, dist));
+    facts.push(isChannel(gene) ? channelFact(s.phenotype, gene, dist) : locusFact(gene as "W" | "Dl" | "S" | "P", dist));
   }
-  return facts;
+  return [...facts, ...rareFactsFor(state, sheepId)];
 }
 
 /** Compare current certainties with what the player already knew; mint discovery cards for new ones. */
 export function updateDiscoveries(state: GameState): Discovery[] {
   const fresh: Discovery[] = [];
+  // Sports are found while the posteriors are made (a pure read); this is where the farm records them.
+  for (const [id, loci] of Object.entries(posteriors(state).sports)) {
+    const known = (state.knownSports ??= {});
+    known[id] = [...new Set([...(known[id] ?? []), ...loci])];
+  }
   const ids = Object.keys(state.sheep).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   for (const id of ids) {
     const s = state.sheep[id]!;
@@ -266,10 +425,33 @@ export function updateDiscoveries(state: GameState): Discovery[] {
     state.stats.discoveries += 1;
     fresh.push(card);
   }
+  fresh.push(...sportCards(state));
   return fresh;
 }
 
-const GENE_ORDER: GeneId[] = ["blue", "W", "red", "yellow", "Dl", "S", "P"];
+/** A card for every sport the records have found and that has no card yet: "Clover is a sport, a brand-new mutation!" */
+function sportCards(state: GameState): Discovery[] {
+  const out: Discovery[] = [];
+  for (const [id, loci] of Object.entries(state.knownSports ?? {})) {
+    const s = state.sheep[id];
+    if (!s) continue;
+    for (const locus of loci) {
+      if (state.discoveries.some((d) => d.kind === "sport" && d.sheep === id && d.locus === locus)) continue;
+      const def = rareOfLocus(locus);
+      const card: Discovery = {
+        id: `d${state.discoveries.length + 1}`, season: state.season, sheep: id, locus, loci: [locus], kind: "sport",
+        text: `${s.name} is a sport, a brand-new mutation! Nobody in the family had a ${def?.short ?? "rare"} wool gene before.`,
+      };
+      state.discoveries.push(card);
+      state.stats.discoveries += 1;
+      addLog(state, `${s.name} is a sport, a brand-new mutation!`);
+      out.push(card);
+    }
+  }
+  return out;
+}
+
+const GENE_ORDER: GeneId[] = ["blue", "W", "red", "yellow", "Dl", "S", "P", "ST", "CL", "GW", "PA", "PO", "SO"];
 
 /** "no spotting copy" → "has no spotting copy", "horned" → "is horned"; "carries …" stays. */
 function withVerb(t: string): string {
@@ -284,6 +466,12 @@ function joinAnd(xs: string[]): string {
 /** A fact anyone could read off the sheep itself (no discovery card for it). */
 function isObvious(ph: Record<string, string | number>, gene: GeneId, genotype: string): boolean {
   const coloured = ph["white"] !== "white";
+  if (isRareGene(gene)) {
+    // A rare wool on the sheep itself is plain to see, and "no copy" isn't worth a card; only hidden carriers are news.
+    const def = rareOfLocus(gene)!;
+    const [c, m] = species.map.loci.get(gene)!.alleles as [string, string];
+    return genotype === `${c}/${c}` || (genotype === `${m}/${m}` && ph[def.id] === def.id) || (def.dominant && ph[def.id] === def.id);
+  }
   switch (gene) {
     case "P": return genotype === "p/p";
     case "S": return coloured && genotype === "s/s";

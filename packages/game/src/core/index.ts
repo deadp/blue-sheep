@@ -8,7 +8,11 @@ export {
 export { advanceSeason, renameSheep, twinChance } from "./sim.js";
 export { planMating, unplanMating, plannedPairings, ramLoad, ramAvailable, lambRoom, overCap, growingLambs } from "./breeding.js";
 export { buySheep, sellSheep, sheepValue, buyPrice, ramPrice, woolIncome, finenessMultiplier, fleeceRate } from "./economy.js";
-export { vetTest, forecastVet, isTestLocus, wasTested } from "./vet.js";
+export { vetTest, forecastVet, isTestLocus, wasTested, vetScreen, forecastScreen, wasScreened, screenOpen } from "./vet.js";
+export {
+  RARE, RARE_IDS, RARE_LOCI, rareDef, rareOfLocus, isRareLocus, rareWoolsOf, rareWoolOf, noteRareWools, rareSeenCount, crimsonAmount, seasonalWool,
+  plantRareSheep, type RareDef, type RareId,
+} from "./rare.js";
 export {
   woolOf, woolFromPhenotype, dressWool, colourFields, setColour, isTrueBlue, isColoured, bandRank, woolMatches, targetWords, woolPricePerKg,
   colourValue, colourShowScore, BANDS, PASTEL_NAMES, HUE_NAMES, type Wool, type Band, type ColourTarget,
@@ -31,11 +35,12 @@ export { hireVisitingRam, forecastVisitor } from "./visitor.js";
 export { announceText, eventPool, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
   forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, colourText, colourClasses,
-  litterOf, longShotsOf, longShotNames, orList, NAMED_MIN, pColour, goalColour, GOALS, type Goal,
+  litterOf, longShotsOf, longShotNames, orList, NAMED_MIN, pColour, goalColour, GOALS, forecastRare, type Goal,
 } from "./forecast.js";
 export {
   factsFor, posteriors, updateDiscoveries, marginal, geneDist, geneLoci, entropyBits, channelClassWords, isChannel,
-  DISCRETE_TRAITS, LOCUS_WORDS, GENE_LABEL, GENES, CHANNELS, type Fact, type GeneId, type Channel,
+  rareFactsFor, rareFact, rareCarrierChance, rareCases, isRareGene, RARE_TRAITS, SOUTHERN_CARRIER_FREQ,
+  DISCRETE_TRAITS, LOCUS_WORDS, GENE_LABEL, GENES, CHANNELS, type Fact, type GeneId, type Channel, type RareLocus,
 } from "./knowledge.js";
 export { familyTree, type FamilyTree, type TreeNode, type AncestorNode, type DescendantNode } from "./tree.js";
 export {

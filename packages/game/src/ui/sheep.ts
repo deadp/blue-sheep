@@ -1,10 +1,10 @@
 /** Sheep card and family tree. */
 import {
-  FAIR_LABEL, PERSONALITY_WORD, TREAT_COST, ageOf, fondnessWord, type Personality, brushedThisSeason, forecastBrush, isPetId, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
+  FAIR_LABEL, PERSONALITY_WORD, TREAT_COST, rareDef, rareWoolOf, ageOf, fondnessWord, type Personality, brushedThisSeason, forecastBrush, isPetId, canBreed, factsFor, familyTree, flavoursOf, fleeceAt, fondWoolMultiplier, fondnessOf,
   fleeceWords, forecastTreat, greetedThisSeason, isAdult, isIll, personalityLine, personalityOf, sheepValue, treatBlocked, treatedThisSeason, woolOf,
   type AncestorNode, type DescendantNode, type GameState, type Sheep, type TreeNode,
 } from "../core/index.js";
-import { ageWords, chip, dot, esc, has, heartMeter, numbersOn, breedWords, pigmentDots, portrait, sexMark, swatch, traitWords, woolTypeTag, LOCUS_FRIENDLY } from "./util.js";
+import { ageWords, chip, dot, esc, has, heartMeter, numbersOn, breedWords, pigmentDots, portrait, rareWoolTag, sexMark, swatch, traitWords, woolTypeTag, LOCUS_FRIENDLY } from "./util.js";
 import { btn, fact, head, icon, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 
@@ -91,6 +91,12 @@ const KNOW_SHORT: Record<string, string> = { W: "colour", Dl: "pale", S: "spots"
 /** The pigment genes on the compact line: a paint dot instead of a word, so the line fits. */
 const KNOW_PAINT = new Set(["red", "yellow", "blue"]);
 
+/** One line about the rare wool a sheep shows: how it looks and what it is good for ("" for an ordinary fleece). */
+function rareWoolLine(s: Sheep): string {
+  const id = rareWoolOf(s), def = id ? rareDef(id) : undefined;
+  return def ? `<p class="sc-rare" data-rare-wool="${esc(def.id)}">${icon("sparkle", "inl")} ${esc(def.look)} ${esc(def.fibre)}</p>` : "";
+}
+
 export function sheepCardHtml(state: GameState, view: View): string {
   const s = cardSubject(state, view);
   if (!s) return `${head("sheep", "No sheep", 2)}<p>Your fields are empty. The market has sheep for sale.</p>`;
@@ -124,6 +130,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
   if (own) small.push(btn(`Sell · ${sheepValue(s, state.season)}`, { kind: "ghost", cls: "small", icon: "tag", data: { sell: s.id }, title: `Sell for ${sheepValue(s, state.season)} coins` }));
   const status = [
     isAdult(s, state.season) ? woolTypeTag(state, s) : "",
+    rareWoolTag(s),
     isIll(s, state.season) ? tag("poorly — resting", { icon: "warn", tone: "rose", cls: "warn" }) : "",
     visitor ? tag("visiting ram", { icon: "ram", tone: "sky" }) : "",
     forSale ? tag("for sale", { icon: "tag", tone: "butter" }) : "",
@@ -163,6 +170,7 @@ export function sheepCardHtml(state: GameState, view: View): string {
     ${status || planTag || rosettes ? `<div class="tags">${status}${planTag}${rosettes}</div>` : ""}
     ${own ? careHtml(state, s.id) : ""}
     ${young ? "" : `<p class="sc-wool" data-wool-type="${esc(fleece.type)}">${esc(fleece.line)}${fleece.layers ? ` <span class="meta">${esc(fleece.layers)}</span>` : ""}</p>`}
+    ${rareWoolLine(s)}
     <p class="sc-line">“${esc(personalityLine(s))}”</p>
     <div class="facts-row">
       ${fact(swatch(w.hex, "big"), esc(colour), esc(looks || (w.trueBlue ? "true blue!" : w.family === "white" ? "colour hidden" : "colour")), { tone: "cream", title: `${colour}${w.trueBlue ? " (true blue)" : ""}, ${pattern}, ${horns}` })}

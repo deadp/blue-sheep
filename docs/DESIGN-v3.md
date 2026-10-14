@@ -830,7 +830,12 @@ and tuning is a separate commit only if a target is badly missed.
   gives about 25 % showing; the screen's forecast bits are ≤ the entropy.
 - **Probe:** a debug fixture (`?act=4&rare=steel`) has a steel sheep with a metallic material
   (`debugStats`), the codex shows one of six filled, and a steel-glove job can be queued.
-- **Sim:** the median season of the first fantasy fleece (target ≤ 27 cumulative).
+- **Sim:** the median season of the first fantasy fleece (target ≤ 27 cumulative). **Decision (user, 15-10-2026): the target
+  moves to Phase 7.** Phase 6 gets 10 of 30 blind seeds shearing a rare fleece before the
+  ending (6 by season 27), because the screen and southern visitors ride the v2 act ladder (act 3, blind median season 15) where this
+  document puts chapter 3 at about season 11, and eleven lever sets in `docs/BACKLOG.md` show no Phase 6 change reaches the target without
+  making rare alleles common or slowing true blue. Phase 7 gates the screen and southern visitors on chapter 3, re-runs `blind.ts`, and
+  raises the alleles to x2 only if it is still short; it is not done until the ≤ 27 median is met. Phase 6 is otherwise complete.
 - **Demo:** a cloud-wool lamb bobbing above the grass.
 
 ### Phase 7: Chapters, item orders, A&P show, Golden Fleece
@@ -1132,3 +1137,10 @@ and tuning is a separate commit only if a target is badly missed.
     notes: woolshed lot lines repeat a word ("Strong, strong, a heavy clip" —
     wool type and strength word collide); the full probe was not re-run after
     the Phase 4 balance commit.
+33. **Fantasy wools phase feedback (user, 15-10-2026):** the first-fantasy-fleece
+    sim target moves to Phase 7 (chapter-3 gating for the screen and southern
+    visitors; Phase 7 is not done until the median is ≤ 27). Keep 40 % "from down
+    south" visitors (25 % carrier) and +40 coins market value for a sheep showing
+    a rare wool. The blind ending rate fell 97 % to 87 % with Phase 6: commit, then
+    check whether it is noise from the shifted random draws. The user asked what
+    pōhutukawa wool is for; its role is open until answered.

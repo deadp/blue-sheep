@@ -5,7 +5,30 @@ subagent at a time. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
-Next: v3 Phase 6 (fantasy wools, DESIGN-v3 §13).
+Next: v3 Phase 7 (chapters, item orders, A&P show, Golden Fleece; DESIGN-v3 §13).
+
+Follow-ups from Phase 6, fantasy wools (not started; decisions the user may want a say in are marked ?):
+- Known miss, moved to Phase 7 (user decision 15-10-2026, DESIGN-v3 §15 item 33; Phase 7 is not done until the median is <= 27): the sim's first rare fleece misses the
+  target (DESIGN-v3 §13: median <= 27; needs 15 of 30 seeds by season 27, the code gets 6). The cause is the ladder, not the numbers: the rare content rides on
+  the v2 act ladder (screen and visiting rams from act 3, which the blind farmer reaches at a median of season 15), where DESIGN-v3 §10.1 puts chapter 3 at
+  about season 11. Eleven blind runs over 30 seeds, the main ones (seeds that got one / by season 27, first true blue median, ending): rare alleles x3 and southern chance 0.6:
+  12 / 8 (13, 90 %); the farmer screening more (0.2 bits, 4 a season): 8 / 5; the screen open from the vet (season 4) with the old numbers: 8 / 6; x3 alleles,
+  southern 0.6 and the screen open from season 4 with 3 screens a season: 21 / 17 (median 24, so the target is met, but first true blue slips to 17 against
+  the 8 to 16 target and the economy changes: rare spending competes with blue early); x3 with 1 screen a season and a 200-coin floor: 16 / 11 (blue 12, ending
+  90 %); x2 with 2 screens: 14 / 12 (blue 14, ending 93 %); x3 with 2 screens: 18 / 11 (ending 83 %); alleles x4 with southern 0.7: 19 / 14 (median 30, ending
+  93 %). So no lever set inside Phase 6 meets it without making the rare alleles common (steel 9 to 12 %, against the spec's 3 %) or costing blue pace.
+  Plan: Phase 7 puts chapter 3 at about season 11; then open the screen and the southern visitors with it, re-run `blind.ts` (`CONTINUE=1` for the tail), and if
+  it is still short raise the alleles to x2 first. The sim also never screens a visiting ram before hiring him (the screen works before the hire):
+  worth fixing in `rareScreens` with the Phase 7 re-run. The numbers above are not comparable seed by seed (every change shifts the random draws).
+- ? The rare-gene screen opens at act 3 (`RARE_SCREEN_ACT`, with the vet); chapters (Phase 7) should replace that gate (DESIGN-v3 says ch3).
+- Not done (Phase 7 and later; DESIGN-v3 §4 items Phase 6 left out): the steel "ting" in the bleat, the steel pot scrubber (sells to Sheryl for 1 coin) and
+  steel gaiters (a second steel item), steel's Kea-proof durability star (needs the Kea, Phase 9), pōhutukawa counting as vivid red in summer for orders and
+  the fair (it only changes the look), pāua's +10 show-class quality (needs the A&P show, Phase 7), glow-worm's night items (the lantern cosy and the
+  night-lambing beanie), the second recipe for each wool (cloud beanie, pāua shimmer band, Christmas variants, storm hat; Phase 6 has one each), and the
+  signature knit's fantasy band (Phase 7).
+- The inference package has a new exact sampler for single-gene traits (`posteriorDiscrete(..., { exact: true })`). The colour genes (W, Dl, S, P)
+  still use the Gibbs chain, which can stick on a carrier with many plain lambs; moving them over would sharpen their facts (and change the
+  seeded numbers, so it needs its own balance check).
 
 Follow-ups from Phase 2, pigment colours (not started):
 - The act ladder is still v2 (true blue replaces blue in act 1; the registry wants six full-blue sheep at
@@ -129,6 +152,16 @@ existing saves), then implementation in phases, each probe-verified.
 - **Sheep redesign** (user, 2026-09-27): revisit sheep models after v3; the cute pass was "a good improvement".
 
 ## Done
+
+- v3 Phase 6, fantasy wools (DESIGN-v3 §4, §13; CONTRACTS §14; see git log): the six rare wools in play. Sports (mu 0.001 per lamb per gene) in lambing;
+  sport detection in `core/knowledge.ts` (the records' contradiction finds the sheep, `knownSports`, "X is a sport, a brand-new mutation!" card, the sheep
+  counts as a founder for that gene, never throws); rare facts and carrier cards; visiting rams "from down south" (40 %, a one-in-four chance he carries one
+  gene, wide forecast band); the forecast's rare-wool line; the vet's rare-gene screen (20 coins, act 3; forecast bits = the entropy a screen removes); the surprise-lamb banner
+  with Old Tom's line; the codex's Rare wools tab (six silhouettes, kiwiana lore); fantasy looks in world3d from `WorldSheep.fantasy` (metallic steel, cloud lift,
+  glow-worm at night, iridescent pāua, crimson pōhutukawa by season, swept southerly); six fantasy recipes, raw fleece x3, +40 sheep value; the
+  `?act=4&rare=steel|all` fixture; `rare.mjs` probe. Inference: exact sampling for single-gene traits (`exact: true`, variable elimination with backward
+  sampling to elimination degree 12, falls back to the Gibbs chain when the pedigree is wider, with `maxTable` to force it in tests) and `isConsistent`; the Gibbs chain had a real bug for rare alleles (a carrier
+  parent with ten plain lambs stuck as a "certain carrier"), found by the probe's vet screen. Sim (blind, 30 seeds, `scripts/blind.ts`, now with a rare-wool farmer: screens, mating and keep weights; `NORARE=1` is the old farmer, `CONTINUE=1` plays on past the ending): first rare fleece shorn before the ending in 10/30 seeds after the fix pass (11/30 before it; median season 26 among them, 6 by season 27, so the median over all seeds is "never": target <= 27 missed and deferred, see the follow-ups), against 4/30 for the old farmer; ending 87 % after the fix pass (93 % before; seeds 3, 8, 11 and 25 do not finish, 3 and 25 on "bloodlines too close" near season 60: two seeds flip on any change to the random draws), year-5 money 517. Fix pass: the screen's forecast bits are tested as the entropy a real screen removes (not a tautology), rare lines under 1 % are not listed (an ordinary cross has none), the exact sampler's table limit is 3^13 (late-game pedigrees reached elimination degree 11), the reveal banner says "You expected steel wool", and the codex text no longer promises steel gaiters or a ting in the bleat.
 
 - v3 Phase 5 balance pass (separate commit): sim policy crafts (`manageCraft` in `scripts/policy.ts`: circle once money allows, bench upgrades by order, best forecast job per source, items sold while the meter is at least 0.2 or after three seasons, spare fleece raw); item bases roughly x2.3 for early items (socks 38, beanie 32, mittens 32, scarf 42; late items x1.5), `MAX_JOBS` 12 to 16, Old Tom's gift fleece 1 to 3 kg; breed prices Perendale 1.1, Romney 1.2, Merino 1.6, Drysdale 1.4, Icelandic 2.0 (`scripts/breedvalue.ts` table). Blind 30 seeds: ending 100% to 97%, year-3 crafted share 51%, wool+item HHI 0.28, money after season 8 58, year 5 444. Oracle: 100%, share 54%. Open: money after year 5 is about 6x the pre-craft figure.
 - v3 Phase 5, woolshed queue, items and patterns (DESIGN-v3 §13; CONTRACTS §13; see git log): `core/craft.ts`, 12 kiwiana recipes, five benches with upgrades, one stage a season, quality with noise band and forecast, item sales through demand meters, patterns gated by made-count, wool press, craft lesson and calendar slot (season 7), report flip of forecast and made. `craft.mjs` probe, `craft.test.ts`. Carry-overs: balance pass (policy crafts, breed prices), Phase 9 birds via `benchBonus`, lots are not blended in a job.

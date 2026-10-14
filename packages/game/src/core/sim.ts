@@ -1,5 +1,5 @@
 /** The season turn: events, shearing, lambing, fair, feed, ageing, orders, discoveries, acts. */
-import { mate } from "@blue-sheep/genetics";
+import { mate, sheep3 } from "@blue-sheep/genetics";
 import { checkActAdvance, checkEnding } from "./acts.js";
 import { isTrueBlue, woolOf } from "./colour.js";
 import { plannedPairings } from "./breeding.js";
@@ -24,14 +24,18 @@ import { departVisitingRam, offerVisitingRam } from "./visitor.js";
 import { tutorialHornsCard, tutorialLambGenome, tutorialLambIndex } from "./tutorial.js";
 import { checkPacing } from "./pacing.js";
 import { craftPatterns, craftSeason } from "./craft.js";
+import { noteRareWools, rareWoolOf } from "./rare.js";
 
 /** Chance of twins for a mating whose lambs would have inbreeding f. */
 export function twinChance(f: number): number {
   return Math.max(0.05, 0.25 - f * 0.5);
 }
 
-/** Advance one season. Mutates state; deterministic for a given serialized state. */
-export function advanceSeason(state: GameState): SeasonReport {
+/**
+ * Advance one season. Mutates state; deterministic for a given serialized state. `opts.sports: false` switches the lambing's
+ * mutations off (the debug fixtures `?act=N` and the UI fixtures play without them, so their states stay what the probes and tests expect).
+ */
+export function advanceSeason(state: GameState, opts: { sports?: boolean } = {}): SeasonReport {
   const t = state.season;
   const rng = rngOf(state);
   const pairings = plannedPairings(state);
@@ -41,7 +45,7 @@ export function advanceSeason(state: GameState): SeasonReport {
   const report: SeasonReport = {
     season: t, endedSeason: t, lambs: [], income: 0, shedBonus: 0, fondBonus: 0, mice: null, miceComing: false, feed: 0, deaths: [], autoSold: [], discoveries: [], orderResults: [],
     newOrders: [], fairResult: null, event: null, announced: null, actAdvanced: null, unlocked: null, endingReached: false, messages: [],
-    forecastsSeen, matings,
+    forecastsSeen, matings, rareLambs: [],
   };
   const say = (m: string) => { report.messages.push(m); };
   const wasIll = flockSheep(state).filter((s) => s.ill);
@@ -90,7 +94,8 @@ export function advanceSeason(state: GameState): SeasonReport {
     const litter = tutorialLamb ? 1 : rng.chance(twinChance(f)) ? 2 : 1;
     const born: Sheep[] = [];
     for (let i = 0; i < litter; i++) {
-      const draw = () => mate(genomeOf(ewe), genomeOf(ram), species.map, rng);
+      // Sports (DESIGN-v3 §4): each fantasy gene can mutate in a gamete, mu = 0.001 per lamb. Not in the tutorial's set lambs.
+      const draw = () => mate(genomeOf(ewe), genomeOf(ram), species.map, rng, tutorialLamb || opts.sports === false ? {} : sheep3.SPORTS);
       const genome = tutorialLamb ? tutorialLambGenome(draw, tutIndex) : draw();
       const lamb = addSheep(state, rng, {
         sex: rng.chance(0.5) ? "ewe" : "ram", born: t + 1, dam: ewe.id, sire: ram.id, genome, inbreeding: f, origin: "bred",
@@ -98,6 +103,13 @@ export function advanceSeason(state: GameState): SeasonReport {
       state.flock.push(lamb.id);
       welcomeLamb(state, lamb, ewe.id, t + 1);
       report.lambs.push(lamb);
+      // A surprise lamb: it shows a rare wool (the first of its kind gets Old Tom's line in the report).
+      const rare = rareWoolOf(lamb);
+      if (rare) {
+        const seen = (state.rareSeen ??= {});
+        report.rareLambs!.push({ id: lamb.id, wool: rare, first: seen[rare] === undefined, expected: forecastsSeen[ewe.id]?.rare.find((x) => x.id === rare)?.p ?? 0 });
+        seen[rare] ??= t + 1;
+      }
       born.push(lamb);
       if (tutIndex === 1) tutorialCards.push(lamb);
       state.stats.lambsBorn += 1;
@@ -208,6 +220,7 @@ export function advanceSeason(state: GameState): SeasonReport {
   if (report.announced) say(report.announced.text);
   report.miceComing = announceMice(state, rng);
   restockMarket(state, rng);
+  noteRareWools(state); // the market and the visitor count as seen too
   report.newOrders = generateOrders(state, rng);
 
   saveRng(state, rng);

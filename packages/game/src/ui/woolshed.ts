@@ -4,7 +4,7 @@ import {
   lotPrice, rawKey, craftOn, hasUpgrade, itemsOf, jobsOf, upgradeBlocked, upgradeDef, upgradeOffered, forecastUpgrade, seasonLabel, storeCap, storeOf, woolTypeOf, type FleeceLot, type GameState,
 } from "../core/index.js";
 import { btn, head, icon, tag } from "./felt/index.js";
-import { esc, numbersOn, swatch } from "./util.js";
+import { esc, numbersOn, rareTagFor, swatch } from "./util.js";
 import { itemsTabHtml, workbenchHtml } from "./craft.js";
 import type { View } from "./view.js";
 
@@ -89,7 +89,7 @@ function lotCard(state: GameState, l: FleeceLot): string {
   const nums = numbersOn(state);
   return `<div class="lot" data-lot="${esc(l.id)}" style="--wool:${esc(l.hex)}">
     ${swatch(l.hex, "lot-sw")}
-    <div class="l-body"><div class="l-name"><b>${esc(l.name)}</b>'s ${esc(l.word)} fleece</div>
+    <div class="l-body"><div class="l-name"><b>${esc(l.name)}</b>'s ${esc(l.word)} fleece ${rareTagFor(l.fantasy)}</div>
       <div class="meta">${esc(lotDescription(l.type, l.microns, l.greasy))}${nums ? ` · ${l.greasy} kg greasy, ${l.clean} kg washed · ${Math.round(l.microns)} µm` : ""} · shorn ${esc(seasonLabel(l.season))}</div></div>
     <div class="l-act">${btn(`Sell · ${p.coins}`, { kind: "secondary", icon: "coin", cls: "small", data: { selllot: l.id }, title: `${demandWord(demandLevel(state, rawKey(l.type)))} demand for ${l.type} wool` })}</div>
   </div>`;

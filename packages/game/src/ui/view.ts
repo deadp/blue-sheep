@@ -20,6 +20,8 @@ export interface View {
   tab: string | null;
   /** The last wool sale, for the Reveal beside the forecast the player saw (cleared when a panel opens). */
   sale?: { forecast: number; paid: number; text: string } | undefined;
+  /** The vet's rare-gene screen: the forecast sentence the player saw before each sheep's screen (id -> text), for the Reveal beside it. */
+  screened?: Record<string, string> | undefined;
   /** Woolshed: the wool picked to work, "lot:L3" or "fibre:F2" (the first source when unset or gone). */
   src?: string | undefined;
   /** The report from the last sleep, for the report panel. */

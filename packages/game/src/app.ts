@@ -5,7 +5,7 @@
 import {
   acceptOrder, advanceSeason, buySheep, buyUpgrade, hasUpgrade, upgradeDef, canBreed, declineOrder, deserialize, enterFair, forecastCross, forecastFair,
   forecastOrder, hireVisitingRam, isAdult, isEnding, markEndingShown, newGame, planMating, renameSheep, sellSheep,
-  seasonOfYear, serialize, unplanMating, vetTest, yearOf, personalityOf, woolOf, breedFractions, breedShares, mainBreed,
+  seasonOfYear, serialize, unplanMating, vetTest, vetScreen, forecastScreen, rareFactsFor, rareWoolOf, seasonalWool, yearOf, personalityOf, woolOf, breedFractions, breedShares, mainBreed,
   advanceTutorial, newTutorialGame, skipTutorial, tutorialActive, tutorialInfo, tutorialStep, TUTORIAL_STEPS,
   ackLesson, advanceLesson, lessonInfo, lessonStepMet, skipLesson, tutorialOver, LESSONS,
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
@@ -66,6 +66,8 @@ export type Action =
   | { type: "sellItem"; id: number }
   | { type: "sellItems"; item: string }
   | { type: "test"; id: string; locus: string }
+  /** The vet's rare-gene screen: all six rare-wool genes of one sheep (20 coins, from act 3). */
+  | { type: "screen"; id: string }
   | { type: "accept"; id: string }
   | { type: "decline"; id: string }
   | { type: "enter"; id: string | null }
@@ -77,7 +79,7 @@ export type Action =
   | { type: "brush"; id: string }
   | { type: "rename"; id: string; name: string }
   | { type: "newGame"; seed?: number }
-  | { type: "open"; panel: PanelName; id?: string }
+  | { type: "open"; panel: PanelName; id?: string; tab?: string }
   | { type: "close" }
   /** start: a new tutorial game; ack: the mentor's "Got it"; skip: end the tutorial now (the flock arrives). */
   | { type: "tutorial"; op: "start" | "ack" | "skip"; seed?: number }
@@ -158,7 +160,7 @@ export class App {
     const seedParam = q.get("seed");
     const seed = seedParam !== null && Number.isFinite(Number(seedParam)) ? Math.floor(Number(seedParam)) : null;
     if (q.get("act") !== null) {
-      const ff = fastForward(seed ?? 7, Number(q.get("act")));
+      const ff = fastForward(seed ?? 7, Number(q.get("act")), q.get("rare") ?? undefined);
       this.state = ff.state;
       this.view.report = ff.report;
       this.persist = false;
@@ -398,7 +400,7 @@ export class App {
 
   private worldSheep(s: Sheep, zone: Zone, marker: Marker): WorldSheep {
     const p = s.phenotype;
-    const w = woolOf(s);
+    const w = woolOf(s), rare = rareWoolOf(s);
     // Crossbreds draw as a blend of their top three breeds (shares renormalised); pure sheep carry no blend.
     const fr = breedFractions(this.state, s.id);
     const top = breedShares(fr).slice(0, 3);
@@ -406,7 +408,9 @@ export class App {
     const mix = top.length > 1 && top[0]!.share < 0.97 ? top.map((b) => ({ breed: b.breed as string, share: b.share / tot })) : null;
     return {
       id: s.id, name: s.name, sex: s.sex, adult: isAdult(s, this.state.season),
-      wool: w.hex, family: w.family,
+      // a pōhutukawa fleece blends toward crimson in summer (core/rare.ts); the rest are their own colour
+      wool: p["pohutukawa"] === "pohutukawa" ? seasonalWool(s, this.state.season) : w.hex, family: w.family,
+      ...(rare ? { fantasy: rare } : {}),
       pattern: p["pattern"] === "spotted" ? "spotted" : "solid",
       horns: p["horns"] === "horned" ? "horned" : "polled",
       size: Number(p["size"] ?? 60), fleeceWeight: Number(p["fleeceWeight"] ?? 4),
@@ -858,6 +862,7 @@ export class App {
       else if (d["upgrade"]) { const opened = this.buyUpgrade(d["upgrade"]!); if (opened) { this.render(); return; } }
       else if (d["treat"]) this.treat(d["treat"]);
       else if (d["test"]) { const [id, l] = d["test"].split(":"); this.mutate(() => vetTest(this.state, id!, l!)); }
+      else if (d["screen"]) this.mutate(() => this.screen(d["screen"]!));
       else if (d["accept"]) this.mutate(() => acceptOrder(this.state, d["accept"]!));
       else if (d["decline"]) this.mutate(() => declineOrder(this.state, d["decline"]!));
       else if (d["enter"]) this.mutate(() => enterFair(this.state, d["enter"] === "none" ? null : d["enter"]!));
@@ -897,6 +902,13 @@ export class App {
     f();
     this.persist = true;
     this.save();
+  }
+
+  /** Run the vet's rare-gene screen, keeping the forecast sentence the player saw for the Reveal beside it. */
+  private screen(id: string): void {
+    const seen = forecastScreen(this.state, id).text;
+    vetScreen(this.state, id);
+    (this.view.screened ??= {})[id] = seen;
   }
 
   /** Sell fleece lots in this order, and set the Reveal: what the forecast said next to what was paid. */
@@ -960,6 +972,7 @@ export class App {
       case "sellItems": this.sellItemKind(a.item); break;
       case "autoSell": this.mutate(() => { this.state.autoSell = a.on; }); break;
       case "test": this.mutate(() => vetTest(this.state, a.id, a.locus)); break;
+      case "screen": this.mutate(() => this.screen(a.id)); break;
       case "accept": this.mutate(() => acceptOrder(this.state, a.id)); break;
       case "decline": this.mutate(() => declineOrder(this.state, a.id)); break;
       case "enter": this.mutate(() => enterFair(this.state, a.id && a.id !== "none" ? a.id : null)); break;
@@ -971,7 +984,7 @@ export class App {
       case "newGame": this.startNewGame(a.seed); return;
       case "tutorial": this.tutorialOp(a.op, a.seed); if (a.op === "start") return; break;
       case "lesson": this.lessonOp(a.op); break;
-      case "open": this.openPanel(a.panel, a.id); break;
+      case "open": this.openPanel(a.panel, a.id, a.tab ?? null); break;
       case "close": this.view.panel = null; break;
       case "sleep": await this.sleep(); return;
       default: throw new Error(`Unknown action ${JSON.stringify(a)}`);
@@ -1001,7 +1014,8 @@ export class App {
       this.lambChorus(report.lambs.map((l) => l.id).filter((id) => this.state.flock.includes(id)));
       const blues = report.lambs.filter((l) => woolOf(l).trueBlue && this.state.flock.includes(l.id));
       const found = new Set(report.discoveries.map((d) => d.sheep));
-      for (const id of new Set([...blues.map((b) => b.id), ...found])) if (this.state.flock.includes(id)) this.world.celebrate(id);
+      const rare = (report.rareLambs ?? []).map((x) => x.id); // a surprise lamb gets the same sparkle as a true blue one
+      for (const id of new Set([...blues.map((b) => b.id), ...found, ...rare])) if (this.state.flock.includes(id)) this.world.celebrate(id);
     } finally {
       this.sleeping = false;
     }
@@ -1132,6 +1146,8 @@ export class App {
       /** Not part of the contract: render stats (draw calls, live portrait, the dog) for probes. */
       debug: {
         world: () => this.world.debugStats(),
+        /** Jump the world to night (1) or day (0) with no animation (probe sheets only). */
+        night: (n: number) => this.world.debugNight(n),
         /** Point the world camera at (x, z) with half-width halfW (probe sheets only). */
         camera: (x: number, z: number, halfW: number) => this.world.debugCamera(x, z, halfW),
         /** A portrait data URL of a made-up sheep (breed looks sheet for probes). */
@@ -1165,6 +1181,10 @@ export class App {
         fair: (id: string) => forecastFair(this.state, id),
         /** What an improvement would change (dogs: fox/wolf risk now and with it; the cat: mice cost). */
         upgrade: (id: string) => forecastUpgrade(this.state, id as UpgradeId),
+        /** The vet's rare-gene screen: the bits it would settle, the entropy over the six genes, a sentence. */
+        screen: (id: string) => forecastScreen(this.state, id),
+        /** What the farm's records say about each rare-wool gene of a sheep (words and confidence; never genotypes). */
+        rare: (id: string) => rareFactsFor(this.state, id, true),
       },
     };
   }

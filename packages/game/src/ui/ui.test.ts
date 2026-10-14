@@ -39,6 +39,8 @@ const VOCAB = new Set([
   // woolshed: actions (queue a pattern, cancel a job, sell items, pick the wool) and markers for probes and styles
   "queue", "cancel", "sellitem", "sellitems", "src",
   "shed-tab", "job", "bench", "pattern", "locked", "cf", "item", "kind", "item-kind", "crafted", "new-pattern",
+  // rare wools: the vet's screen (an action) and markers for probes and styles (codex cards, forecast lines, report banners, vet rows)
+  "screen", "screened", "screen-forecast", "screen-expected", "rare", "rare-chance", "rare-fact", "rare-wool", "rare-lamb", "rare-expected", "found",
 ]);
 /** A pigment genotype (never shown): "-/+", "+/+". */
 const PIGMENT_GENOTYPE = /[-+]\/[-+]/;
@@ -733,5 +735,99 @@ describe("fleece lot description", () => {
       expect(new Set(words).size, line).toBe(words.length);
     }
     expect(lotDescription("strong", 30, 14)).toBe("Strong, a heavy clip");
+  });
+});
+
+describe("rare wools in the panels", () => {
+  /** The act-3 fixture with every rare wool planted (a grown sheep each, its carrier parents on record). */
+  async function rareFarm(): Promise<{ s: GameState; steel: string; dam: string; sire: string }> {
+    const core = await import("../core/index.js");
+    const s = core.deserialize(core.serialize(fx("act3").state));
+    s.money = 400;
+    let steel = "";
+    for (const id of core.RARE_IDS) { const x = core.plantRareSheep(s, id); if (id === "steel") steel = x.id; }
+    core.updateDiscoveries(s);
+    const dam = s.sheep[steel]!.dam!, sire = s.sheep[steel]!.sire!;
+    s.sheep[dam]!.ill = false; s.sheep[sire]!.ill = false; // a hard winter may have left them poorly in the fixture
+    return { s, steel, dam, sire };
+  }
+
+  it("the codex's Rare wools page fills in as wools are seen, six silhouettes in all, with no genotype letters", async () => {
+    const core = await import("../core/index.js");
+    const plain = core.deserialize(core.serialize(fx("act3").state));
+    plain.rareSeen = {};
+    const none = renderPanel(plain, view({ panel: "codex", tab: "rare" }));
+    expect((none.match(/class="rare-card[" ]/g) ?? []).length).toBe(6);
+    expect((none.match(/data-found="1"/g) ?? []).length).toBe(0);
+    const { s } = await rareFarm();
+    const all = renderPanel(s, view({ panel: "codex", tab: "rare" }));
+    expect((all.match(/data-found="1"/g) ?? []).length).toBe(6);
+    expect((all.match(/<svg class="rare-sil/g) ?? []).length).toBe(6);
+    checkCommon(all, s, "codex/rare"); checkCommon(none, plain, "codex/rare/empty");
+    s.rareSeen = { steel: s.season };
+    expect((renderPanel(s, view({ panel: "codex", tab: "rare" })).match(/data-found="1"/g) ?? []).length).toBe(1);
+    expect(renderPanel(s, view({ panel: "codex" }))).toContain('data-tab="rare"');
+  });
+
+  it("the sheep card names the wool, and carriers show in the know line", async () => {
+    const { s, steel, dam } = await rareFarm();
+    const h = renderPanel(s, view({ panel: "sheep", sheepId: steel }));
+    expect(h).toContain("Steel wool");
+    expect(h).toContain('data-rare-wool="steel"');
+    checkCommon(h, s, "sheep/steel");
+    const hd = renderPanel(s, view({ panel: "sheep", sheepId: dam }));
+    expect(hd).toMatch(/carries a hidden steel wool copy/);
+    checkCommon(hd, s, "sheep/carrier");
+  });
+
+  it("the vet offers the screen, and lists the six genes once it is done", async () => {
+    const { s, dam } = await rareFarm();
+    const before = renderPanel(s, view({ panel: "vet", tab: dam }));
+    expect(before).toContain(`data-screen="${dam}"`);
+    expect(before).toContain("Six rare wool genes at once");
+    checkCommon(before, s, "vet/before");
+    const { vetScreen } = await import("../core/index.js");
+    vetScreen(s, dam);
+    const after = renderPanel(s, view({ panel: "vet", tab: dam }));
+    expect((after.match(/data-rare-fact=/g) ?? []).length).toBe(6);
+    expect(after).toContain('data-screened="1"');
+    expect(after).not.toContain("data-screen-expected");
+    const kept = renderPanel(s, view({ panel: "vet", tab: dam, screened: { [dam]: "A screen would show what is hiding." } }));
+    expect(kept).toContain("Before the screen: A screen would show what is hiding.");
+    expect(kept).not.toMatch(/has no [a-zé -]+ copy/);
+    checkCommon(after, s, "vet/after");
+    const early = fx("act2").state;
+    expect(renderPanel(early, view({ panel: "vet" }))).not.toContain("data-screen=");
+  });
+
+  it("a carrier pair's forecast says the rare wool in words, with a band; the lamb that shows it gets the banner and sparkle", async () => {
+    const { s, dam, sire } = await rareFarm();
+    const h = renderPanel(s, view({ panel: "forecast", sheepId: dam, mateId: sire }));
+    expect(h).toContain('data-rare-chance="steel"');
+    expect(h).toMatch(/could have steel wool/);
+    checkCommon(h, s, "forecast/rare");
+    // a report with a steel lamb in it
+    const core = await import("../core/index.js");
+    const lamb = core.plantRareSheep(s, "steel");
+    s.sheep[lamb.id]!.born = s.season;
+    const report = { ...fx("act3").report!, lambs: [s.sheep[lamb.id]!], matings: { [dam]: sire }, forecastsSeen: {}, rareLambs: [{ id: lamb.id, wool: "steel", first: true, expected: 0.25 }] };
+    const r = renderPanel(s, view({ panel: "report", report }));
+    expect(r).toContain('data-rare-lamb="steel"');
+    expect(r).toContain("Well, I&#39;ll be. Never seen a fleece do that.");
+    expect(r).toContain("born flip surprise rare");
+    expect(r).toMatch(/You expected steel wool: about one lamb in four/);
+    checkCommon(r, s, "report/rare");
+  });
+
+  it("a sport's card reads \"is a sport, a brand-new mutation\"", async () => {
+    const core = await import("../core/index.js");
+    const { s } = await rareFarm();
+    const po = core.plantRareSheep(s, "pohutukawa");
+    core.updateDiscoveries(s);
+    const card = s.discoveries.find((d) => d.kind === "sport" && d.sheep === po.id)!;
+    expect(card).toBeDefined();
+    const h = renderPanel(s, view({ panel: "codex" }));
+    expect(h).toContain("is a sport, a brand-new mutation!");
+    expect(h).toContain("A sport!");
   });
 });

@@ -11,10 +11,11 @@ import {
   forecastQuantitative, informationGain, lambOutcomes, type QuantForecast, type Record_,
 } from "@blue-sheep/inference";
 import { bandRank, dressWool, type Band } from "./colour.js";
-import { posteriors } from "./knowledge.js";
+import { lambOutcomesBySample, posteriors } from "./knowledge.js";
+import { RARE } from "./rare.js";
 import { canBreed, isAdult, pedigreeOf } from "./state.js";
 import { fractionWords, LONG_SHOT, oddsLabel } from "./words.js";
-import type { CrossForecast, GameState, LambSwatch, Sheep } from "./types.js";
+import type { CrossForecast, GameState, LambSwatch, RareChance, Sheep } from "./types.js";
 
 /**
  * Goal tabs: true blue, a colour ("colour:vivid" for any vivid colour, or "colour:<name>" for a colour name
@@ -197,6 +198,44 @@ export function pColour(f: Pick<CrossForecast, "swatches">, colour: string, min:
   return p;
 }
 
+/** A rare wool is on a forecast (listed in `CrossForecast.rare`, shown on the panel, named in the report's reveal) at this chance, or when its band reaches the second. */
+const RARE_SHOWN_P = 0.01, RARE_SHOWN_HI = 0.04;
+
+/** Standard normal CDF (Abramowitz-Stegun 7.1.26 on erf). */
+function normalCdf(z: number): number {
+  const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z / 2);
+  return z >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y);
+}
+
+/**
+ * The rare wools a lamb of this cross might show (DESIGN-v3 §4): per wool, the chance one lamb shows it and the band the
+ * farm's records leave it in (10th to 90th percentile over what the records allow; a visiting ram "from down south"
+ * with a one-in-four chance of carrying it makes the band wide). Only wools with a real chance are listed. A pāua gene
+ * needs a lustrous fleece to show, so its chance is scaled by the chance the lamb's lustre reaches 5.
+ */
+export function forecastRare(state: GameState, eweId: string, ramId: string): RareChance[] {
+  const out: RareChance[] = [];
+  const ewe = state.sheep[eweId], ram = state.sheep[ramId];
+  if (!ewe || !ram) return out;
+  let pLustre = 1;
+  for (const def of RARE) {
+    const by = lambOutcomesBySample(state, def.id, eweId, ramId)[def.id];
+    if (!by || !by.some((x) => x > 0)) continue; // no sample gives a lamb this wool: nothing to say (and no lustre forecast to make)
+    if (def.id === "paua") {
+      const lu = flockStats(state, "lustre");
+      const q = forecastQuantitative(sheep3.lustre, Number(ewe.phenotype["lustre"] ?? lu.mean), Number(ram.phenotype["lustre"] ?? lu.mean), traitRecords(state, "lustre"), lu.mean, lu.sd);
+      pLustre = 1 - normalCdf((5 - q.mean) / Math.max(0.2, q.sd));
+    }
+    const ps = Array.from(by, (x) => x * (def.id === "paua" ? pLustre : 1)).sort((a, b) => a - b);
+    const p = ps.reduce((a, b) => a + b, 0) / Math.max(1, ps.length);
+    const at = (q: number) => ps[Math.min(ps.length - 1, Math.floor(q * ps.length))] ?? 0;
+    const lo = at(0.1), hi = at(0.9);
+    if (p >= RARE_SHOWN_P || hi >= RARE_SHOWN_HI) out.push({ id: def.id, name: def.name, p, lo, hi });
+  }
+  return out.sort((a, b) => b.hi - a.hi || b.p - a.p);
+}
+
 export function forecastCross(state: GameState, eweId: string, ramId: string): CrossForecast {
   const post = posteriors(state);
   const P = (t: string) => post.byTrait.get(t)!;
@@ -231,6 +270,7 @@ export function forecastCross(state: GameState, eweId: string, ramId: string): C
     inbreeding: ped.offspringInbreeding(eweId, ramId),
     blueText: "", colourText: "",
     learnText: learnText(learnBits),
+    rare: forecastRare(state, eweId, ramId),
   };
   f.blueText = blueText(f.trueBlue);
   f.colourText = colourText(f);

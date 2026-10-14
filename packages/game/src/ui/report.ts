@@ -1,6 +1,6 @@
 /** The season report: lambs next to the forecast the player saw, money, orders, fair, event, discoveries, act advance. */
 import {
-  FAIR_LABEL, MICE_ANNOUNCE, itemName, PET_NAME, paceStep, seasonLabel, woolOf, type CrossForecast, type GameState, type SeasonReport, type Sheep,
+  FAIR_LABEL, LONG_SHOT, MICE_ANNOUNCE, fractionWords, itemName, PET_NAME, paceStep, rareDef, rareWoolOf, seasonLabel, woolOf, type CrossForecast, type GameState, type SeasonReport, type Sheep,
 } from "../core/index.js";
 import { lambTile, litterLooks } from "./forecast.js";
 import { flipLine } from "./craft.js";
@@ -16,11 +16,13 @@ function lambReveal(state: GameState, view: View, l: Sheep, f: CrossForecast | u
   // A surprise is a colour the forecast gave little chance to: judged on the colour family (white, red, blue…),
   // not the exact shade, so a lamb a shade off what was expected isn't called a long shot.
   const p = f ? (w.family === "white" ? f.white : f.families[w.family] ?? 0) : 1;
-  const surprise = !!f && p < SURPRISE;
+  // A lamb with a rare wool is always a surprise: sparkle, and the line in the banner above.
+  const rare = rareDef(rareWoolOf(l) ?? "");
+  const surprise = !!rare || (!!f && p < SURPRISE);
   const blue = w.trueBlue;
-  const words = `${w.word}${blue ? " (true blue)" : ""}${l.phenotype["pattern"] === "spotted" ? ", spotted" : ""}${l.phenotype["horns"] === "horned" ? ", horned" : ""}`;
-  const why = surprise ? (inTen ? "A long shot!" : "Not one of your ten!") : "";
-  return `<button class="born flip ${surprise ? "surprise" : ""} ${blue ? "blue" : ""}" data-sheep="${esc(l.id)}" data-family="${esc(w.family)}" data-wool="${esc(w.hex)}" style="--d:${k};--wool:${esc(w.hex)}" aria-label="${esc(`${l.name}, ${words}`)}">
+  const words = `${w.word}${blue ? " (true blue)" : ""}${rare ? `, ${rare.name.toLowerCase()}` : ""}${l.phenotype["pattern"] === "spotted" ? ", spotted" : ""}${l.phenotype["horns"] === "horned" ? ", horned" : ""}`;
+  const why = rare ? "A rare fleece!" : surprise ? (inTen ? "A long shot!" : "Not one of your ten!") : "";
+  return `<button class="born flip ${surprise ? "surprise" : ""} ${rare ? "rare" : ""} ${blue ? "blue" : ""}" ${rare ? `data-rare-wool="${esc(rare.id)}" ` : ""}data-sheep="${esc(l.id)}" data-family="${esc(w.family)}" data-wool="${esc(w.hex)}" style="--d:${k};--wool:${esc(w.hex)}" aria-label="${esc(`${l.name}, ${words}`)}">
     <span class="flip-inner">
       <span class="f-back" aria-hidden="true">${icon("sheep", "lg")}</span>
       <span class="f-front">
@@ -96,6 +98,25 @@ export function reportHtml(state: GameState, view: View): string {
   const blues = r.lambs.filter((l) => woolOf(l).trueBlue);
   if (blues.length && state.stats.bluesBorn === blues.length) {
     blocks.push(`<div class="act-banner blue">${icon("heart", "xl t-blue")}<div><div class="act">Your first true blue lamb!</div><div>${esc(blues.map((b) => b.name).join(" and "))} ${blues.length > 1 ? "are" : "is"} true blue.</div></div></div>`);
+  }
+  // A surprise lamb: two hidden carriers met. Old Tom has never seen the like (the first of each wool), then a nod.
+  if (r.rareLambs?.length) {
+    const defs = r.rareLambs.map((x) => ({ lamb: state.sheep[x.id], def: rareDef(x.wool), first: x.first, expected: x.expected ?? 0 })).filter((x) => x.lamb && x.def);
+    const lead = defs.find((x) => x.first) ?? defs[0];
+    if (lead) {
+      const names = defs.map((x) => `${x.lamb!.name} (${x.def!.name.toLowerCase()})`);
+      const line = lead.first ? "Well, I'll be. Never seen a fleece do that." : "There she goes again. That's another rare fleece.";
+      // The reveal next to the forecast the player saw: what the forecast said about this wool for this pair.
+      const named = (x: (typeof defs)[number]) => x.def!.name.toLowerCase();
+      const seenOn = defs.filter((x) => x.expected > 0).map((x) => `${named(x)}: ${x.expected >= LONG_SHOT ? fractionWords(x.expected, "lamb") : "a long shot"}`);
+      const missed = defs.filter((x) => x.expected <= 0).map(named);
+      const said = [seenOn.length ? `You expected ${seenOn.join("; ")}.` : "", missed.length ? `The forecast had no word of ${missed.join(" or ")}.` : ""].filter(Boolean).join(" ");
+      blocks.push(`<div class="act-banner rare-lamb" data-rare-lamb="${esc(lead.def!.id)}">${icon("sparkle", "xl")}<div><div class="act">A rare fleece!</div>
+        <div>${esc(names.join(" and "))} ${defs.length > 1 ? "have" : "has"} a wool nobody ordered.</div>
+        <div class="meta" data-rare-expected>${esc(said)}</div>
+        <div class="tom-says">${icon("tom", "inl")} “${esc(line)}”</div>
+        ${lead.first ? `<div class="meta">It's in the ${btn("codex", { kind: "ghost", icon: "book", cls: "inline", data: { open: "codex", tab: "rare" } })} now.</div>` : ""}</div></div>`);
+    }
   }
   if (r.endingReached) blocks.push(`<div class="act-banner gold">${icon("rosette", "xl")}<div><div class="act">Your breed is registered!</div><div>The whole village is coming to see.</div></div></div>`);
   const matings = matingRows(state, view, r);

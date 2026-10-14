@@ -76,9 +76,13 @@ export function fleeceWords(s: Pick<Sheep, "phenotype">, numbers: boolean): Flee
 // ---- which items each wool type suits (DESIGN-v3 §6.1; read by core/craft.ts) ------------------
 
 export type ItemId =
-  | "socks" | "babyShawl" | "beanie" | "mittens" | "gumbootSocks" | "scarf" | "lopapeysa" | "bushShirt" | "rug" | "slippers" | "teaCosy" | "dryerBalls";
+  | "socks" | "babyShawl" | "beanie" | "mittens" | "gumbootSocks" | "scarf" | "lopapeysa" | "bushShirt" | "rug" | "slippers" | "teaCosy" | "dryerBalls"
+  | "steelGloves" | "cloudSocks" | "glowScarf" | "pauaShawl" | "christmasJersey" | "southerlyShirt";
 
-export const ITEM_IDS: ItemId[] = ["socks", "babyShawl", "beanie", "mittens", "gumbootSocks", "scarf", "lopapeysa", "bushShirt", "rug", "slippers", "teaCosy", "dryerBalls"];
+export const ITEM_IDS: ItemId[] = [
+  "socks", "babyShawl", "beanie", "mittens", "gumbootSocks", "scarf", "lopapeysa", "bushShirt", "rug", "slippers", "teaCosy", "dryerBalls",
+  "steelGloves", "cloudSocks", "glowScarf", "pauaShawl", "christmasJersey", "southerlyShirt",
+];
 
 /** Suitability factors: ideal 1.0, good 0.8, poor 0.55, not allowed 0. */
 export const SUIT = { ideal: 1, good: 0.8, poor: 0.55, no: 0 } as const;
@@ -89,6 +93,9 @@ const SUIT_ROWS: Record<ItemId, [number, number, number, number, number, number,
   socks: [I, G, P, N, N, P, G], babyShawl: [I, P, N, N, N, N, N], beanie: [G, I, G, P, N, G, I], mittens: [G, I, G, P, N, I, G],
   gumbootSocks: [P, G, I, G, N, G, I], scarf: [I, I, P, G, N, G, G], lopapeysa: [N, P, P, P, N, I, P], bushShirt: [N, G, I, G, P, P, G],
   rug: [N, N, G, G, I, P, P], slippers: [I, I, G, P, P, G, G], teaCosy: [I, I, G, P, P, G, G], dryerBalls: [G, G, G, G, G, G, G],
+  // fantasy items: the rare fleece is the point, so every wool type can be made into them
+  steelGloves: [G, G, I, G, G, G, I], cloudSocks: [I, I, G, P, P, G, G], glowScarf: [I, I, G, G, P, G, G],
+  pauaShawl: [G, G, G, I, P, G, G], christmasJersey: [P, G, G, G, P, I, G], southerlyShirt: [P, G, I, G, G, G, I],
 };
 const ORDER: WoolType[] = ["fine", "medium", "strong", "lustre", "carpet", "lopi", "crossbred"];
 
