@@ -6,6 +6,12 @@ time or in parallel, depending on the user's capacity. Items move to "Done" with
 ## In progress / next
 
 Next: v3 Phase 7 (chapters, item orders, A&P show, Golden Fleece; DESIGN-v3 §13).
+
+Fleece look experiment (15-10-2026, on hold until the user returns with a plan): four base-fleece styles behind
+`?fleece=a|b|c|d` (world3d/fleece.ts; probe `run.mjs fleece` writes fleece-<s>.png, -world, -night, -lite). The
+default stays the lock-bubble look. User verdict: D (shader curls) looks best now; aim for a mix of A (felted
+shell, soft lumpy outline) and D (curl shader); B's staple locks only if made much finer (Icelandic, Romney).
+The wool types need work one by one, possibly with per-type shader options. Steel springs still read as hex nuts.
 Phase 7 also makes pōhutukawa count as vivid red in summer for orders and the show (DESIGN-v3 §15 item 33).
 
 Phase 6 ending-rate check (15-10-2026): the blind ending fell 97% to 87% on seeds 1-30. Mostly seed noise:

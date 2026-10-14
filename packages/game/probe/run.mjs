@@ -18,12 +18,16 @@ import { breedlooks } from "./breedlooks.mjs";
 import { woolstore } from "./woolstore.mjs";
 import { craft } from "./craft.mjs";
 import { rare } from "./rare.mjs";
+import { fleece } from "./fleece.mjs";
 
 const ALL = { smoke, play, panels, colour, breeds, breedlooks, woolstore, craft, rare, ui, life, world, dressing, voices, tutorial, lessons, video };
+/** Steps run only by name (not part of `npm run probe`): the fleece style comparison sheets (experimental `?fleece=`). */
+const OPTIONAL = { fleece };
 const names = process.argv.slice(2);
-const unknown = names.filter((n) => !(n in ALL));
+const unknown = names.filter((n) => !(n in ALL) && !(n in OPTIONAL));
 if (unknown.length) {
-  console.error(`unknown step(s): ${unknown.join(", ")}. Known: ${Object.keys(ALL).join(", ")}`);
+  console.error(`unknown step(s): ${unknown.join(", ")}. Known: ${[...Object.keys(ALL), ...Object.keys(OPTIONAL)].join(", ")}`);
   process.exit(2);
 }
-await runSteps((names.length ? names : Object.keys(ALL)).map((n) => ALL[/** @type {keyof typeof ALL} */ (n)]));
+const BY = /** @type {Record<string, import("./lib/harness.mjs").Step>} */ ({ ...ALL, ...OPTIONAL });
+await runSteps((names.length ? names : Object.keys(ALL)).map((n) => /** @type {import("./lib/harness.mjs").Step} */ (BY[n])));
