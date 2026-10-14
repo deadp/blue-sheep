@@ -1142,5 +1142,7 @@ and tuning is a separate commit only if a target is badly missed.
     visitors; Phase 7 is not done until the median is ≤ 27). Keep 40 % "from down
     south" visitors (25 % carrier) and +40 coins market value for a sheep showing
     a rare wool. The blind ending rate fell 97 % to 87 % with Phase 6: commit, then
-    check whether it is noise from the shifted random draws. The user asked what
-    pōhutukawa wool is for; its role is open until answered.
+    check whether it is noise from the shifted random draws. Pōhutukawa stays a
+    sport-only collectible; Phase 7 adds its rule (counts as vivid red for orders
+    and the show in summer). Pāua's look: a deep navy fleece with dark blue streaks
+    and teal, green and violet bands, like the shell.

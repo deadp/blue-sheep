@@ -148,7 +148,15 @@ export function faceHex(w: WorldSheep): string {
 
 const HORN = "#dcc59a";
 /** Pāua shimmer: three tints (teal, blue, violet) laid across the fleece by position. */
-const PAUA_TINTS = [new THREE.Color("#6fd8cf"), new THREE.Color("#7f9fee"), new THREE.Color("#b58fe8")];
+// Pāua shell: a deep navy ground with dark blue streaks, and thinner bands of teal, green and violet between them.
+const PAUA_BASE = new THREE.Color("#22346e");
+const PAUA_BANDS = ["#14204f", "#1d3a8a", "#14204f", "#1f7f86", "#2f9a6e", "#1d3a8a", "#5a3f9e", "#14204f"].map((h) => new THREE.Color(h));
+/** The pāua streak colour at a point on the fleece: wavy bands swept along the body, like the growth lines on the shell. */
+function pauaStreak(x: number, y: number, z: number): THREE.Color {
+  const t = (x * 2.2 + y * 1.4 + 0.7 * Math.sin(z * 3 + x * 2)) * 1.6;
+  const i = Math.floor(t);
+  return PAUA_BANDS[((i % PAUA_BANDS.length) + PAUA_BANDS.length) % PAUA_BANDS.length]!;
+}
 const _c = new THREE.Color();
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
@@ -195,12 +203,12 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   const rng = mulberry32(hashString(w.id) ^ 0x5eed);
   const wool = new THREE.Color(woolHex(w));
   // Rare wools (DESIGN-v3 §4) change the fleece itself: steel is gunmetal in tight curls, cloud is whiter and puffier,
-  // glow-worm and pāua lean cool (pāua also varies teal / blue / violet across the body), southerly locks are swept back.
+  // glow-worm leans cool, pāua is deep navy with dark blue streaks and teal / green / violet bands like the shell, southerly locks are swept back.
   const fantasy = w.fantasy ?? "";
   if (fantasy === "steel") wool.lerp(new THREE.Color("#7f8a96"), 0.82);
   else if (fantasy === "cloud") wool.lerp(new THREE.Color("#ffffff"), 0.55);
   else if (fantasy === "glow") wool.lerp(new THREE.Color("#bfeee4"), 0.3);
-  else if (fantasy === "paua") wool.lerp(new THREE.Color("#b9dfe6"), 0.5);
+  else if (fantasy === "paua") wool.lerp(PAUA_BASE, 0.85);
   const swept = fantasy === "southerly", paua = fantasy === "paua";
   const face = faceHex(w);
   const faceC = new THREE.Color(face);
@@ -231,7 +239,7 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
     if (y < -0.72) continue;
     _c.set(isSpot(x, y, z) ? spotHex : look.under > 0 ? under : wool).multiplyScalar(0.97 + rng() * 0.06);
     const r = lockR * (0.85 + rng() * 0.4);
-    if (paua) _c.lerp(PAUA_TINTS[(((Math.floor((x * 2 + y * 3 + z * 2) * 2) % 3) + 3) % 3)]!, 0.5);
+    if (paua) _c.lerp(pauaStreak(x, y, z), 0.8);
     const rot: V3 = [rng() * 3, rng() * 3, rng() * 3];
     // a southerly fleece: every lock combed long and low toward the tail, as if leaning into a gale
     bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], swept ? [2.1, 0.8, 1] : [1.2, (0.85 + curl * 0.2) * look.stretch, 1], swept ? [0, 0, 0.45 + (rot[2] - 1.5) * 0.08] : rot);
