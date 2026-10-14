@@ -5,7 +5,8 @@
  * 300–900. Run: npx vite-node packages/game/scripts/blind.ts
  */
 import {
-  VET_FEE, canBreed, flockSheep, forecastCross, forecastVet, geneDist, marginal, orderTarget, pColour, vetTest,
+  RARE_LOCI, RARE_SCREEN_FEE, VET_FEE, canBreed, flockSheep, forecastCross, forecastScreen, forecastVet, geneDist, marginal, orderTarget, pColour,
+  rareCarrierChance, screenOpen, vetScreen, vetTest, wasScreened,
   type GameState, type Sheep,
 } from "../src/core/index.js";
 import { feedReserve, play, summarise, type Brain } from "./policy.js";
@@ -23,6 +24,24 @@ const wCopies = (g: GameState, s: Sheep): number => {
   return e;
 };
 
+/**
+ * Rare wools (act 3 on, when the screen opens): with spare coins, screen the sheep whose rare genes the records leave the most open, the
+ * visiting ram "from down south" first (a one-in-four chance he carries one). Never screens a sheep it can't breed from.
+ */
+function rareScreens(g: GameState): void {
+  if (process.env["NORARE"] || !screenOpen(g) || g.money < RARE_SCREEN_FEE + 60 + feedReserve(g)) return;
+  const pool = flockSheep(g).filter((s) => canBreed(s, g.season) && !wasScreened(s));
+  const v = g.visitingRam?.season === g.season && g.hiredRam === g.visitingRam.id ? g.sheep[g.visitingRam.id] : undefined;
+  if (v && !wasScreened(v)) pool.push(v);
+  let best: { id: string; v: number } | null = null;
+  for (const s of pool) {
+    const bits = forecastScreen(g, s.id).gainBits;
+    const v2 = bits + (s.southern ? 1 : 0);
+    if (!best || v2 > best.v) best = { id: s.id, v: v2 };
+  }
+  if (best && best.v >= 0.5) vetScreen(g, best.id);
+}
+
 export const blind: Brain = {
   name: "blind",
   cross(g, ewe, ram) {
@@ -30,12 +49,15 @@ export const blind: Brain = {
     return {
       trueBlue: f.trueBlue, blue: pColour(f, "blue"), horns: f.horns, learnBits: f.learnBits,
       pOrder: (o) => { const t = orderTarget(o); return pColour(f, t.colour, t.min); },
+      rare: f.rare.reduce((a, r) => a + r.p, 0),
     };
   },
+  carrier: (g, s) => RARE_LOCI.reduce((a, l) => a + rareCarrierChance(g, s.id, l), 0),
   doses(g, s) {
     return { blue: paint(g, s, "blue"), w: wCopies(g, s), ry: paint(g, s, "red") + paint(g, s, "yellow") };
   },
   vet(g) {
+    rareScreens(g);
     if (!g.unlocks.includes("vet") || g.money < VET_FEE + 40 + feedReserve(g)) return;
     const pool = flockSheep(g).filter((s) => canBreed(s, g.season));
     if (g.visitingRam?.season === g.season) pool.push(g.sheep[g.visitingRam.id]!);

@@ -7,14 +7,15 @@
  * Diagnostics (env vars): PROF=1 phase timings, MONEY=1 coin sources per season,
  * ORDERS=1 order outcomes per seed, PLANS=1 matings per season, FLOCK=1 final flock with true genotypes,
  * LEDGER=1 median coins by source over the run, PERSEED=1 one line per seed, UPACT=N buy farm improvements
- * only from act N, NOCARE=1 never greet or treat, NODOGS=1 never buy dogs or the cat. blind.ts/oracle.ts also take
- * SEEDS=n and FROM=first seed.
+ * only from act N, NOCARE=1 never greet or treat, NODOGS=1 never buy dogs or the cat, NORARE=1 never chase rare wools
+ * (no rare-gene screens, no rare weighting in matings or keeps: the pre-Phase-6 farmer), CONTINUE=1 play on after the registry
+ * ending (to time the first rare fleece beyond it). blind.ts/oracle.ts also take SEEDS=n and FROM=first seed.
  */
 import {
   acceptOrder, advanceSeason, buyPrice, buySheep, canBreed, currentAct, enterFair, fairScore, flockSheep,
   forecastOrder, isAdult, isEnding, lambRoom, markEndingShown, newGame, pedigreeOf, planMating, ramAvailable, RAM_CAPACITY,
   sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
-  ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF, feedPerHead, isShearingSeason,
+  ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF, feedPerHead, isShearingSeason, rareWoolOf,
   allSources, craftOn, demandLevel, forecastJob, itemKey, itemPrice, itemsOf, jobsOf, lotPrice, patternsOf, queueJob, rawKey, sellItem, sellLot, storeCap, storeOf,
   type GameState, type Order, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
@@ -32,6 +33,8 @@ export interface CrossDist {
   pOrder(o: Order): number;
   horns: Record<string, number>;
   learnBits?: number;
+  /** Chance a lamb shows any rare wool (the blind brain's forecast; the oracle leaves it out). */
+  rare?: number;
 }
 /** Expected copies (as the brain knows them): blue "+" (0..4), colour "w" (0..2), red + yellow "+" (0..8). */
 export interface Doses { blue: number; w: number; ry: number }
@@ -43,11 +46,15 @@ export interface Brain {
   doses(g: GameState, s: Sheep): Doses;
   /** Optional: spend on vet tests. */
   vet?(g: GameState): void;
+  /** Optional: how likely a sheep carries (or shows) a rare wool gene, summed over the six genes, as the brain knows it. */
+  carrier?(g: GameState, s: Sheep): number;
 }
 
 /** Revenue by source in year 3 (seasons 8 to 11): "raw", "orders", "fair" and one entry per item kind. */
 export type Revenue = Record<string, number>;
-export interface RunResult { y3?: Revenue; y34?: Revenue; ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string; firstTrueBlue: number | null }
+export interface RunResult { y3?: Revenue; y34?: Revenue; ledger: Record<string, number>; seed: number; actSeason: number[]; endSeason: number | null; finalAct: number; money: number[]; stuck: string; firstTrueBlue: number | null;
+  /** The season (cumulative) of the first shearing that took a rare-wool fleece, and of the first lamb born showing one. */
+  firstFantasy: number | null; firstRareLamb: number | null }
 
 const fin = (s: Sheep) => Number(s.phenotype["fineness"]);
 /** Act 4's registry wants the flock mean at or under 28 µm, so only wool coarser than this costs anything: finer is no use. */
@@ -78,6 +85,8 @@ function keepValue(g: GameState, b: Brain, s: Sheep): number {
   if (act >= 4) v -= s.inbreeding * 30;
   if (act === 3 && g.fair.category !== "rare") v += fairScore(s, g.fair.category) * 1.5;
   if (s.rosettes.length) v += 1;
+  // Rare wools (act 3 on, when the screen is open): a sheep showing one is worth keeping, and so is a likely carrier.
+  if (act >= 3 && !process.env["NORARE"]) v += (rareWoolOf(s) ? 6 : 0) + Math.min(1, b.carrier?.(g, s) ?? 0) * 4;
   const age = ageOf(s, g.season);
   if (age >= 18) v -= (age - 17) * 1.5;
   if (!isAdult(s, g.season)) v += 0.5;
@@ -94,6 +103,7 @@ function matingScore(g: GameState, b: Brain, ewe: Sheep, ram: Sheep, cache: Map<
   if (act <= 1 && c.learnBits) v += Math.min(2, c.learnBits);
   if (act >= 2) v += act >= 4 ? -coarse((fin(ewe) + fin(ram)) / 2) * 1.5 : (FINE_REF - (fin(ewe) + fin(ram)) / 2) * 0.6;
   if (act >= 3) v -= F * (act >= 4 ? 60 : 20);
+  if (act >= 3 && !process.env["NORARE"]) v += (c.rare ?? 0) * 15;
   for (const id of g.acceptedOrders) {
     const o = g.orders.find((x) => x.id === id);
     if (!o || o.kind === "wool") continue;
@@ -308,6 +318,7 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
   const money: number[] = [];
   let endSeason: number | null = null;
   let firstTrueBlue: number | null = null;
+  let firstFantasy: number | null = null, firstRareLamb: number | null = null;
   const ledger: Record<string, number> = {};
   const rev: Revenue = {};
   const rev2: Revenue = {};
@@ -325,6 +336,8 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     T("flock", () => manageFlock(g, b));
     T("visitor", () => manageVisitor(g, b, cache));
     T("plan", () => planAll(g, b, cache));
+    // the first rare-wool fleece: an adult showing one is shorn this season (spring and autumn)
+    if (firstFantasy === null && isShearingSeason(g.season) && flockSheep(g).some((x) => isAdult(x, g.season) && rareWoolOf(x))) firstFantasy = g.season;
     let r!: ReturnType<typeof advanceSeason>;
     if (process.env["PLANS"]) console.log(g.season, "act", g.act, "flock", g.flock.length, "plans", Object.entries(g.plans).map(([e, ra]) => `${g.sheep[e]!.name}x${g.sheep[ra]!.name}`).join(","), "orders", g.acceptedOrders.length);
     T("advance", () => { r = advanceSeason(g); });
@@ -338,7 +351,9 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     if (process.env["MONEY"]) console.log(g.season, g.act, "money", g.money, "wool", r.income, "feed", r.feed, "orders", r.orderResults.reduce((t, o) => t + o.reward, 0), "fair", r.fairResult?.prize ?? 0, "auto", r.autoSold.reduce((t, a) => t + a.price, 0), "flock", g.flock.length, "log", g.log.filter((l) => l.season === g.season - 1 && l.text.startsWith("Sold")).map((l) => l.text.match(/(\d+) coins/)?.[1]).join(","));
     if (r.actAdvanced) actSeason[r.actAdvanced.act] = g.season;
     if (firstTrueBlue === null && r.lambs.some((l) => woolOf(l).trueBlue)) firstTrueBlue = g.season;
-    if (isEnding(g)) { endSeason = g.season; markEndingShown(g); break; }
+    if (firstRareLamb === null && r.lambs.some((l) => rareWoolOf(l))) firstRareLamb = g.season;
+    // CONTINUE=1 plays on after the registry ending (endless mode) so the rare-wool timings can be measured beyond it
+    if (isEnding(g)) { endSeason ??= g.season; markEndingShown(g); if (!process.env["CONTINUE"]) break; }
   }
   const a = currentAct(g);
   if (process.env["FLOCK"]) {
@@ -353,7 +368,7 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
     const by = (st: string) => h.filter((o) => o.status === st);
     console.log(`seed ${seed}: posted ${g.nextOrderId - 1}, filled ${by("filled").length} [${by("filled").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}], failed ${by("failed").length} [${by("failed").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg + "kg<" + o.microns)).join(" ")}], expired ${by("expired").length} [${by("expired").map((o) => o.kind + ":" + (o.colour ?? o.horns ?? o.kg)).join(" ")}]`);
   }
-  return { y3: rev, y34: rev2, ledger, seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}`, firstTrueBlue };
+  return { y3: rev, y34: rev2, ledger, seed, actSeason, endSeason, finalAct: g.act, money, stuck: endSeason ? "" : `act ${g.act}: ${a.progressText}`, firstTrueBlue, firstFantasy, firstRareLamb };
 }
 
 export function summarise(label: string, results: RunResult[], maxSeasons: number): void {
@@ -366,6 +381,11 @@ export function summarise(label: string, results: RunResult[], maxSeasons: numbe
   }
   const tb = results.filter((r) => r.firstTrueBlue !== null).map((r) => r.firstTrueBlue!);
   console.log(`first true blue lamb: ${tb.length}/${results.length} seeds, median season ${med(tb)} (p25 ${[...tb].sort((a, b) => a - b)[Math.floor(tb.length / 4)]}, p75 ${[...tb].sort((a, b) => a - b)[Math.floor((3 * tb.length) / 4)]})`);
+  const rare = results.filter((r) => r.firstFantasy !== null).map((r) => r.firstFantasy!).sort((a, b) => a - b);
+  const rl = results.filter((r) => r.firstRareLamb !== null).map((r) => r.firstRareLamb!).sort((a, b) => a - b);
+  const everyone = results.map((r) => r.firstFantasy ?? Infinity).sort((a, b) => a - b);
+  const allMed = everyone[Math.floor(everyone.length / 2)]!;
+  console.log(`first rare-wool fleece shorn (DESIGN-v3 Phase 6 target: median <= 27): ${rare.length}/${results.length} seeds got one${rare.length ? `, median season ${med(rare)} among them (p25 ${rare[Math.floor(rare.length / 4)]}, p75 ${rare[Math.floor((3 * rare.length) / 4)]}), ${rare.filter((x) => x <= 27).length} by season 27` : ""}; median over all seeds (never = infinity): ${Number.isFinite(allMed) ? allMed : "never"}; first rare lamb born: ${rl.length}/${results.length}${rl.length ? `, median ${med(rl)}` : ""}`);
   const done = results.filter((r) => r.endSeason !== null);
   const act4 = results.filter((r) => r.endSeason !== null).map((r) => r.endSeason! - r.actSeason[4]!);
   console.log(`ending: ${done.length}/${results.length} (${Math.round((100 * done.length) / results.length)}%), median season ${med(done.map((r) => r.endSeason!))}, median seasons in act 4: ${med(act4)}`);
