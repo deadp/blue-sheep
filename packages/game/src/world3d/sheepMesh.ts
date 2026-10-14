@@ -52,6 +52,8 @@ export interface SheepGeos {
   head: THREE.BufferGeometry;
   dims: SheepDims;
   parts: SheepParts;
+  /** glow-worm only: pinpoint lights across the fleece in two twinkling sets, in body space */
+  glow?: { a: THREE.BufferGeometry; b: THREE.BufferGeometry } | undefined;
 }
 
 /** Sheep read better a little larger than life next to the buildings. */
@@ -150,10 +152,11 @@ const HORN = "#dcc59a";
 /** Pāua shimmer: three tints (teal, blue, violet) laid across the fleece by position. */
 // Pāua shell: a deep navy ground with dark blue streaks, and thinner bands of teal, green and violet between them.
 const PAUA_BASE = new THREE.Color("#22346e");
-const PAUA_BANDS = ["#14204f", "#1d3a8a", "#14204f", "#1f7f86", "#2f9a6e", "#1d3a8a", "#5a3f9e", "#14204f"].map((h) => new THREE.Color(h));
+const PAUA_BANDS = ["#0b1238", "#1d3f9a", "#0e1a4a", "#17a3aa", "#0b1238", "#2b5bd0", "#35c98a", "#0e1a4a", "#8a4fd6", "#0b1238", "#1d3f9a", "#0e1a4a"].map((h) => new THREE.Color(h));
+const PAUA_FLASH = ["#7dffd0", "#c59bff", "#6fe3ff", "#9dffa8"];
 /** The pāua streak colour at a point on the fleece: wavy bands swept along the body, like the growth lines on the shell. */
 function pauaStreak(x: number, y: number, z: number): THREE.Color {
-  const t = (x * 2.2 + y * 1.4 + 0.7 * Math.sin(z * 3 + x * 2)) * 1.6;
+  const t = (x * 2.2 + y * 1.4 + 0.7 * Math.sin(z * 3 + x * 2)) * 2.3;
   const i = Math.floor(t);
   return PAUA_BANDS[((i % PAUA_BANDS.length) + PAUA_BANDS.length) % PAUA_BANDS.length]!;
 }
@@ -161,6 +164,15 @@ const _c = new THREE.Color();
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
 /** Golden-angle points on a sphere: an even spread for the wool locks. */
+/** One ringlet for steel wool: a 1.6-turn spiral of unit radius lying in the xy plane and rising a little along +z, like a metal curl. */
+class HelixCurve extends THREE.Curve<THREE.Vector3> {
+  constructor() { super(); }
+  override getPoint(t: number, out = new THREE.Vector3()): THREE.Vector3 {
+    const a = t * Math.PI * 2 * 1.6 + 0.5;
+    return out.set(Math.cos(a) * (1 - 0.62 * t), Math.sin(a) * (1 - 0.62 * t), t * 0.9);
+  }
+}
+const u0 = (L: number) => L / 0.62;
 function fib(i: number, n: number): [number, number, number] {
   const y = 1 - (2 * (i + 0.5)) / n;
   const r = Math.sqrt(Math.max(0, 1 - y * y));
@@ -205,11 +217,13 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   // Rare wools (DESIGN-v3 §4) change the fleece itself: steel is gunmetal in tight curls, cloud is whiter and puffier,
   // glow-worm leans cool, pāua is deep navy with dark blue streaks and teal / green / violet bands like the shell, southerly locks are swept back.
   const fantasy = w.fantasy ?? "";
-  if (fantasy === "steel") wool.lerp(new THREE.Color("#7f8a96"), 0.82);
-  else if (fantasy === "cloud") wool.lerp(new THREE.Color("#ffffff"), 0.55);
-  else if (fantasy === "glow") wool.lerp(new THREE.Color("#bfeee4"), 0.3);
+  if (fantasy === "steel") wool.lerp(new THREE.Color("#5d6672"), 0.9);
+  else if (fantasy === "cloud") wool.lerp(new THREE.Color("#ffffff"), 0.7);
+  else if (fantasy === "glow") wool.lerp(new THREE.Color("#c4ebe2"), 0.6);
   else if (fantasy === "paua") wool.lerp(PAUA_BASE, 0.85);
-  const swept = fantasy === "southerly", paua = fantasy === "paua";
+  const swept = fantasy === "southerly", paua = fantasy === "paua", steel = fantasy === "steel", cloud = fantasy === "cloud", glow = fantasy === "glow", poh = fantasy === "pohutukawa";
+  // pōhutukawa blooms with the season: the controller blends the fleece toward crimson, so its redness says how far into summer we are
+  const bloom = poh ? clamp(((wool.r - (wool.g + wool.b) / 2) - 0.1) / 0.4, 0, 1) : 0;
   const face = faceHex(w);
   const faceC = new THREE.Color(face);
   const spotHex = w.family === "white" ? "#6b5646" : "#f6f1e6";
@@ -226,24 +240,133 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
   const isSpot = (x: number, y: number, z: number) => { _dir.set(x, y, z).normalize(); return spots.some((sp) => _dir.dot(sp) > 0.82); };
   const look0 = breedLook(w);
   const bb = new GeoBatch(0, rng);
-  bb.ico(look0.under > 0 ? new THREE.Color(wool).multiplyScalar(1 - 0.16 * look0.under) : wool, 1, 2, [0, 0, 0], [L, H, W]);
+  bb.ico(cloud ? "#b4c4e0" : paua ? "#0b1238" : steel ? "#4a525d" : look0.under > 0 ? new THREE.Color(wool).multiplyScalar(1 - 0.16 * look0.under) : wool, 1, 2, [0, 0, 0], [L, H, W]);
   const look = breedLook(w);
-  const n = Math.round(LOCKS * (0.85 + curl * 0.35) * look.locks * (fantasy === "steel" ? 1.3 : 1));
-  const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS) * look.lockR * (fantasy === "steel" ? 0.8 : fantasy === "cloud" ? 1.15 : 1);
+  const n = Math.round(LOCKS * (0.85 + curl * 0.35) * look.locks * (steel ? 0.95 : cloud ? 0.55 : glow ? 0.8 : poh ? 0.9 - 0.3 * bloom : 1));
+  const lockR = (0.1 - curl * 0.02) * ((L + H + W) / 1.37) * Math.sqrt(72 / LOCKS) * look.lockR * (steel ? 0.85 : cloud ? 1.9 : 1);
   const lite = LOCKS < 40;
   // Icelandic: the base layer is a short dense under-wool a shade darker than the long outer locks laid over it
   const under = new THREE.Color(wool).multiplyScalar(1 - 0.16 * look.under);
   const tip = new THREE.Color(wool).lerp(new THREE.Color("#fff6e4"), 0.18 * look.under);
+  const nrm = (x: number, y: number, z: number) => new THREE.Vector3(x / L, y / H, z / W).normalize();
+  const _z = new THREE.Vector3(0, 0, 1), _xAxis = new THREE.Vector3(1, 0, 0);
+  const quatMat = (p: THREE.Vector3, q: THREE.Quaternion, sc: V3) => new THREE.Matrix4().compose(p, q, new THREE.Vector3(sc[0], sc[1], sc[2]));
+  const smooth = (t: number) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+  const wind = new THREE.Vector3(-1, -0.22, 0).normalize();
+  // one unit spring (a 1.75-turn helix, standing along +z) copied for every steel coil
+  const spring = steel ? new THREE.TubeGeometry(new HelixCurve(), 9, 0.4, 4, false) : null;
   for (let i = 0; i < n; i++) {
     const [x, y, z] = fib(i, n);
     if (y < -0.72) continue;
     _c.set(isSpot(x, y, z) ? spotHex : look.under > 0 ? under : wool).multiplyScalar(0.97 + rng() * 0.06);
     const r = lockR * (0.85 + rng() * 0.4);
-    if (paua) _c.lerp(pauaStreak(x, y, z), 0.8);
+    if (paua) {
+      _c.lerp(pauaStreak(x, y, z), 0.92);
+      _c.multiplyScalar(0.8 + rng() * 0.5);
+    }
     const rot: V3 = [rng() * 3, rng() * 3, rng() * 3];
-    // a southerly fleece: every lock combed long and low toward the tail, as if leaning into a gale
-    bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], swept ? [2.1, 0.8, 1] : [1.2, (0.85 + curl * 0.2) * look.stretch, 1], swept ? [0, 0, 0.45 + (rot[2] - 1.5) * 0.08] : rot);
+    if (steel) {
+      // springy ringlets: a small torus standing out of the fleece, its ring plane running through the surface normal
+      const nv = nrm(x, y, z), ax = nv.clone().add(new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).multiplyScalar(0.35)).normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(_z, ax);
+      const bright = rng() < 0.3 ? 1.35 : 0.9 + rng() * 0.3;
+      _c.set(rng() < 0.25 ? "#9eaabb" : "#5f6874").multiplyScalar(bright * (0.8 + 0.3 * smooth((y + 0.7) / 1.5)));
+      const p = new THREE.Vector3(x * L * 0.97, y * H * 0.95, z * W * 0.97).addScaledVector(nv, -r * 0.2);
+      // a dense gunmetal under-curl, then a springy coil standing out of it
+      bb.ico(new THREE.Color("#4f5864").multiplyScalar(0.85 + rng() * 0.4).getHex(), r * 1.2, 0, [x * L * 0.97, y * H * 0.95, z * W * 0.97], [1, 1, 1], rot);
+      bb.add(spring!.clone(), _c.clone(), quatMat(p, q.multiply(new THREE.Quaternion().setFromAxisAngle(_z, rng() * 6.28)), [r * 1.45, r * 1.45, r * 1.2]));
+      continue;
+    }
+    if (cloud) {
+      // billowing puffs: bright tops, soft blue-grey undersides
+      _c.set("#a9bbd8").lerp(new THREE.Color("#ffffff"), smooth((y + 0.6) / 1.2)).multiplyScalar(0.97 + rng() * 0.05);
+      bb.ico(_c.getHex(), r, 1, [x * L * 1.0, y * H * 1.0, z * W * 1.0], [1.15, 0.92, 1.05], rot);
+      continue;
+    }
+    if (swept) {
+      // a southerly fleece: every lock combed long toward the tail and streaming back, as if leaning into a gale
+      const nv = nrm(x, y, z), tv = wind.clone().addScaledVector(nv, -wind.dot(nv)).normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(_xAxis, tv);
+      const len = 3.1 + rng() * 1.6;
+      _c.lerp(new THREE.Color("#ffffff"), 0.12 * (0.5 - z * z));
+      const p = new THREE.Vector3(x * L * 0.97, y * H * 0.95, z * W * 0.97).addScaledVector(tv, r * len * 0.32);
+      bb.add(new THREE.IcosahedronGeometry(r * 0.8, 1), _c.getHex(), quatMat(p, q, [len, 0.58, 0.95]));
+      continue;
+    }
+    bb.ico(_c.getHex(), r, 1, [x * L * 0.97, y * H * 0.95, z * W * 0.97], [1.2, (0.85 + curl * 0.2) * look.stretch, 1], rot);
   }
+  if (steel) {
+    // brushed-metal glints: a few bright catches on the coils
+    for (let i = 0; i < 12; i++) {
+      const [x, y, z] = fib(i * 5 + 2, 60);
+      if (y < -0.2) continue;
+      const nv = nrm(x, y, z), p = new THREE.Vector3(x * L, y * H, z * W).addScaledVector(nv, lockR * 0.9);
+      bb.add(new THREE.OctahedronGeometry(lockR * (0.2 + rng() * 0.16), 0), "#f4f8ff", quatMat(p, new THREE.Quaternion(), [1, 1, 1]));
+    }
+  }
+  if (cloud) {
+    // big billows heaped on the back, and loose wisps trailing off the underside
+    for (let i = 0; i < 6; i++) {
+      const t = i / 5;
+      bb.ico(new THREE.Color("#ffffff").multiplyScalar(0.97 + rng() * 0.04).getHex(), lockR * (1.15 + rng() * 0.35), 1,
+        [L * (-0.55 + t * 1.0 + (rng() - 0.5) * 0.15), H * (0.92 + rng() * 0.12), (rng() - 0.5) * W * 0.8], [1.2, 0.9, 1.1], [rng() * 3, rng() * 3, rng() * 3]);
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + rng() * 0.5, side = Math.sin(a) > 0 ? 1 : -1;
+      bb.ico(new THREE.Color("#dbe6f8").lerp(new THREE.Color("#a9bbd8"), rng() * 0.6).getHex(), lockR * 0.7, 0,
+        [Math.cos(a) * L * 0.9 - (rng() * 0.2) * L, -H * (0.5 + rng() * 0.2), side * W * (0.5 + rng() * 0.4)], [1.7, 0.5, 1], [0, rng() * 0.6 - 0.3, rng() * 0.4 - 0.2]);
+    }
+  }
+  if (swept) {
+    // loose wisps whipping off the rump and the back of the neck
+    for (let i = 0; i < 9; i++) {
+      const t = i / 8, side = (i % 2 ? 1 : -1) * (0.15 + rng() * 0.5);
+      const p = new THREE.Vector3(-L * (0.95 + t * 0.55), H * (0.35 - t * 0.2 + (rng() - 0.5) * 0.35), side * W);
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, side * 0.25, -0.1 - rng() * 0.2));
+      bb.add(new THREE.IcosahedronGeometry(lockR * (0.6 - t * 0.2), 0), new THREE.Color(wool).lerp(new THREE.Color("#ffffff"), 0.4).getHex(), quatMat(p, q, [4.2 - t, 0.3, 0.6]));
+    }
+  }
+  if (glow) {
+    // by day, tiny pale and teal flecks dotted through the fleece
+    for (let i = 0; i < 26; i++) {
+      const [x, y, z] = fib(i * 3 + 1, 80);
+      if (y < -0.5) continue;
+      const nv = nrm(x, y, z), p = new THREE.Vector3(x * L, y * H, z * W).addScaledVector(nv, lockR * 0.8);
+      bb.add(new THREE.OctahedronGeometry(lockR * (0.16 + rng() * 0.1), 0), i % 3 ? "#38b4a2" : "#f2fffb", quatMat(p, new THREE.Quaternion(), [1, 1, 1]));
+    }
+  }
+  if (paua) {
+    // a few bright green, violet and sea-blue flashes where the nacre catches the light
+    for (let i = 0; i < 14; i++) {
+      const [x, y, z] = fib(i * 4 + 1, 56);
+      if (y < -0.4) continue;
+      const nv = nrm(x, y, z), p = new THREE.Vector3(x * L, y * H, z * W).addScaledVector(nv, lockR * 0.75);
+      bb.add(new THREE.IcosahedronGeometry(lockR * (0.28 + rng() * 0.18), 0), PAUA_FLASH[i % PAUA_FLASH.length]!, quatMat(p, new THREE.Quaternion().setFromEuler(new THREE.Euler(rng() * 3, rng() * 3, 0)), [1.2, 0.8, 1]));
+    }
+  }
+  if (poh) {
+    // stamens: spiky brush tufts of crimson with golden tips, thick in summer and only buds in winter
+    const tufts = Math.round((lite ? 0.7 : 1) * (4 + 20 * bloom));
+    const len0 = (0.1 + 0.1 * bloom) * u0(L);
+    for (let i = 0; i < tufts; i++) {
+      const [x, y, z] = fib(i * 2 + 1, tufts * 2 + 2);
+      if (y < -0.35) continue;
+      const nv = nrm(x, y, z), base = new THREE.Vector3(x * L * 0.98, y * H * 0.98, z * W * 0.98);
+      const blossom = bloom > 0.3;
+      const arms = lite ? 3 : 4;
+      for (let k = 0; k < arms; k++) {
+        const a = (k / arms) * Math.PI * 2 + rng(), spread = 0.55 + rng() * 0.25;
+        const side = new THREE.Vector3(Math.cos(a), Math.sin(a), 0).cross(nv).normalize();
+        const dirV = nv.clone().multiplyScalar(Math.cos(spread)).addScaledVector(side, Math.sin(spread)).normalize();
+        const len = len0 * (0.8 + rng() * 0.5);
+        const q = new THREE.Quaternion().setFromUnitVectors(_up, dirV);
+        const pos = base.clone().addScaledVector(dirV, len * 0.5);
+        bb.add(new THREE.ConeGeometry(len * 0.1, len, 3, 1, true), new THREE.Color(blossom ? "#d4163c" : "#7a1f2c").multiplyScalar(0.85 + rng() * 0.35).getHex(), quatMat(pos, q, [1, 1, 1]));
+        if (blossom) bb.add(new THREE.OctahedronGeometry(len * 0.11, 0), "#ffd36a", quatMat(base.clone().addScaledVector(dirV, len), new THREE.Quaternion(), [1, 1, 1]));
+      }
+    }
+  }
+  spring?.dispose();
   // rump and breast fullness, a woolly neck carrying the head forward, a short docked tail
   const woolAt = (x: number, y: number, z: number) => (isSpot(x, y, z) ? spotHex : wool);
   bb.ico(woolAt(-1, 0.1, 0), 0.3 * (L / 0.62), 2, [-L * 0.62, H * 0.12, 0], [1, 1.02, 1.08]);
@@ -294,7 +417,25 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
     }
   }
   const body = smoothGeo(bb.build()!);
-  shadeByHeight(body, -H * 1.05, H * 0.9, 0.8, 1.03);
+  shadeByHeight(body, -H * 1.05, H * 0.9, cloud ? 0.9 : 0.8, 1.03);
+  // glow-worm cave: pinpoint lights across the fleece (two sets that twinkle out of step) and a few silk threads of beads hanging below
+  let glowDots: SheepGeos["glow"];
+  if (glow) {
+    const ga = new GeoBatch(0, rng), gb = new GeoBatch(0, rng);
+    const dot = (b: GeoBatch, p: THREE.Vector3, r: number) => b.add(new THREE.OctahedronGeometry(r, 0), "#ffffff", new THREE.Matrix4().compose(p, new THREE.Quaternion(), new THREE.Vector3(1, 1, 1)));
+    const cnt = lite ? 56 : 104;
+    for (let i = 0; i < cnt; i++) {
+      const [x, y, z] = fib(i * 7 + 3, cnt * 1.5);
+      if (y < -0.55) continue;
+      const nv = new THREE.Vector3(x / L, y / H, z / W).normalize();
+      dot(i % 2 ? ga : gb, new THREE.Vector3(x * L, y * H, z * W).addScaledVector(nv, lockR * 1.05), lockR * (0.22 + rng() * 0.14));
+    }
+    for (let t = 0; t < 4; t++) {
+      const bx = L * (-0.5 + t * 0.34), bz = (t % 2 ? 1 : -1) * W * (0.45 + rng() * 0.25), by = -H * 0.82;
+      for (let k = 0; k < 4; k++) dot(k % 2 ? ga : gb, new THREE.Vector3(bx, by - k * lockR * 1.3, bz), lockR * (0.24 - k * 0.02));
+    }
+    glowDots = { a: ga.build()!, b: gb.build()! };
+  }
 
   // ---- head (pivot at the poll; faces +x; the friendlier round-3 face). Ears and eyes are separate parts.
   const hs = d.hs;
@@ -365,12 +506,14 @@ export function buildSheepGeos(w: WorldSheep): SheepGeos {
     eyeYaw: Math.PI / 2 - 0.42,
     face,
   };
-  return { key: sheepKey(w), body, head, dims: d, parts };
+  return { key: sheepKey(w), body, head, dims: d, parts, glow: glowDots };
 }
 
 export function disposeGeos(g: SheepGeos): void {
   g.body.dispose();
   g.head.dispose();
+  g.glow?.a.dispose();
+  g.glow?.b.dispose();
 }
 
 // ---------------------------------------------------------------- pose
@@ -525,9 +668,15 @@ export class SheepMaterials {
    * environment when there is one), glow-worm is emissive (its glow follows the night), pāua is iridescent, cloud is a touch
    * luminous. Pōhutukawa and southerly use the ordinary wool (their look is in the colour and the shape).
    */
-  readonly steel = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.34, metalness: 0.72, emissive: "#2b3440", emissiveIntensity: 0.35 });
-  readonly glow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, emissive: "#2cc4ad", emissiveIntensity: 0.12 });
-  readonly paua = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.05, iridescence: 1, iridescenceIOR: 1.7, iridescenceThicknessRange: [180, 640], emissive: "#6a7fd8", emissiveIntensity: 0.08 });
+  readonly steel = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.85, emissive: "#1a2029", emissiveIntensity: 0.3 });
+  readonly glow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, emissive: "#06302d", emissiveIntensity: 0.1 });
+  /** glow-worm pinpoint lights: two sets that twinkle out of step, fading in with the dark */
+  readonly glowDotA = new THREE.MeshBasicMaterial({ color: "#6dffd8", transparent: true, opacity: 0, depthWrite: false, toneMapped: false, fog: false });
+  readonly glowDotB = new THREE.MeshBasicMaterial({ color: "#8fe8ff", transparent: true, opacity: 0, depthWrite: false, toneMapped: false, fog: false });
+  /** the soft shadow a floating cloud sheep casts on the grass */
+  readonly softShadow = new THREE.MeshBasicMaterial({ color: "#1d2a3a", transparent: true, opacity: 0.2, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  readonly softShadowGeo = new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2);
+  readonly paua = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.34, metalness: 0.15, iridescence: 1, iridescenceIOR: 2.0, iridescenceThicknessRange: [220, 820], clearcoat: 0.4, clearcoatRoughness: 0.18, emissive: "#6a7fd8", emissiveIntensity: 0.08 });
   readonly cloud = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.98, metalness: 0, emissive: "#dff0ff", emissiveIntensity: 0.16 });
 
   constructor() {
@@ -550,7 +699,7 @@ export class SheepMaterials {
     if (!make) return;
     this.envSource = null;
     this.env = make();
-    for (const m of [this.steel, this.paua]) { m.envMap = this.env; m.envMapIntensity = m === this.steel ? 1.15 : 0.7; m.needsUpdate = true; }
+    for (const m of [this.steel, this.paua]) { m.envMap = this.env; m.envMapIntensity = m === this.steel ? 1.5 : 0.5; m.needsUpdate = true; }
   }
 
   /** Which animated rare materials have been handed out (a farm without glow-worm or pāua wool pays nothing per frame). */
@@ -558,10 +707,16 @@ export class SheepMaterials {
 
   /** Per frame: the glow-worm fleece brightens as it gets dark, and pāua slowly shifts its colours. */
   update(time: number, night: number): void {
-    if (this.inUse.glow) this.glow.emissiveIntensity = 0.1 + 0.55 * night + Math.sin(time * 1.3) * 0.04 * night;
+    if (this.inUse.glow) {
+      this.glow.emissiveIntensity = 0.1 + 0.55 * night + Math.sin(time * 1.3) * 0.04 * night;
+      const k = Math.min(1, night * 1.5);
+      this.glowDotA.opacity = k * (0.7 + 0.3 * Math.sin(time * 1.7));
+      this.glowDotB.opacity = k * (0.7 + 0.3 * Math.sin(time * 2.3 + 2));
+      this.glowDotA.visible = this.glowDotA.opacity > 0.02; this.glowDotB.visible = this.glowDotB.opacity > 0.02;
+    }
     if (this.inUse.paua) {
       const r = this.paua.iridescenceThicknessRange;
-      r[0] = 180 + Math.sin(time * 0.8) * 90; r[1] = 640 + Math.cos(time * 0.6) * 90;
+      r[0] = 220 + Math.sin(time * 0.8) * 140; r[1] = 820 + Math.cos(time * 0.6) * 160;
       this.paua.emissive.setHSL((0.55 + 0.12 * Math.sin(time * 0.5)) % 1, 0.55, 0.6);
     }
   }
@@ -586,6 +741,8 @@ export class SheepMaterials {
   dispose(): void {
     for (const m of this.wool) m.dispose();
     for (const m of [this.steel, this.glow, this.paua, this.cloud]) m.dispose();
+    for (const m of [this.glowDotA, this.glowDotB, this.softShadow]) m.dispose();
+    this.softShadowGeo.dispose();
     this.env?.dispose();
     this.skin.dispose();
     this.part.dispose();
@@ -612,6 +769,8 @@ export interface SheepRig {
   headPivot: THREE.Group;
   pick: THREE.Mesh;
   markerAnchor: THREE.Group;
+  /** cloud wool: the soft contact shadow under the floating sheep (root space) */
+  shadow?: THREE.Mesh | undefined;
 }
 
 /** World rig: merged body + head; legs, ears and eyes are drawn by the flock's instanced parts. */
@@ -643,7 +802,19 @@ export function buildRig(geos: SheepGeos, w: WorldSheep, mats: SheepMaterials, s
   const markerAnchor = new THREE.Group();
   markerAnchor.position.y = d.top;
   root.add(markerAnchor);
-  return { root, bob, body, outline, headPivot, pick, markerAnchor };
+  if (geos.glow) {
+    const a = new THREE.Mesh(geos.glow.a, mats.glowDotA), b = new THREE.Mesh(geos.glow.b, mats.glowDotB);
+    for (const m of [a, b]) { m.raycast = () => {}; m.frustumCulled = false; body.add(m); }
+  }
+  let shadow: THREE.Mesh | undefined;
+  if (w.fantasy === "cloud") {
+    shadow = new THREE.Mesh(mats.softShadowGeo, mats.softShadow);
+    shadow.scale.set(d.L * 1.15, 1, d.W * 1.5);
+    shadow.position.set(0, 0.03, 0);
+    shadow.raycast = () => {};
+    root.add(shadow);
+  }
+  return { root, bob, body, outline, headPivot, pick, markerAnchor, shadow };
 }
 
 /** A standalone rig with real meshes for every part (portraits). */
@@ -661,6 +832,7 @@ export function buildFullRig(geos: SheepGeos, w: WorldSheep, mats: SheepMaterial
   const rig = buildRig(geos, w, mats, false);
   rig.root.remove(rig.pick);
   rig.root.remove(rig.markerAnchor);
+  if (rig.shadow) rig.shadow.visible = false;
   const mk = (geo: THREE.BufferGeometry, m: THREE.Material, parent: THREE.Object3D): THREE.Mesh => {
     const mesh = new THREE.Mesh(geo, m);
     mesh.matrixAutoUpdate = false;

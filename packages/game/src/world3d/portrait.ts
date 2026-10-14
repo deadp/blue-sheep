@@ -558,7 +558,7 @@ export class LivePortrait {
     head.project(this.camera);
     const w = L.el.clientWidth, h = L.el.clientHeight;
     L.bubble.place(clamp(((head.x + 1) / 2) * w, 36, w - 36), clamp(((1 - head.y) / 2) * h, 34, h));
-    this.mats.update(performance.now() / 1000, 0.45); // a glow-worm fleece glows a little in its portrait
+    this.mats.update(performance.now() / 1000, 0.6); // a glow-worm fleece glows a little in its portrait
     r.render(this.scene, this.camera);
     this.frames++;
   }

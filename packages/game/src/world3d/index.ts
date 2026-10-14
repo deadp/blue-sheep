@@ -1674,6 +1674,7 @@ export class WorldView {
     // cloud wool is so light the sheep floats a finger's width off the grass, bobbing gently
     const lift = e.ws.fantasy === "cloud" ? (0.1 + (this.reduced ? 0 : Math.sin(this.time * 1.7 + e.phase) * 0.035)) * d.rootScale : 0;
     e.lift = lift;
+    if (rig.shadow) rig.shadow.position.y = 0.03 - lift / Math.max(0.001, rig.root.scale.x);
     rig.root.position.set(e.x, groundY(e.x, -e.z) + lift, e.z);
     rig.root.rotation.y = e.heading;
     let s = d.rootScale;
@@ -1685,7 +1686,13 @@ export class WorldView {
       if (this.attended === e.ws.id) { e.mode = "attend"; e.heading = FACE_CAMERA; rig.root.rotation.y = e.heading; }
       else if (e.mode === "attend") e.mode = "idle";
     }
-    applyPose(rig, geos, computePose(e, this.time, this.reduced));
+    const pose = computePose(e, this.time, this.reduced);
+    if (e.ws.fantasy === "southerly") {
+      // braced into the wind: head a little low, and now and then a gust ripples through the fleece
+      pose.headPitch -= 0.1;
+      if (!this.reduced) pose.wobble += Math.max(0, Math.sin(this.time * 0.7 + e.phase)) ** 3 * Math.sin(this.time * 7 + e.phase) * 0.8;
+    }
+    applyPose(rig, geos, pose);
     if (e.marker) {
       const bobY = this.reduced ? 0 : Math.sin(this.time * 2.4 + e.phase) * 0.08;
       e.marker.position.y = bobY - d.legLen * 0.85 * e.fold;
