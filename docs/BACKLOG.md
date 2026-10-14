@@ -1,11 +1,18 @@
 # Blue Sheep backlog
 
-Ordered queue of work requested by the user and playtesters. Work runs one
-subagent at a time. Items move to "Done" with the commit hash.
+Ordered queue of work requested by the user and playtesters. Subagents run one at a
+time or in parallel, depending on the user's capacity. Items move to "Done" with the commit hash.
 
 ## In progress / next
 
 Next: v3 Phase 7 (chapters, item orders, A&P show, Golden Fleece; DESIGN-v3 §13).
+Phase 7 also makes pōhutukawa count as vivid red in summer for orders and the show (DESIGN-v3 §15 item 33).
+
+Phase 6 ending-rate check (15-10-2026): the blind ending fell 97% to 87% on seeds 1-30. Mostly seed noise:
+seeds 31-60 are 100% before and after, and seeds 1-60 combined are 93% (above the 90% target). A small real cost
+comes from the sim farmer's rare-gene screening (seeds 3 and 8 finish with NORARE=1). If it matters later, raise the
+money floor in blind.ts `rareScreens`, or skip screens near the inbreeding limit or once act 4 has 5+ blue sheep.
+Not changed.
 
 Follow-ups from Phase 6, fantasy wools (not started; decisions the user may want a say in are marked ?):
 - Known miss, moved to Phase 7 (user decision 15-10-2026, DESIGN-v3 §15 item 33; Phase 7 is not done until the median is <= 27): the sim's first rare fleece misses the
