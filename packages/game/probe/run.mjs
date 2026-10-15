@@ -19,10 +19,11 @@ import { woolstore } from "./woolstore.mjs";
 import { craft } from "./craft.mjs";
 import { rare } from "./rare.mjs";
 import { fleece } from "./fleece.mjs";
+import { steel } from "./steel.mjs";
 
 const ALL = { smoke, play, panels, colour, breeds, breedlooks, woolstore, craft, rare, ui, life, world, dressing, voices, tutorial, lessons, video };
 /** Steps run only by name (not part of `npm run probe`): the fleece style comparison sheets (experimental `?fleece=`). */
-const OPTIONAL = { fleece };
+const OPTIONAL = { fleece, steel };
 const names = process.argv.slice(2);
 const unknown = names.filter((n) => !(n in ALL) && !(n in OPTIONAL));
 if (unknown.length) {

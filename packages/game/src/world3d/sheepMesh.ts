@@ -10,7 +10,7 @@ import { GeoBatch, mat, type V3 } from "./builder.js";
 import { hashString, mulberry32 } from "./rng.js";
 import { woolHex } from "./palette.js";
 import type { WorldSheep } from "./types.js";
-import { buildFleece, fleeceStyle, GLOW_BELLY, GLOW_DAY, PAUA_NACRE, patchWoolMaterial, pauaChip, springGeo } from "./fleece.js";
+import { buildFleece, fleeceStyle, GLOW_BELLY, GLOW_DAY, PAUA_NACRE, patchSteelMaterial, patchWoolMaterial, pauaChip, springGeo } from "./fleece.js";
 
 export interface SheepDims {
   /** overall body scale from size */
@@ -696,6 +696,8 @@ export class SheepMaterials {
     );
     // experimental fleece styles c and d draw the wool texture in the shader
     for (const m of [...this.wool, this.glow, this.cloud]) patchWoolMaterial(m, fleeceStyle());
+    // steel wool on the shell styles draws its coils and brushed-metal highlights in the shader (fleece.ts)
+    patchSteelMaterial(this.steel, fleeceStyle(), LOCKS < 40);
   }
 
   /**

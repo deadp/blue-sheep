@@ -24,6 +24,27 @@ export const fleeceStyle = (): FleeceStyle => STYLE;
 /** For scripts (triangle counts): pick a style without a URL. Rigs already built keep their fleece. */
 export function setFleeceStyle(s: FleeceStyle): void { STYLE = s; }
 
+/**
+ * Steel wool on the shell styles (a, c, d): `&steelv=N` picks the coil pattern the steel shader draws.
+ *  1 spiral ringlets: a hairspring wound out from a dark core, seen end-on
+ *  2 concentric ringlets: a raised ring with a dark core, like a small coiled washer (default; the user's pick)
+ *  3 side-on helix: slanted wire bands on an elongated coil, lying along the fleece
+ *  0 the old look: raised spring geometry on a plain metal shell, no steel shader
+ */
+function steelvFromUrl(): number {
+  try {
+    const v = new URLSearchParams((globalThis as { location?: { search?: string } }).location?.search ?? "").get("steelv");
+    const n = v === null ? 2 : Number(v);
+    return Number.isInteger(n) && n >= 0 && n <= 3 ? n : 2;
+  } catch {
+    return 2;
+  }
+}
+let STEELV = steelvFromUrl();
+export const steelVariant = (): number => STEELV;
+/** The steel shader draws the coils on the shell styles; style 0 and the staple style b keep their geometry springs. */
+export const steelShaderOn = (style: FleeceStyle): boolean => STEELV > 0 && (style === "a" || style === "c" || style === "d");
+
 /** The breed look numbers the fleece reads (a subset of sheepMesh's BreedLook). */
 export interface FleeceLook { locks: number; lockR: number; stretch: number; tail: number; wrinkle: number; hang: number; hairy: number; under: number }
 
@@ -470,7 +491,12 @@ function shellStyle(c: FleeceCtx, style: "a" | "c" | "d"): FleeceOut {
     style === "a" ? { amp: 0.62, rad: 1.6, count: 0.85, crease: 0.24, wobble: 0.25, seg: [64, 40] }
     : style === "c" ? { amp: 0.42, rad: 2.1, count: 0.5, crease: 0.12, wobble: 0.35, seg: [48, 30] }
     : { amp: 0.34, rad: 2.2, count: 0.5, crease: 0.08, wobble: 0.25, seg: [48, 30] };
-  if (c.steel) { o.amp *= 0.6; o.rad *= 0.7; o.count *= 1.6; }
+  const steelSh = c.steel && steelShaderOn(style);
+  if (steelSh) {
+    // A+D for steel: a's soft lumpy outline carrying the coil shader (the shader draws the ringlets, the lumps just break the silhouette)
+    if (style === "d") { o.amp = 0.5; o.rad = 1.5; o.count = 0.75; o.crease = 0.12; o.seg = [64, 40]; }
+    o.amp *= 0.8; o.rad *= 0.85; o.count *= 1.2;
+  } else if (c.steel) { o.amp *= 0.6; o.rad *= 0.7; o.count *= 1.6; }
   if (c.cloud) { o.amp *= 1.6; o.count *= 0.7; o.crease *= 0.6; }
   if (c.look.hairy > 0.5) { o.amp *= 1.15; o.rad *= 0.8; }
   if (c.look.wrinkle > 0.5 && style === "a") { o.rad *= 0.8; o.count *= 1.3; }
@@ -481,11 +507,11 @@ function shellStyle(c: FleeceCtx, style: "a" | "c" | "d"): FleeceOut {
   const fine = 1 + 0.6 * L.wrinkle + 0.4 * c.curl - 0.3 * L.hairy;
   const cells = (style === "d" ? 11.5 : 48) * fine / c.u;
   const stretch = c.swept ? -3 : 1 + 1.4 * L.hang + 2 * L.hairy + 0.3 * Math.max(0, L.stretch - 1);
-  const strength = c.steel ? 0.35 : c.cloud ? 0.6 : 1;
-  const geo = shell.geometry(shellColour(c, aMax, o.crease), [style === "a" ? 0 : strength, cells, stretch]);
+  const strength = steelSh ? 1 : c.steel ? 0.35 : c.cloud ? 0.6 : 1;
+  const geo = shell.geometry(shellColour(c, aMax, o.crease), [style === "a" && !steelSh ? 0 : strength, steelSh ? 7 * fine / c.u : cells, stretch]);
   const bb = new GeoBatch(0, c.rng);
   if (L.hairy > 0.05) hairyExtras(bb, c, shell.surf, style === "a" ? (c.lite ? 18 : 30) : (c.lite ? 22 : 36));
-  const glow = rareExtras(bb, c, shell.surf, { springs: c.steel ? Math.round(c.locks * 0.45) : 0, billows: false });
+  const glow = rareExtras(bb, c, shell.surf, { springs: c.steel && !steelSh ? Math.round(c.locks * 0.45) : 0, billows: false });
   return { body: withExtras(geo, bb.empty ? null : bb.build()), glow };
 }
 
@@ -734,5 +760,123 @@ export function patchWoolMaterial(m: THREE.MeshStandardMaterial, style: FleeceSt
   };
   const key = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () => `${key()}|fleece-${style}`;
+  m.needsUpdate = true;
+}
+
+// ------------------------------------------------------------------ steel wool shader (styles a, c, d)
+
+const STEEL_GLSL = /* glsl */ `
+varying vec3 vON;
+// nearest feature point of a cell grid: xyz = vector from the pixel to it, w = distance; second distance and cell id out
+vec4 st_cell(vec3 p, out float d2, out float id) {
+  vec3 i = floor(p), f = fract(p); float d1 = 8.0; d2 = 8.0; vec3 best = vec3(0.0); id = 0.0;
+  for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec3 g = vec3(float(x), float(y), float(z)); vec3 r = g + fl_hash33(i + g) * 0.8 - f; float d = dot(r, r);
+    if (d < d1) { d2 = d1; d1 = d; best = r; id = fl_hash13(i + g + 7.7); } else if (d < d2) { d2 = d; }
+  }
+  d2 = sqrt(d2);
+  return vec4(best, sqrt(d1));
+}
+// one ringlet's height at tangent-plane offset p (cell units); variant picks the coil pattern; pr = per-cell phase / handedness
+float st_h(vec2 p, vec3 pr) {
+  float rad = length(p);
+#if STEELV == 1
+  // hairspring: a wire wound outward from a dark core, about two turns
+  float ang = atan(p.y, p.x) * 0.15915494;
+  float t = rad * 3.9 - pr.y * ang + pr.x;
+  float wire = smoothstep(0.1, 0.8, 0.5 + 0.5 * cos(t * 6.2831853));
+  float env = 1.0 - smoothstep(0.46, 0.68, rad);
+  return env * (0.12 + 0.88 * wire) * smoothstep(0.03, 0.17, rad);
+#elif STEELV == 2
+  // washer ringlet: one fat ring with a dark centre and a faint inner turn
+  float ring = exp(-pow((rad - 0.34) / 0.1, 2.0));
+  float inner = 0.35 * exp(-pow((rad - 0.16) / 0.06, 2.0));
+  return min(1.0, ring + inner) * (1.0 - smoothstep(0.5, 0.62, rad));
+#else
+  // side-on coil: slanted wire bands along a cell-random axis, inside an elongated envelope
+  float a = pr.x * 6.2831853;
+  vec2 ax = vec2(cos(a), sin(a)), pe = vec2(-ax.y, ax.x);
+  float s = dot(p, ax), w = dot(p, pe);
+  float t = s * 5.0 + w * 2.2 * pr.y;
+  float wire = smoothstep(0.1, 0.8, 0.5 + 0.5 * cos(t * 6.2831853));
+  float env = (1.0 - smoothstep(0.3, 0.62, abs(s))) * (1.0 - smoothstep(0.14, 0.3, abs(w)));
+  return env * (0.15 + 0.85 * wire);
+#endif
+}
+`;
+
+const STEEL_BODY = /* glsl */ `
+float stH = 0.0; vec3 stT = vec3(0.0); float stGlint = 0.0; float stStr = vWool.x;
+if (vWool.x > 0.0) {
+  vec3 sc = vWool.z > 0.0 ? vec3(1.0, 1.0 / vWool.z, 1.0) : vec3(-1.0 / vWool.z, 1.0, 1.0);
+  vec3 q = vObj * sc * vWool.y;
+  float near = 1.0 - smoothstep(0.25, 0.7, length(fwidth(q)));
+  float d2, cid;
+  vec4 cell = st_cell(q, d2, cid);
+  vec3 no = normalize(vON);
+  vec3 ref = normalize(fl_hash33(vec3(cid * 91.7, cid * 13.1, 3.3)) - 0.5);
+  vec3 t1 = normalize(ref - no * dot(ref, no)), t2 = cross(no, t1);
+  vec2 p = vec2(dot(cell.xyz, t1), dot(cell.xyz, t2));
+  vec3 pr = vec3(fract(cid * 7.13), cid > 0.5 ? 1.0 : -1.0, 0.0);
+  stH = st_h(p, pr) * (0.55 + 0.45 * smoothstep(0.0, 0.25, d2 - cell.w));
+  vec2 gt = vec2(0.0);
+  if (near > 0.0) {
+    const float e = 0.05;
+    float hu = st_h(p - vec2(e, 0.0), pr), hv = st_h(p - vec2(0.0, e), pr);
+    gt = vec2(hu - st_h(p, pr), hv - st_h(p, pr)) / e;
+    vec3 g = (gt.x * t1 + gt.y * t2) * sc;
+    normal = fl_tilt(normal, g, 0.5 * vWool.x * near);
+  }
+  stH = mix(0.5, stH, near);
+  // gunmetal: wire catches the light, the gaps and cores go dark blue-black
+  diffuseColor.rgb *= mix(1.0, 0.42 + 0.48 * stH, vWool.x);
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.9, 0.97, 1.08), 0.5 * vWool.x);
+  roughnessFactor = mix(roughnessFactor, mix(0.62, 0.3, stH), vWool.x);
+  // wire direction (tangential round the ringlet, or along the helix) for the brushed highlight
+  vec2 tv = vec2(-p.y, p.x);
+  #if STEELV == 3
+    float a3 = pr.x * 6.2831853; vec2 ax3 = vec2(cos(a3), sin(a3));
+    tv = vec2(-(5.0 * ax3.y + 2.2 * pr.y * ax3.x), 5.0 * ax3.x - 2.2 * pr.y * ax3.y);
+  #endif
+  tv = normalize(tv + 1e-4);
+  vec3 To = tv.x * t1 + tv.y * t2;
+  stT = normalize(To.x * vAx + To.y * vAy + To.z * vAz);
+  #ifndef STEEL_LITE
+    // sparse glints: the odd ringlet catches the sky
+    float gs = step(0.94, fract(cid * 37.3));
+    stGlint = gs * pow(max(dot(normal, normalize(vec3(-0.35, 0.8, 0.5))), 0.0), 18.0) * smoothstep(0.2, 0.8, stH);
+  #endif
+}
+`;
+
+const STEEL_AFTER_LIGHTS = /* glsl */ `
+#if defined(STEEL_ANISO) && NUM_DIR_LIGHTS > 0
+if (stStr > 0.0) {
+  vec3 V = normalize(vViewPosition);
+  for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+    vec3 L = directionalLights[i].direction; vec3 Hh = normalize(L + V);
+    float th = dot(stT, Hh); float sp = pow(sqrt(max(0.0, 1.0 - th * th)), 70.0);
+    reflectedLight.directSpecular += directionalLights[i].color * sp * stH * max(dot(normal, L), 0.0) * 0.12 * stStr;
+  }
+}
+#endif
+`;
+
+/** Patch the shared steel material: coil texture (ringlets) and brushed gunmetal highlights drawn per pixel on the A / D shell. */
+export function patchSteelMaterial(m: THREE.MeshStandardMaterial, style: FleeceStyle, lite: boolean): void {
+  if (!steelShaderOn(style)) return;
+  const v = STEELV;
+  m.onBeforeCompile = (sh) => {
+    const def = `#define STEELV ${v}\n${lite ? "#define STEEL_LITE\n" : "#define STEEL_ANISO\n"}`;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute vec3 aWool;\nvarying vec3 vObj;\nvarying vec3 vWool;\nvarying vec3 vAx;\nvarying vec3 vAy;\nvarying vec3 vAz;\nvarying vec3 vON;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvObj = position; vON = objectNormal; vWool = aWool; vAx = normalize(normalMatrix * vec3(1.0, 0.0, 0.0)); vAy = normalize(normalMatrix * vec3(0.0, 1.0, 0.0)); vAz = normalize(normalMatrix * vec3(0.0, 0.0, 1.0));");
+    sh.fragmentShader = def + sh.fragmentShader
+      .replace("#include <common>", "#include <common>\n" + NOISE_GLSL + STEEL_GLSL)
+      .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + STEEL_BODY)
+      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.85, 0.92, 1.0) * stGlint * 0.6;")
+      .replace("#include <lights_fragment_end>", "#include <lights_fragment_end>\n" + STEEL_AFTER_LIGHTS);
+  };
+  m.customProgramCacheKey = () => `steel-${style}-${v}-${lite ? "lite" : "full"}`;
   m.needsUpdate = true;
 }
