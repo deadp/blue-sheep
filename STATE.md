@@ -6,9 +6,11 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 
 ## Now
 - Branch complete-game is the default and the only branch. No open issues or PRs, no CI workflows.
-- v3 phases 1 to 5 are done: genetics library, pigment colours, breeds and wool types,
-  wool store and demand meters, woolshed crafting queue (last commit 05-10-2026).
-- Next in docs/BACKLOG.md is Phase 6, fantasy wools (docs/DESIGN-v3.md section 13).
+- v3 phases 1 to 6 are done: genetics library, pigment colours, breeds and wool types,
+  wool store and demand meters, woolshed crafting queue, fantasy wools (15-10-2026).
+- In progress: fleece looks. Four experimental styles behind `?fleece=a|b|c|d`; the user prefers D
+  (shader curls), aiming for an A+D mix, and wants each wool type reworked one by one (steel first).
+- Next in docs/BACKLOG.md after the fleece work: Phase 7, chapters, orders, A&P show, Golden Fleece.
 - Phases 7 to 10 are still to do: chapters and the Golden Fleece, river valley map, native birds,
   optional Blender model refresh.
 - Known follow-ups, not started: forecast paint triangle and rainbow ring, and flock rendering cost at play zoom.
@@ -22,8 +24,10 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 - 30-09-2026: pigment colours replace the v2 colour model; the game runs on the sheep3 species.
 - 04-10-2026: market stock by breed and act; Icelandic only from act 4.
 - 05-10-2026: wool sells raw or through a woolshed crafting queue with 12 kiwiana recipes.
+- 15-10-2026: Phase 6 built; first-fantasy-fleece sim target and pōhutukawa summer-red rule move to Phase 7.
+- 15-10-2026: fleece direction: D (shader curls) best so far, aim for an A+D mix; B staples only if much finer.
 
 ## Next action
-`Read docs/DESIGN-v3.md section 13 and docs/BACKLOG.md, then implement v3 Phase 6 (fantasy wools); finish only when npm test, typecheck and npm run probe pass.`
+`Rework the wool looks one type at a time (BACKLOG "Fleece look experiment"), then implement v3 Phase 7; finish only when npm test, typecheck and npm run probe pass.`
 
-Last updated: 14-10-2026
+Last updated: 15-10-2026
