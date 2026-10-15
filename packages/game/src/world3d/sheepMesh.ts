@@ -694,8 +694,8 @@ export class SheepMaterials {
     this.wool = [0.62, 0.8, 0.96].map(
       (roughness) => new THREE.MeshStandardMaterial({ vertexColors: true, roughness, metalness: 0 }),
     );
-    // experimental fleece styles c and d draw the wool texture in the shader
-    for (const m of [...this.wool, this.glow, this.cloud]) patchWoolMaterial(m, fleeceStyle());
+    // the shader fleece styles (default e, and c, d) draw the wool texture in the shader
+    for (const m of [...this.wool, this.glow, this.cloud]) patchWoolMaterial(m, fleeceStyle(), LOCKS < 40);
     // steel wool on the shell styles draws its coils and brushed-metal highlights in the shader (fleece.ts)
     patchSteelMaterial(this.steel, fleeceStyle(), LOCKS < 40);
   }

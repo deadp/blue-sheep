@@ -1,22 +1,26 @@
-// Fleece rendering experiments (debug URL param `?fleece=a|b|c|d`; default "0" is the current lock-bubble fleece in sheepMesh.ts).
+// Fleece rendering (debug URL param `?fleece=e|a|b|c|d|0`). The default is "e" (soft lumpy felted shell + per-pixel curl / lock shader);
+// `?fleece=0` (or `old`) is the previous lock-bubble fleece that sheepMesh.ts builds itself; a-d are the comparison experiments:
 //  a  felted shell: one continuous mesh, a lumpy quilted surface (soft lumps with shaded creases), breeds and rare wools shaped in the field
 //  b  staple locks: fewer, bigger tapered staples with crimp waves, shingled down the body over a dense under-coat, tips sun-bleached
 //  c  needle felt: a near-smooth plush shell with a velvet sheen and a fine fibre texture in the shader (a felted toy)
 //  d  bump-mapped wool: a gently lumpy shell whose curls are drawn by the shader (cellular bumps lit per pixel), so the
 //     silhouette stays soft while the surface reads as dense curly fleece
+//  e  (default) a's moderate lumpy outline carrying d's curl shader, plus: fine wavy narrow staple locks in the shader for the long
+//     wools (Romney, the Icelandic outer coat, Drysdale hair, blended by breed), deeper Merino neck folds, a soft felted rim
 // Geometry is deterministic per sheep (the caller's seeded rng). Cosmetic only; nothing here touches game rules.
 import * as THREE from "three";
 import { GeoBatch, type V3 } from "./builder.js";
 import type { Rng } from "./rng.js";
 
-export type FleeceStyle = "0" | "a" | "b" | "c" | "d";
-const STYLES: readonly FleeceStyle[] = ["0", "a", "b", "c", "d"];
+export type FleeceStyle = "0" | "a" | "b" | "c" | "d" | "e";
+const STYLES: readonly FleeceStyle[] = ["0", "a", "b", "c", "d", "e"];
 function fromUrl(): FleeceStyle {
   try {
     const v = new URLSearchParams((globalThis as { location?: { search?: string } }).location?.search ?? "").get("fleece");
-    return v && (STYLES as readonly string[]).includes(v) ? (v as FleeceStyle) : "0";
+    if (v === "old") return "0";
+    return v && (STYLES as readonly string[]).includes(v) ? (v as FleeceStyle) : "e";
   } catch {
-    return "0";
+    return "e";
   }
 }
 let STYLE: FleeceStyle = fromUrl();
@@ -25,7 +29,7 @@ export const fleeceStyle = (): FleeceStyle => STYLE;
 export function setFleeceStyle(s: FleeceStyle): void { STYLE = s; }
 
 /**
- * Steel wool on the shell styles (a, c, d): `&steelv=N` picks the coil pattern the steel shader draws.
+ * Steel wool on the shell styles (a, c, d, e): `&steelv=N` picks the coil pattern the steel shader draws.
  *  1 spiral ringlets: a hairspring wound out from a dark core, seen end-on
  *  2 concentric ringlets: a raised ring with a dark core, like a small coiled washer (default; the user's pick)
  *  3 side-on helix: slanted wire bands on an elongated coil, lying along the fleece
@@ -43,7 +47,7 @@ function steelvFromUrl(): number {
 let STEELV = steelvFromUrl();
 export const steelVariant = (): number => STEELV;
 /** The steel shader draws the coils on the shell styles; style 0 and the staple style b keep their geometry springs. */
-export const steelShaderOn = (style: FleeceStyle): boolean => STEELV > 0 && (style === "a" || style === "c" || style === "d");
+export const steelShaderOn = (style: FleeceStyle): boolean => STEELV > 0 && (style === "a" || style === "c" || style === "d" || style === "e");
 
 /** The breed look numbers the fleece reads (a subset of sheepMesh's BreedLook). */
 export interface FleeceLook { locks: number; lockR: number; stretch: number; tail: number; wrinkle: number; hang: number; hairy: number; under: number }
@@ -275,6 +279,8 @@ export interface ShellOpts {
   wobble: number;
   /** sphere resolution (full detail) */
   seg: [number, number];
+  /** style e: scale on the hanging hem drop (default 1) and on the Merino neck folds (default 1) */
+  hangK?: number; foldK?: number;
 }
 
 class Shell {
@@ -383,7 +389,7 @@ class Shell {
     // Merino: soft folds ringing the neck just behind the head
     if (c.look.wrinkle > 0.05 && p.x > c.L * 0.72 && p.y > -c.H * 0.4) {
       const w = smooth((p.x - c.L * 0.72) / (c.L * 0.12)) * c.look.wrinkle;
-      h += w * c.lockR * 0.45 * Math.max(0, Math.cos(((p.x - c.L * 0.8) / (c.L * 0.085)) * Math.PI * 2 + p.y * 3));
+      h += w * c.lockR * 0.45 * (this.o.foldK ?? 1) * Math.max(0, Math.cos(((p.x - c.L * 0.8) / (c.L * 0.085)) * Math.PI * 2 + p.y * 3));
     }
     return [h, best];
   }
@@ -402,7 +408,7 @@ class Shell {
       const side = smooth(Math.abs(dz) / 0.55);
       const lock = Math.pow(0.5 + 0.5 * Math.cos(a * 9 + this.noise(dx * 2, 0.5, dz * 2) * 1.2), 1.4);
       drop = smooth((-dy - 0.1) / 0.75) * (0.25 + 0.75 * (0.5 * (1 - side) + side * (0.1 + 0.9 * lock)));
-      p.y -= drop * 0.18 * c.u * c.look.hang;
+      p.y -= drop * 0.18 * c.u * c.look.hang * (this.o.hangK ?? 1);
       p.addScaledVector(n, drop * 0.02 * c.u);
     }
     if (c.swept) {
@@ -420,14 +426,14 @@ class Shell {
     return { p: this.place(b.p, b.n, h)[0], n: b.n };
   };
 
-  /** Build the shell mesh: position, colour, and the shader's aWool (strength, cell scale, stretch). */
-  geometry(colour: (p: THREE.Vector3, n: THREE.Vector3, h: number, bump: Bump | null, drop: number, out: THREE.Color) => void, wool: V3): THREE.BufferGeometry {
+  /** Build the shell mesh: position, colour, and the shader's aWool (strength, cell scale, stretch, and lock mix 0 curls .. 1 staple locks). */
+  geometry(colour: (p: THREE.Vector3, n: THREE.Vector3, h: number, bump: Bump | null, drop: number, out: THREE.Color) => void, wool: V3, lock?: (p: THREE.Vector3, n: THREE.Vector3, h: number, drop: number) => number): THREE.BufferGeometry {
     const [sw, sh] = this.o.seg;
     const k = this.c.lite ? 0.62 : 1;
     const sph = new THREE.SphereGeometry(1, Math.round(sw * k), Math.round(sh * k));
     const pos = sph.getAttribute("position");
     const n = pos.count;
-    const P = new Float32Array(n * 3), C = new Float32Array(n * 3), A = new Float32Array(n * 3);
+    const P = new Float32Array(n * 3), C = new Float32Array(n * 3), A = new Float32Array(n * 4);
     const col = new THREE.Color();
     for (let i = 0; i < n; i++) {
       const b = this.base(pos.getX(i) * this.c.L, pos.getY(i) * this.c.H, pos.getZ(i) * this.c.W);
@@ -436,13 +442,13 @@ class Shell {
       P[i * 3] = p.x; P[i * 3 + 1] = p.y; P[i * 3 + 2] = p.z;
       colour(b.p, b.n, h, bi >= 0 ? this.bumps[bi]! : null, drop, col);
       C[i * 3] = col.r; C[i * 3 + 1] = col.g; C[i * 3 + 2] = col.b;
-      A[i * 3] = wool[0]; A[i * 3 + 1] = wool[1]; A[i * 3 + 2] = wool[2];
+      A[i * 4] = wool[0]; A[i * 4 + 1] = wool[1]; A[i * 4 + 2] = wool[2]; A[i * 4 + 3] = lock ? lock(p, b.n, h, drop) : 0;
     }
     const g = new THREE.BufferGeometry();
     g.setIndex(sph.getIndex());
     g.setAttribute("position", new THREE.BufferAttribute(P, 3));
     g.setAttribute("color", new THREE.BufferAttribute(C, 3));
-    g.setAttribute("aWool", new THREE.BufferAttribute(A, 3));
+    g.setAttribute("aWool", new THREE.BufferAttribute(A, 4));
     sph.dispose();
     return g.toNonIndexed();
   }
@@ -453,7 +459,7 @@ function withExtras(shell: THREE.BufferGeometry, extras: THREE.BufferGeometry | 
   if (!extras) return shell;
   const e = extras.index ? extras.toNonIndexed() : extras;
   e.deleteAttribute("normal");
-  e.setAttribute("aWool", new THREE.BufferAttribute(new Float32Array(e.getAttribute("position").count * 3), 3));
+  e.setAttribute("aWool", new THREE.BufferAttribute(new Float32Array(e.getAttribute("position").count * 4), 4));
   const parts = [shell, e];
   const out = new THREE.BufferGeometry();
   for (const name of ["position", "color", "aWool"]) {
@@ -461,7 +467,7 @@ function withExtras(shell: THREE.BufferGeometry, extras: THREE.BufferGeometry | 
     const arr = new Float32Array(total);
     let o = 0;
     for (const g of parts) { arr.set(g.getAttribute(name).array as Float32Array, o); o += g.getAttribute(name).array.length; }
-    out.setAttribute(name, new THREE.BufferAttribute(arr, 3));
+    out.setAttribute(name, new THREE.BufferAttribute(arr, name === "aWool" ? 4 : 3));
   }
   shell.dispose(); e.dispose(); if (e !== extras) extras.dispose();
   return out;
@@ -486,10 +492,11 @@ function shellColour(c: FleeceCtx, aMax: number, crease: number) {
   };
 }
 
-function shellStyle(c: FleeceCtx, style: "a" | "c" | "d"): FleeceOut {
+function shellStyle(c: FleeceCtx, style: "a" | "c" | "d" | "e"): FleeceOut {
   const o: ShellOpts =
     style === "a" ? { amp: 0.62, rad: 1.6, count: 0.85, crease: 0.24, wobble: 0.25, seg: [64, 40] }
     : style === "c" ? { amp: 0.42, rad: 2.1, count: 0.5, crease: 0.12, wobble: 0.35, seg: [48, 30] }
+    : style === "e" ? { amp: 0.46, rad: 1.55, count: 0.72, crease: 0.15, wobble: 0.28, seg: [56, 36], hangK: 0.8, foldK: 2.2 }
     : { amp: 0.34, rad: 2.2, count: 0.5, crease: 0.08, wobble: 0.25, seg: [48, 30] };
   const steelSh = c.steel && steelShaderOn(style);
   if (steelSh) {
@@ -500,15 +507,28 @@ function shellStyle(c: FleeceCtx, style: "a" | "c" | "d"): FleeceOut {
   if (c.cloud) { o.amp *= 1.6; o.count *= 0.7; o.crease *= 0.6; }
   if (c.look.hairy > 0.5) { o.amp *= 1.15; o.rad *= 0.8; }
   if (c.look.wrinkle > 0.5 && style === "a") { o.rad *= 0.8; o.count *= 1.3; }
+  if (style === "e") {
+    // a long coat hangs in the shader's locks, so the lumps under it are broader and softer; coarse hair keeps a firmer lump
+    const lk = c.look, longK = clamp(lk.hang * 1.1 - 0.15, 0, 1);
+    o.amp *= 1 - 0.3 * longK; o.rad *= 1 + 0.25 * longK;
+    if (lk.under > 0.5) o.amp *= 0.8;
+  }
   const shell = new Shell(c, o);
   const aMax = c.lockR * o.amp * 1.1;
   // shader wool (c, d): strength, cells per unit and vertical stretch, by breed
   const L = c.look;
   const fine = 1 + 0.6 * L.wrinkle + 0.4 * c.curl - 0.3 * L.hairy;
-  const cells = (style === "d" ? 11.5 : 48) * fine / c.u;
-  const stretch = c.swept ? -3 : 1 + 1.4 * L.hang + 2 * L.hairy + 0.3 * Math.max(0, L.stretch - 1);
+  // style e: how much of the surface is long staple locks (Romney, the Icelandic outer coat, Drysdale hair) rather than round curls
+  const longK = style === "e" ? clamp(Math.max(L.hang * 1.1 - 0.15, L.hairy * 0.75), 0, 1) : 0;
+  const cells = (style === "d" ? 11.5 : style === "e" ? 12.5 * (1 + 0.15 * longK + 0.25 * L.under) : 48) * fine / c.u;
+  let stretch = c.swept ? -3 : 1 + 1.4 * L.hang + 2 * L.hairy + 0.3 * Math.max(0, L.stretch - 1);
+  if (style === "e" && !c.swept) stretch = 1 + 0.25 * L.hang + 0.3 * Math.max(0, L.stretch - 1) + longK * (3.2 + 1.2 * L.hang + 1.5 * L.hairy - 0.9 * L.under);
   const strength = steelSh ? 1 : c.steel ? 0.35 : c.cloud ? 0.6 : 1;
-  const geo = shell.geometry(shellColour(c, aMax, o.crease), [style === "a" && !steelSh ? 0 : strength, steelSh ? 7 * fine / c.u : cells, stretch]);
+  // lock mix per vertex: the lower flanks and hem take the long locks first, the back keeps shorter wool (Icelandic: all over)
+  const lockMix = style === "e" && longK > 0.02 && !c.steel && !c.cloud && !c.swept
+    ? (p: THREE.Vector3, _n: THREE.Vector3, _h: number, drop: number) => clamp(longK * (L.under > 0.5 ? 0.78 + 0.22 * smooth((0.5 - p.y / c.H) / 0.9) : 0.55 + 0.45 * smooth((0.55 - p.y / c.H) / 1.0) + 0.3 * drop), 0, 1)
+    : undefined;
+  const geo = shell.geometry(shellColour(c, aMax, o.crease), [style === "a" && !steelSh ? 0 : strength, steelSh ? 7 * fine / c.u : cells, stretch], lockMix);
   const bb = new GeoBatch(0, c.rng);
   if (L.hairy > 0.05) hairyExtras(bb, c, shell.surf, style === "a" ? (c.lite ? 18 : 30) : (c.lite ? 22 : 36));
   const glow = rareExtras(bb, c, shell.surf, { springs: c.steel && !steelSh ? Math.round(c.locks * 0.45) : 0, billows: false });
@@ -675,14 +695,14 @@ function stapleStyle(c: FleeceCtx): FleeceOut {
 }
 
 export function buildFleece(c: FleeceCtx, style: FleeceStyle): FleeceOut {
-  return style === "b" ? stapleStyle(c) : shellStyle(c, style === "c" ? "c" : style === "d" ? "d" : "a");
+  return style === "b" ? stapleStyle(c) : shellStyle(c, style === "c" ? "c" : style === "d" ? "d" : style === "e" ? "e" : "a");
 }
 
 // ------------------------------------------------------------------ shader wool (styles c, d)
 
 const NOISE_GLSL = /* glsl */ `
 varying vec3 vObj;
-varying vec3 vWool;
+varying vec4 vWool;
 varying vec3 vAx;
 varying vec3 vAy;
 varying vec3 vAz;
@@ -707,6 +727,20 @@ float fl_curl(vec3 q) {
   float dome = 1.0 - smoothstep(0.0, 0.95, w.x);
   return dome * dome * (3.0 - 2.0 * dome) * (0.55 + 0.45 * smoothstep(0.0, 0.3, w.y - w.x));
 }
+// staple locks: narrow wavy columns (q is already stretched along the fibre), rounded at the root and pointed in the gaps
+float fl_lock(vec3 q) {
+  q.x += 0.32 * sin(q.y * 2.1 + q.z * 0.8);
+  q.z += 0.18 * sin(q.y * 1.3 + q.x * 0.7 + 1.7);
+  vec2 w = fl_worley(q);
+  float dome = 1.0 - smoothstep(0.0, 0.78, w.x);
+  return dome * dome * (3.0 - 2.0 * dome) * (0.4 + 0.6 * smoothstep(0.0, 0.22, w.y - w.x));
+}
+// style e: round curls, staple locks, or the blend the vertex asks for (m: 0 curls .. 1 locks)
+float fl_wool(vec3 q, float m) {
+  if (m < 0.03) return fl_curl(q);
+  if (m > 0.97) return fl_lock(q);
+  return mix(fl_curl(q), fl_lock(q), m);
+}
 float fl_felt(vec3 q) { return fl_vnoise(q) * 0.6 + fl_vnoise(q * 2.7 + 3.1) * 0.4; }
 // tilt the view-space normal by an object-space height gradient (smooth per pixel, unlike screen-space derivatives)
 vec3 fl_tilt(vec3 n, vec3 g, float k) {
@@ -716,15 +750,35 @@ vec3 fl_tilt(vec3 n, vec3 g, float k) {
 `;
 
 /** Patch a shared wool material for the shader styles (c: felt fibre and sheen, d: per-pixel curls). */
-export function patchWoolMaterial(m: THREE.MeshStandardMaterial, style: FleeceStyle): void {
-  if (style !== "c" && style !== "d") return;
+export function patchWoolMaterial(m: THREE.MeshStandardMaterial, style: FleeceStyle, lite = false): void {
+  if (style !== "c" && style !== "d" && style !== "e") return;
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
     prev.call(m, sh, r);
     sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute vec3 aWool;\nvarying vec3 vObj;\nvarying vec3 vWool;\nvarying vec3 vAx;\nvarying vec3 vAy;\nvarying vec3 vAz;")
+      .replace("#include <common>", "#include <common>\nattribute vec4 aWool;\nvarying vec3 vObj;\nvarying vec4 vWool;\nvarying vec3 vAx;\nvarying vec3 vAy;\nvarying vec3 vAz;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvObj = position; vWool = aWool; vAx = normalize(normalMatrix * vec3(1.0, 0.0, 0.0)); vAy = normalize(normalMatrix * vec3(0.0, 1.0, 0.0)); vAz = normalize(normalMatrix * vec3(0.0, 0.0, 1.0));");
-    const body = style === "d" ? /* glsl */ `
+    const body = style === "e" ? /* glsl */ `
+      if (vWool.x > 0.0) {
+        vec3 sc = vWool.z > 0.0 ? vec3(1.0, 1.0 / vWool.z, 1.0) : vec3(-1.0 / vWool.z, 1.0, 1.0);
+        vec3 q = vObj * sc * vWool.y;
+        // fade the curls out where a cell is smaller than a couple of pixels (no shimmer when zoomed out)
+        float near = 1.0 - smoothstep(0.2, 0.55, length(fwidth(q)));
+        float lm = vWool.w;
+        float h = fl_wool(q, lm);
+        #ifndef FLEECE_LITE
+        if (near > 0.0) {
+          const float e = 0.08;
+          vec3 g = vec3(fl_wool(q + vec3(e, 0.0, 0.0), lm) - h, fl_wool(q + vec3(0.0, e, 0.0), lm) - h, fl_wool(q + vec3(0.0, 0.0, e), lm) - h) / e;
+          normal = fl_tilt(normal, g * sc, 0.4 * vWool.x * near);
+        }
+        #endif
+        float ao = mix(0.9, 0.72 + 0.3 * h, near);
+        diffuseColor.rgb *= mix(1.0, ao / 0.9, vWool.x);
+        // felted toy: a soft pale fuzz at the silhouette
+        float fres = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.6);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.06 + vec3(0.05), fres * 0.5 * vWool.x);
+      }` : style === "d" ? /* glsl */ `
       if (vWool.x > 0.0) {
         vec3 sc = vWool.z > 0.0 ? vec3(1.0, 1.0 / vWool.z, 1.0) : vec3(-1.0 / vWool.z, 1.0, 1.0);
         vec3 q = vObj * sc * vWool.y;
@@ -754,12 +808,12 @@ export function patchWoolMaterial(m: THREE.MeshStandardMaterial, style: FleeceSt
         float fres = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 2.2);
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.08 + vec3(0.07), fres * 0.75 * vWool.x);
       }`;
-    sh.fragmentShader = sh.fragmentShader
+    sh.fragmentShader = (lite ? "#define FLEECE_LITE\n" : "") + sh.fragmentShader
       .replace("#include <common>", "#include <common>\n" + NOISE_GLSL)
       .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + body);
   };
   const key = m.customProgramCacheKey.bind(m);
-  m.customProgramCacheKey = () => `${key()}|fleece-${style}`;
+  m.customProgramCacheKey = () => `${key()}|fleece-${style}${lite ? "-lite" : ""}`;
   m.needsUpdate = true;
 }
 
@@ -869,7 +923,7 @@ export function patchSteelMaterial(m: THREE.MeshStandardMaterial, style: FleeceS
   m.onBeforeCompile = (sh) => {
     const def = `#define STEELV ${v}\n${lite ? "#define STEEL_LITE\n" : "#define STEEL_ANISO\n"}`;
     sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute vec3 aWool;\nvarying vec3 vObj;\nvarying vec3 vWool;\nvarying vec3 vAx;\nvarying vec3 vAy;\nvarying vec3 vAz;\nvarying vec3 vON;")
+      .replace("#include <common>", "#include <common>\nattribute vec4 aWool;\nvarying vec3 vObj;\nvarying vec4 vWool;\nvarying vec3 vAx;\nvarying vec3 vAy;\nvarying vec3 vAz;\nvarying vec3 vON;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvObj = position; vON = objectNormal; vWool = aWool; vAx = normalize(normalMatrix * vec3(1.0, 0.0, 0.0)); vAy = normalize(normalMatrix * vec3(0.0, 1.0, 0.0)); vAz = normalize(normalMatrix * vec3(0.0, 0.0, 1.0));");
     sh.fragmentShader = def + sh.fragmentShader
       .replace("#include <common>", "#include <common>\n" + NOISE_GLSL + STEEL_GLSL)

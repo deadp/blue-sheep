@@ -664,6 +664,7 @@ discovery/concept cards.
   animation, `?fresh=1` clear save, `?lite=1` the cheaper world (no shadows, fewer tufts and wool locks, pixel
   ratio 1; same as `?detail=lite`), `?detail=auto|full|lite` pin the world's detail for this page (overrides the
   setting), `?move=walk|pan` override the saved walk/pan setting (`localStorage["blue-sheep-move-mode"]`).
+  `?fleece=e|0|old|a|b|c|d` (debug, world3d/fleece.ts) picks the base fleece look: the default is `e` (soft lumpy felted shell with a per-pixel curl / staple-lock shader); `0` or `old` is the previous lock-bubble fleece; `a`-`d` are the comparison experiments; `&steelv=0..3` picks the steel coil pattern (default 2).
   `__game.debug.camera(x, z, halfW)` (not contract) points the world camera for probe sheets;
   `__game.debug.breakdown()` (not contract) is the world's draw breakdown.
 - **Detail setting** (DESIGN-v3 §15 item 27): Settings → "Detail: Auto / Full / Lite" (`data-detail`, saved in
