@@ -234,7 +234,8 @@ export interface VisitingRam {
 
 // ---- Progression ----------------------------------------------------------
 
-export type ActNumber = 0 | 1 | 2 | 3 | 4;
+/** The chapter (DESIGN-v3 §10.1): 0 Old farm, 1 Hidden colours, 2 Woolshed, 3 True blue, 4 Rare wool, 5 Golden Fleece. */
+export type ActNumber = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface ActInfo {
   act: ActNumber;
@@ -261,6 +262,12 @@ export interface Stats {
   fairsWon: number;
   ordersFilled: number;
   ordersFailed: number;
+  /** Shearings (fleece lots) sold, for the ch1 goal. */
+  shearingsSold: number;
+  /** Distinct woolshed item kinds sold, for the ch2 goal. */
+  itemTypesSold: string[];
+  /** Season the first fantasy fleece was shorn (ch4 goal); null until then. */
+  firstFantasyFleeceSeason: number | null;
 }
 
 export interface ActStart { season: number; ordersFilled: number; fairsWon: number }

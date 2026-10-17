@@ -217,7 +217,8 @@ export function newGame(seed: number): GameState {
     events: [],
     pendingEvent: null,
     ending: null,
-    stats: { lambsBorn: 0, bluesBorn: 0, coinsEarned: 0, discoveries: 0, fairsWon: 0, ordersFilled: 0, ordersFailed: 0 },
+    stats: { lambsBorn: 0, bluesBorn: 0, coinsEarned: 0, discoveries: 0, fairsWon: 0, ordersFilled: 0, ordersFailed: 0,
+      shearingsSold: 0, itemTypesSold: [], firstFantasyFleeceSeason: null },
     upgrades: [],
     care: {},
     mice: null,
@@ -354,6 +355,9 @@ export function deserialize(json: string): GameState {
     if (st.tutorial === undefined) st.tutorial = null;
     if (st.lesson === undefined) st.lesson = null;
     if (!Array.isArray(st.lessonsDone)) st.lessonsDone = [];
+    st.stats.shearingsSold ??= 0;
+    if (!Array.isArray(st.stats.itemTypesSold)) st.stats.itemTypesSold = [];
+    st.stats.firstFantasyFleeceSeason ??= null;
     return st;
   }
   if (raw["version"] === 1 || raw["version"] === 2) throw new OldSaveError(raw["version"]);

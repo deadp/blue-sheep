@@ -479,14 +479,14 @@ describe("presentation", () => {
     expect(h).toMatch(/lamb-tile[a-z ]* hit/);
   });
 
-  it("the act track shows five milestones in the board and a mini track in the HUD", () => {
+  it("the act track shows six chapter milestones in the board and a mini track in the HUD", () => {
     for (const name of ["fresh", "act3"]) {
       const s = fx(name).state;
       const b = renderPanel(s, view({ panel: "board" }));
       const track = b.slice(b.indexOf('class="act-track'));
-      expect(track.match(/<li class="(done|now|later)"/g)?.length, name).toBe(5);
+      expect(track.match(/<li class="(done|now|later)"/g)?.length, name).toBe(6);
       expect(track.match(/<li class="done"/g)?.length ?? 0, name).toBe(s.act);
-      expect(b).toContain(`Story progress: act ${s.act + 1} of 5`);
+      expect(b).toContain(`Story progress: act ${s.act + 1} of 6`);
       expect(hudHtml(s, view())).toContain('class="act-track mini"');
     }
   });

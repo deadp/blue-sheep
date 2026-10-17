@@ -101,7 +101,7 @@ describe("acts", () => {
 
   it("act texts carry no genotype strings", () => {
     const g = newGame(15);
-    for (const a of [0, 1, 2, 3, 4] as const) {
+    for (const a of [0, 1, 2, 3, 4, 5] as const) {
       enterAct(g, a);
       const info = currentAct(g);
       for (const t of [info.title, info.line, info.goalText, info.progressText]) expect(t).not.toMatch(GENOTYPE_RE);

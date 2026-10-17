@@ -649,7 +649,7 @@ discovery/concept cards.
 
 ## 6. Controller (Stream D) — `packages/game/src/app.ts`
 
-- Boots: reads URL params, loads save (localStorage `blue-sheep-save-v3`; v1/v2 keys are never loaded
+- Boots: reads URL params, loads save (localStorage `blue-sheep-save-v4` since the six chapters; the v3 key is not migrated; v1/v2 keys are never loaded
   or touched — DESIGN-v3 §15 item 5 — and a returning player's title says "A new season at Kōwhai Creek"
   once, `view.oldSave`, remembered by `blue-sheep-v3-hello`) or shows title. Auto detail remembers a lite
   decision (`autolite.ts`, key `blue-sheep-autolite`): the next boots start lite, and it re-checks on the
@@ -1090,8 +1090,7 @@ with confidence dots; percentages only behind the `numbers` unlock; no genotype 
   over the records; pāua scaled by the chance the lamb's lustre reaches 5); only wools with p >= 1 % (`RARE_SHOWN_P`) or hi >= 4 %, so an ordinary cross has no rare line. The forecast panel shows one
   `.rare-line[data-rare-chance=<id>]` per wool (at most two) with a small band graphic; wide bands say "the records leave it open".
 - **Vet screen** (`core/vet.ts`): `vetScreen(state, id)` / `{type:"screen", id}` / `data-screen=<id>`: all six genes of one sheep (or the visiting ram) for
-  `RARE_SCREEN_FEE` = 20 coins, from act 3 with the vet open (`screenOpen`). **Open item:** DESIGN-v3 says the screen opens with chapter 3; chapters
-  do not exist until Phase 7, so `RARE_SCREEN_ACT` = 3 is a stand-in for ch3 and Phase 7 should replace the act gate. `forecastScreen` returns
+  `RARE_SCREEN_FEE` = 20 coins, from chapter 3 (True blue, DESIGN-v3 §10.1; `RARE_SCREEN_ACT` = 3, `state.act` is the chapter) with the vet open (`screenOpen`). `forecastScreen` returns
   `{gainBits, entropyBits, text, genes}`: gainBits is the expected bits (the sum over untested genes of the posterior marginal's entropy: a screen
   settles each gene completely, so it equals the entropy removed, which `rare.test.ts` checks against a real screen) and is <= 6 log2 3. The vet panel's rare row (`[data-test-row=rare]`) shows the sentence
   (`[data-screen-forecast]`), a learn meter and the button; after the screen it shows `[data-screen-expected]` ("Before the screen: ...", the forecast sentence the player saw, kept in `View.screened[sheepId]` by the controller) above one `[data-rare-fact=<locus>]` line per gene (a gene with no copy reads "none").
