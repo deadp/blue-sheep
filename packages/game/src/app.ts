@@ -23,8 +23,11 @@ import { fastForward } from "./debug.js";
 import { AUTOLITE_KEY, recallLite, rememberLite } from "./autolite.js";
 import { Voices, bleatSeries, happySeries, petVoiceFor, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
 
-/** v3 (pigment colours) starts fresh: older saves (v1, v2 keys) are left untouched and never loaded (DESIGN-v3 §15 item 5). */
-export const SAVE_KEY = "blue-sheep-save-v3";
+/**
+ * The six chapters (Phase 7) start fresh under a new key: the v3 save is not migrated (rule 27-09-2026). Older saves
+ * (v1, v2 keys) are left untouched and never loaded (DESIGN-v3 §15 item 5).
+ */
+export const SAVE_KEY = "blue-sheep-save-v4";
 const OLD_SAVE_KEYS = ["blue-sheep-save-v2", "blue-sheep-save-v1"];
 /** Set once the title has said "A new season at Kōwhai Creek" to a returning player. */
 const NEW_SEASON_TOLD_KEY = "blue-sheep-v3-hello";

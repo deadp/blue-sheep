@@ -51,7 +51,7 @@ export const SELL_FACTOR_MIN = 0.5;
 export const BUY_MARKUP = 1.8;
 
 export const VET_FEE = 12;
-/** The vet's rare-gene screen (all six rare-wool genes of one sheep at once; DESIGN-v3 §4) and the first act it is offered. */
+/** The vet's rare-gene screen (all six rare-wool genes of one sheep at once; DESIGN-v3 §4) and the chapter it opens in (ch3, DESIGN-v3 §10.1). */
 export const RARE_SCREEN_FEE = 20;
 export const RARE_SCREEN_ACT = 3;
 export const VISITOR_FEE = 25;
@@ -240,27 +240,37 @@ export interface ActDef {
   flockCap: number;
 }
 
+/**
+ * The six chapters (DESIGN-v3 §10.1). `act` keeps its v2 name: chapter N is `state.act === N`.
+ * TODO(Phase 7 pacing remap): unlocks and flock caps still follow the v2 act ladder so the fixtures and `?act=N`
+ * probes hold. §10.1 puts the woolshed (craft) in ch2, numbers and the fair (A&P show) in ch3, and the family
+ * tree and visiting rams in ch4.
+ */
 export const ACTS: ActDef[] = [
   {
-    act: 0, title: "The old farm", line: "The old farm is yours. Let's see what the flock gives us.",
+    act: 0, title: "The old farm", line: "The farm's yours, love. Let's see what the flock gives us.",
     goalText: "Plan a mating, then see your first lambs next season.", unlocks: [], flockCap: 10,
   },
   {
-    act: 1, title: "Hidden colours", line: "Hidden colours! Breed me a true blue sheep.",
-    goalText: "Breed a true blue lamb.", unlocks: ["cards", "orders", "vet", "craft", "farm", "dogs", "cat"], flockCap: 10,
+    act: 1, title: "Hidden colours", line: "White on top, colour underneath!",
+    goalText: "Breed a lamb with a visible colour, and sell three shearings.",
+    unlocks: ["cards", "orders", "vet", "craft", "farm", "dogs", "cat"], flockCap: 10,
   },
   {
-    act: 2, title: "The wool buyer", line: "I pay for fineness.",
-    goalText: "Fill three villager orders.", unlocks: ["numbers", "fair"], flockCap: 12,
+    act: 2, title: "The woolshed", line: "Wool's worth more with a bit of mahi in it.",
+    goalText: "Sell five different kinds of item, and fill two orders.", unlocks: ["numbers", "fair"], flockCap: 12,
   },
   {
-    act: 3, title: "Fresh blood", line: "Blood too close. Bring in fresh rams.",
-    goalText: "Win first place at the village fair.", unlocks: ["tree", "visitor"], flockCap: 16,
+    act: 3, title: "True blue", line: "Now, a blue one. That'd turn heads at the show.",
+    goalText: "Breed a true blue sheep, and win a ribbon (first to third) at the A&P show.", unlocks: ["tree", "visitor"], flockCap: 16,
   },
   {
-    act: 4, title: "Your own breed", line: "Found your own breed.",
-    goalText: "Keep six blue sheep with fine wool (flock average 28 µm or finer) that are not too closely related.",
-    unlocks: [], flockCap: 24,
+    act: 4, title: "Fresh blood and rare wool", line: "Reckon you'll never beat my Romneys.",
+    goalText: "Shear your first fantasy fleece, and win first in any show class.", unlocks: [], flockCap: 24,
+  },
+  {
+    act: 5, title: "The Golden Fleece", line: "A letter from the show committee: the Golden Fleece is open.",
+    goalText: "Win the Golden Fleece at the A&P show.", unlocks: [], flockCap: 24,
   },
 ];
 

@@ -47,6 +47,8 @@ function goalMet(state: GameState, act: ActNumber): boolean {
     case 2: return act2Orders(state) >= ORDERS_FOR_ACT2;
     case 3: return state.stats.fairsWon - state.actStart.fairsWon >= 1;
     case 4: return registryStatus(state).met;
+    // TODO(Phase 7 step 2): the chapter goals of DESIGN-v3 §10.1; until then the v2 checks above stand and the story ends in ch4.
+    case 5: return false;
   }
 }
 
@@ -71,6 +73,7 @@ function progressOf(state: GameState, act: ActNumber): { text: string; progress:
       const text = `${r.best.length} of ${REGISTRY_BLUES} blue sheep · flock wool ${r.meanFineness.toFixed(1)} µm (need ${REGISTRY_MICRONS})${kin}`;
       return { text, progress: (pBlue + pFine + pInb) / 3 };
     }
+    case 5: return { text: "No Golden Fleece yet.", progress: 0 };
   }
 }
 
@@ -98,6 +101,7 @@ export type ActBaseline = Pick<GameState["stats"], "ordersFilled" | "fairsWon">;
  * season in which the new act begins count toward its goal (the report shows them next to the new goal).
  */
 export function checkActAdvance(state: GameState, baseline?: ActBaseline): ActInfo | null {
+  // The v2 registry ending still closes the story in ch4 (see goalMet); ch5 comes with the Golden Fleece.
   if (state.act >= 4 || !goalMet(state, state.act)) return null;
   const next = (state.act + 1) as ActNumber;
   enterAct(state, next, baseline);
