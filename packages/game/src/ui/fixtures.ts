@@ -33,14 +33,14 @@ export function greedySeason(s: GameState): SeasonReport {
 function clone(s: GameState): GameState { return deserialize(serialize(s)); }
 
 /** Enter act `a` (if not there yet) with every concept up to it open, as the debug fast-forward does. */
-function toAct(s: GameState, a: 1 | 2 | 3 | 4): void {
+function toAct(s: GameState, a: 1 | 2 | 3 | 4 | 5): void {
   if (s.act < a) enterAct(s, a, undefined, { grant: true });
   else for (const x of ACTS) if (x.act <= a) for (const u of x.unlocks) grantUnlock(s, u);
 }
 
 export interface Fixture { name: string; state: GameState; report: SeasonReport | null }
 
-/** fresh (act 0), afterFirst (act 1 + report), midAct1, act2 (numbers), act3 (visitor, tree), act4 ending. */
+/** fresh (chapter 0), afterFirst (1 + report), midAct1, act2 (woolshed), act3 (numbers, fair, rare screen), act4 (tree, visitor), act5 (ending). */
 export function fixtures(seed = 7): Fixture[] {
   const out: Fixture[] = [];
   const fresh = newGame(seed);
@@ -58,21 +58,27 @@ export function fixtures(seed = 7): Fixture[] {
   toAct(a2, 2);
   let r2 = greedySeason(a2);
   r2 = greedySeason(a2);
-  const eligible = a2.flock.find((id) => isAdult(a2.sheep[id]!, a2.fair.nextSeason));
-  if (eligible) enterFair(a2, eligible);
   out.push({ name: "act2", state: clone(a2), report: r2 });
 
   const a3 = clone(a2);
   toAct(a3, 3);
   let r3 = greedySeason(a3);
-  for (let i = 0; i < 4 && seasonOfYear(a3.season) !== 0; i++) r3 = greedySeason(a3);
-  if (a3.visitingRam && a3.money >= a3.visitingRam.fee) { try { hireVisitingRam(a3); } catch { /* ignore */ } }
+  r3 = greedySeason(a3);
+  const eligible = a3.flock.find((id) => isAdult(a3.sheep[id]!, a3.fair.nextSeason));
+  if (eligible) enterFair(a3, eligible);
   out.push({ name: "act3", state: clone(a3), report: r3 });
 
   const a4 = clone(a3);
   toAct(a4, 4);
-  const r4 = greedySeason(a4);
-  a4.ending = { shown: false, season: a4.season };
-  out.push({ name: "act4", state: a4, report: r4 });
+  let r4 = greedySeason(a4);
+  for (let i = 0; i < 4 && seasonOfYear(a4.season) !== 0; i++) r4 = greedySeason(a4);
+  if (a4.visitingRam && a4.money >= a4.visitingRam.fee) { try { hireVisitingRam(a4); } catch { /* ignore */ } }
+  out.push({ name: "act4", state: clone(a4), report: r4 });
+
+  const a5 = clone(a4);
+  toAct(a5, 5);
+  const r5 = greedySeason(a5);
+  a5.ending = { shown: false, season: a5.season };
+  out.push({ name: "act5", state: a5, report: r5 });
   return out;
 }
