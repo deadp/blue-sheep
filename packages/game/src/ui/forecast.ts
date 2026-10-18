@@ -324,7 +324,7 @@ export function forecastPanelHtml(state: GameState, view: View): string {
     ram: { value: Number(ram.phenotype[trait]), art: art(ram), name: ram.name },
     flock: flockMean,
   });
-  const bars = state.act >= 2
+  const bars = state.unlocks.includes("numbers")
     ? `<div class="ranges">${rangeBar(state, "Fibre fineness", "µm", f.fineness, fin.mean - 3 * fin.sd, fin.mean + 3 * fin.sd, marks("fineness", fin.mean), ["finer", "coarser"])}
       ${rangeBar(state, "Fleece weight", "kg", f.fleeceWeight, fw.mean - 3 * fw.sd, fw.mean + 3 * fw.sd, marks("fleeceWeight", fw.mean), ["lighter", "heavier"])}
       <div class="ticks-key meta"><span class="k band"></span>where most lambs from this pair would land <span class="k flock"></span>flock average <span class="k mean"></span>the lamb you'd most expect</div></div>`

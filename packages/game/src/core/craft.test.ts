@@ -14,7 +14,7 @@ import type { GameState, Material } from "./types.js";
 
 function shed(seed = 31): GameState {
   const g = newGame(seed);
-  enterAct(g, 1, undefined, { grant: true });
+  enterAct(g, 2, undefined, { grant: true });
   giftFleece(g);
   g.money = 2000;
   return g;
@@ -144,6 +144,20 @@ describe("craft: items, money and demand", () => {
     expect(sellItem(g, it.id)).toBe(expected);
     expect(g.money).toBe(before + expected);
     expect(demandLevel(g, itemKey("socks"))).toBeCloseTo(Math.max(0, d - 0.1), 6);
+  });
+
+  it("counts an item kind toward chapter 2 the first time it sells, and only once", () => {
+    const g = shed();
+    const src = "lot:" + g.store![0]!.id;
+    queueJob(g, { item: "socks", source: src });
+    for (let i = 0; i < 3; i++) advanceSeason(g);
+    const a = itemsOf(g)[0]!;
+    g.items!.push({ ...a, id: a.id + 1000 }); // a second pair of the same kind
+    expect(g.stats.itemTypesSold).toEqual([]);
+    sellItem(g, a.id);
+    expect(g.stats.itemTypesSold).toEqual(["socks"]);
+    sellItem(g, a.id + 1000);
+    expect(g.stats.itemTypesSold).toEqual(["socks"]);
   });
 
   it("price = base x (0.5 + Q/100) x meter multiplier", () => {

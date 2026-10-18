@@ -12,10 +12,10 @@
  *   farm     farm improvements and winter weather:     Year 2, Autumn (season 6).
  *   dogs     dogs at the market, and foxes in winter:  Year 3, Spring (season 8).
  *   cat      the farm cat, and mice in the barn:       Year 3, Autumn (season 10).
- *   numbers  percentages and ranges: from act 2 (the first blue lamb).
- *   fair     the village fair: act 2, after the numbers.
- *   tree     the family tree: act 3.
- *   visitor  visiting rams: act 3, after the tree.
+ *   numbers  percentages and ranges: from chapter 3 (True blue).
+ *   fair     the village fair: chapter 3, after the numbers.
+ *   tree     the family tree: chapter 4.
+ *   visitor  visiting rams: chapter 4, after the tree.
  * A dated concept always takes its own season. The others (cards, orders and the act concepts) arrive in the
  * first free season once they are ready: never in a season a dated concept is due, never two at once; when
  * several wait, they go in the order above. Foxes need the dogs concept (core/events.ts), so no fox ever
@@ -75,10 +75,10 @@ export const PACING: readonly PaceStep[] = [
     id: "cat", at: CALENDAR.cat!,
     intro: "Mice have found the barn. A farm cat keeps them out of the wool and the hay — Mog is waiting at the market.",
   },
-  { id: "numbers", act: 2, intro: "You've a head for this now: forecasts show real percentages and ranges from here on." },
-  { id: "fair", act: 2, intro: "The village fair comes round every autumn. Enter your best sheep for a prize — the board says what this year's judges want." },
-  { id: "tree", act: 3, intro: "I found the old family book in the attic: open any sheep's family tree to see who's kin to whom." },
-  { id: "visitor", act: 3, intro: "Each spring a ram from over the hills can be hired for a season: fresh blood, but nothing known about him." },
+  { id: "numbers", act: 3, intro: "You've a head for this now: forecasts show real percentages and ranges from here on." },
+  { id: "fair", act: 3, intro: "The village fair comes round every autumn. Enter your best sheep for a prize — the board says what this year's judges want." },
+  { id: "tree", act: 4, intro: "I found the old family book in the attic: open any sheep's family tree to see who's kin to whom." },
+  { id: "visitor", act: 4, intro: "Each spring a ram from over the hills can be hired for a season: fresh blood, but nothing known about him." },
 ];
 
 export function paceStep(id: Unlock): PaceStep | undefined {

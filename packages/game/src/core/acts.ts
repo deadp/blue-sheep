@@ -1,6 +1,6 @@
 /** Story acts: goals, progress, unlocks and the ending. */
 import {
-  ACTS, ORDERS_CARRIED, ORDERS_FOR_ACT2, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
+  ACTS, ORDERS_CARRIED, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
 } from "./config.js";
 import { addLog, flockSheep } from "./state.js";
 import { woolOf } from "./colour.js";
@@ -39,32 +39,80 @@ export function act2Orders(state: GameState): number {
   return before + state.stats.ordersFilled - state.actStart.ordersFilled;
 }
 
+/** Shearings that must be sold for chapter 1. */
+const SHEARINGS_FOR_CH1 = 3;
+/** Different item kinds sold, and orders filled, for chapter 2. */
+const ITEM_TYPES_FOR_CH2 = 5;
+const ORDERS_FOR_CH2 = 2;
+/** Intensity at which a lamb's colour counts as visible (DESIGN-v3 §10.1 ch1). */
+const VISIBLE_COLOUR_INTENSITY = 0.3;
+/** Show placings that count as a ribbon. */
+const RIBBON_PLACE = 3;
+
+/** A bred lamb (not a founder or a bought-in sheep) whose wool shows colour at I >= 0.3. */
+function colourLambBred(state: GameState): boolean {
+  return Object.values(state.sheep).some((s) => s.dam !== null && s.phenotype["white"] !== "white" && woolOf(s).intensity >= VISIBLE_COLOUR_INTENSITY);
+}
+
+/**
+ * A ribbon (1st to 3rd) at the show.
+ * TODO(Phase 7 part 2, A&P show): stands in for the A&P show; today it is any top-three placing at the village fair.
+ */
+function ribbonWon(state: GameState): boolean {
+  return state.fair.history.some((r) => r.place !== null && r.place <= RIBBON_PLACE);
+}
+
+function firstWon(state: GameState): boolean {
+  return state.stats.fairsWon - state.actStart.fairsWon >= 1;
+}
+
+function fantasyFleeceShorn(state: GameState): boolean {
+  return state.stats.firstFantasyFleeceSeason !== null;
+}
+
 function goalMet(state: GameState, act: ActNumber): boolean {
   switch (act) {
     // In the tutorial the story's first act waits for the coloured lamb (hidden colours!), the third lambing.
     case 0: return state.stats.lambsBorn >= 1 && !(tutorialActive(state) && tutorialLambs(state).length < TUTORIAL_LAMBS.length);
-    case 1: return state.stats.bluesBorn >= 1;
-    case 2: return act2Orders(state) >= ORDERS_FOR_ACT2;
-    case 3: return state.stats.fairsWon - state.actStart.fairsWon >= 1;
-    case 4: return registryStatus(state).met;
-    // TODO(Phase 7 step 2): the chapter goals of DESIGN-v3 §10.1; until then the v2 checks above stand and the story ends in ch4.
-    case 5: return false;
+    case 1: return colourLambBred(state) && state.stats.shearingsSold >= SHEARINGS_FOR_CH1;
+    case 2: return state.stats.itemTypesSold.length >= ITEM_TYPES_FOR_CH2 && act2Orders(state) >= ORDERS_FOR_CH2;
+    case 3: return state.stats.bluesBorn >= 1 && ribbonWon(state);
+    case 4: return fantasyFleeceShorn(state) && firstWon(state);
+    // TODO(Phase 7 part 2, Golden Fleece): the Golden Fleece class of DESIGN-v3 §10.2; until then the v2 registry goal ends the story.
+    case 5: return registryStatus(state).met;
   }
+}
+
+/** "Two of three <what>" with a capitalised number word. */
+function ofText(n: number, of: number, what: string): string {
+  return `${numberWord(n)} of ${numberWord(of)} ${what}`.replace(/^./, (c) => c.toUpperCase());
 }
 
 function progressOf(state: GameState, act: ActNumber): { text: string; progress: number } {
   switch (act) {
     case 0: return state.stats.lambsBorn ? { text: "Lambs born!", progress: 1 } : { text: "No lambs yet.", progress: 0 };
-    case 1: return state.stats.bluesBorn ? { text: "A true blue lamb!", progress: 1 } : { text: "No true blue lamb yet.", progress: 0 };
+    case 1: {
+      const colour = colourLambBred(state), clips = Math.min(SHEARINGS_FOR_CH1, state.stats.shearingsSold);
+      const text = `${colour ? "A coloured lamb" : "No coloured lamb yet"} · ${ofText(clips, SHEARINGS_FOR_CH1, "shearings sold.")}`;
+      return { text, progress: ((colour ? 1 : 0) + clips / SHEARINGS_FOR_CH1) / 2 };
+    }
     case 2: {
-      const n = Math.min(ORDERS_FOR_ACT2, act2Orders(state));
-      return { text: `${numberWord(n)} of ${numberWord(ORDERS_FOR_ACT2)} orders filled.`.replace(/^./, (c) => c.toUpperCase()), progress: n / ORDERS_FOR_ACT2 };
+      const kinds = Math.min(ITEM_TYPES_FOR_CH2, state.stats.itemTypesSold.length), orders = Math.min(ORDERS_FOR_CH2, act2Orders(state));
+      const text = `${ofText(kinds, ITEM_TYPES_FOR_CH2, "kinds sold")} · ${ofText(orders, ORDERS_FOR_CH2, "orders filled.")}`;
+      return { text, progress: (kinds / ITEM_TYPES_FOR_CH2 + orders / ORDERS_FOR_CH2) / 2 };
     }
     case 3: {
-      const won = state.stats.fairsWon - state.actStart.fairsWon > 0;
-      return won ? { text: "A rosette!", progress: 1 } : { text: "No rosette yet.", progress: 0 };
+      const blue = state.stats.bluesBorn > 0, ribbon = ribbonWon(state);
+      const text = `${blue ? "A true blue sheep" : "No true blue sheep yet"} · ${ribbon ? "a ribbon!" : "no ribbon yet."}`;
+      return { text, progress: ((blue ? 1 : 0) + (ribbon ? 1 : 0)) / 2 };
     }
     case 4: {
+      const fleece = fantasyFleeceShorn(state), first = firstWon(state);
+      const text = `${fleece ? "A fantasy fleece" : "No fantasy fleece yet"} · ${first ? "a first place!" : "no first place yet."}`;
+      return { text, progress: ((fleece ? 1 : 0) + (first ? 1 : 0)) / 2 };
+    }
+    case 5: {
+      // TODO(Phase 7 part 2, Golden Fleece): replace with the Golden Fleece checklist; this is the v2 registry progress.
       const r = registryStatus(state);
       const pBlue = Math.min(1, r.best.length / REGISTRY_BLUES);
       const pFine = Math.max(0, Math.min(1, (REGISTRY_MICRONS + 4 - r.meanFineness) / 4));
@@ -73,13 +121,12 @@ function progressOf(state: GameState, act: ActNumber): { text: string; progress:
       const text = `${r.best.length} of ${REGISTRY_BLUES} blue sheep · flock wool ${r.meanFineness.toFixed(1)} µm (need ${REGISTRY_MICRONS})${kin}`;
       return { text, progress: (pBlue + pFine + pInb) / 3 };
     }
-    case 5: return { text: "No Golden Fleece yet.", progress: 0 };
   }
 }
 
 export function actInfo(state: GameState, act: ActNumber): ActInfo {
   const def = ACTS[act]!;
-  const endless = act === 4 && state.ending !== null;
+  const endless = act === 5 && state.ending !== null;
   const p = endless ? { text: "Your breed is registered. Keep breeding for the joy of it.", progress: 1 } : progressOf(state, act);
   return {
     act, title: endless ? "Endless pastures" : def.title, line: def.line,
@@ -101,8 +148,8 @@ export type ActBaseline = Pick<GameState["stats"], "ordersFilled" | "fairsWon">;
  * season in which the new act begins count toward its goal (the report shows them next to the new goal).
  */
 export function checkActAdvance(state: GameState, baseline?: ActBaseline): ActInfo | null {
-  // The v2 registry ending still closes the story in ch4 (see goalMet); ch5 comes with the Golden Fleece.
-  if (state.act >= 4 || !goalMet(state, state.act)) return null;
+  // The v2 registry ending still closes the story, now in ch5 (see goalMet).
+  if (state.act >= 5 || !goalMet(state, state.act)) return null;
   const next = (state.act + 1) as ActNumber;
   enterAct(state, next, baseline);
   return currentAct(state);
@@ -128,16 +175,16 @@ export function enterAct(state: GameState, act: ActNumber, baseline?: ActBaselin
   addLog(state, `“${def.line}”`);
 }
 
-/** Checks the act-4 registry goal; sets `state.ending` the first time. Returns true if reached now. */
+/** Checks the ch5 registry goal (stand-in for the Golden Fleece); sets `state.ending` the first time. Returns true if reached now. */
 export function checkEnding(state: GameState): boolean {
-  if (state.act !== 4 || state.ending) return false;
+  if (state.act !== 5 || state.ending) return false;
   if (!registryStatus(state).met) return false;
   state.ending = { shown: false, season: state.season };
   addLog(state, "Your blue sheep are registered as a breed of their own. The whole village comes to see.");
   return true;
 }
 
-/** Act 4 goal reached and the ending screen not yet shown. */
+/** Final goal reached and the ending screen not yet shown. */
 export function isEnding(state: GameState): boolean {
   return state.ending !== null && !state.ending.shown;
 }

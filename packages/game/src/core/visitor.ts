@@ -1,6 +1,6 @@
 /** The visiting ram: fresh blood for one season, no pedigree, nothing known. */
 import { genotypeAt, genomeFromJSON, genomeToJSON, sampleFounder, type Rng } from "@blue-sheep/genetics";
-import { VISITOR_FEE, VISITOR_SOUTHERN_CARRIER, VISITOR_SOUTHERN_CHANCE } from "./config.js";
+import { RARE_SCREEN_ACT, VISITOR_FEE, VISITOR_SOUTHERN_CARRIER, VISITOR_SOUTHERN_CHANCE } from "./config.js";
 import { RARE, rareOfLocus } from "./rare.js";
 import { forecastCross, candidates } from "./forecast.js";
 import { addLog, addSheep, blueCopies, hasOffspring, marketFreqs, sampleFounderSheep, setLocus, species } from "./state.js";
@@ -35,7 +35,8 @@ export function offerVisitingRam(state: GameState, rng: Rng): void {
   // The drover's word is public (a one-in-four chance) and exactly true: whatever his breed's own frequency made him, he carries
   // that gene (one copy) with probability 1/4 and not at all otherwise. A gene he already has two copies of (a wool he shows, or
   // a pāua gene under a dull fleece) can't be the one.
-  if (rng.chance(VISITOR_SOUTHERN_CHANCE)) {
+  // Rare wools come into play at ch3 (RARE_SCREEN_ACT), so before then no visitor is from down south. (The roll is kept either way, so RNG use doesn't depend on the chapter.)
+  if (rng.chance(VISITOR_SOUTHERN_CHANCE) && state.act >= RARE_SCREEN_ACT) {
     const g = genomeFromJSON(ram.genome);
     const choices = RARE.filter((r) => !r.dominant && !genotypeAt(g, species.map, r.locus).every((x) => x === 1));
     const def = choices[rng.int(choices.length)];

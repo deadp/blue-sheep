@@ -184,12 +184,30 @@ describe("carriers and the forecast", () => {
   });
 });
 
+describe("rams from down south", () => {
+  it("only appear from chapter 3", () => {
+    let early = 0, late = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const lo = newGame(seed), hi = newGame(seed);
+      enterAct(lo, 2, undefined, { grant: true });
+      enterAct(hi, 3, undefined, { grant: true });
+      offerVisitingRam(lo, createRng(seed)); offerVisitingRam(hi, createRng(seed));
+      if (lo.sheep[lo.visitingRam!.id]!.southern) early++;
+      if (hi.sheep[hi.visitingRam!.id]!.southern) late++;
+    }
+    expect(early).toBe(0);
+    expect(late).toBeGreaterThan(0);
+  });
+});
+
 describe("the vet's rare-gene screen", () => {
   it("forecast bits never exceed the entropy; the screen charges 20, tests all six genes and settles them", () => {
     const g = farm(41);
     expect(screenOpen(g)).toBe(true);
     const early = newGame(41);
     expect(screenOpen(early)).toBe(false);
+    enterAct(early, 2, undefined, { grant: true });
+    expect(screenOpen(early)).toBe(false); // the screen opens at chapter 3
     expect(() => vetScreen(early, early.flock[0]!)).toThrow(/can't screen/);
     const visitor = (() => { offerVisitingRam(g, createRng(3)); return g.sheep[g.visitingRam!.id]!; })();
     const family = plantRareSheep(g, "cloud");

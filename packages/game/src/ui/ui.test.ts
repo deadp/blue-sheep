@@ -76,7 +76,7 @@ const fx = (name: string) => FX.find((f) => f.name === name)!;
 
 describe("every panel renders in every fixture", () => {
   it("renders all panels without throwing and within the rules", () => {
-    expect(FX.map((f) => f.name)).toEqual(["fresh", "afterFirst", "midAct1", "act2", "act3", "act4"]);
+    expect(FX.map((f) => f.name)).toEqual(["fresh", "afterFirst", "midAct1", "act2", "act3", "act4", "act5"]);
     for (const f of FX) {
       for (const panel of PANEL_NAMES) {
         const variants: Partial<View>[] = [{ report: f.report }, { report: null }];
@@ -137,7 +137,7 @@ describe("panel content", () => {
   });
 
   it("forecast shows range bars and percentages once numbers are unlocked", () => {
-    const s = fx("act2").state;
+    const s = fx("act3").state;
     expect(s.unlocks).toContain("numbers");
     const h = renderPanel(s, view({ panel: "forecast" }));
     expect(h).toContain('class="range"');
@@ -159,7 +159,7 @@ describe("panel content", () => {
   });
 
   it("the visiting ram is labelled and must be hired before planning", () => {
-    const s = structuredClone(fx("act3").state) as GameState;
+    const s = structuredClone(fx("act4").state) as GameState;
     expect(s.visitingRam).not.toBeNull();
     s.hiredRam = null;
     const ewe = s.flock.find((id) => s.sheep[id]!.sex === "ewe" && canBreed(s.sheep[id]!, s.season))!;
@@ -240,7 +240,7 @@ describe("panel content", () => {
   });
 
   it("fair lists eligible sheep with forecasts and an enter button", () => {
-    const s = fx("act2").state;
+    const s = fx("act3").state;
     const h = renderPanel(s, view({ panel: "fair" }));
     expect(h).toContain("data-enter=");
     expect(h).toContain('class="meter2 odds');
@@ -251,7 +251,7 @@ describe("panel content", () => {
     for (const c of CONCEPTS) expect(c.text.split(/\s+/).length, c.id).toBeLessThanOrEqual(60);
     const early = renderPanel(fx("fresh").state, view({ panel: "codex" }));
     expect(early.match(/concept locked/g)?.length).toBe(CONCEPTS.length);
-    const late = renderPanel(fx("act4").state, view({ panel: "codex" }));
+    const late = renderPanel(fx("act5").state, view({ panel: "codex" }));
     expect(late).not.toContain("concept locked");
     expect(late).toContain("dcard");
   });
@@ -285,7 +285,7 @@ describe("panel content", () => {
   });
 
   it("ending celebrates with stats and lets you keep farming", () => {
-    const h = renderPanel(fx("act4").state, view({ panel: "ending" }));
+    const h = renderPanel(fx("act5").state, view({ panel: "ending" }));
     expect(h).toContain("data-close");
     expect(h).toContain("data-newgame");
     expect(h).toContain("lambs born");
@@ -377,7 +377,7 @@ describe("panel content", () => {
     expect(renderPanel(s, view({ panel: "sheep", sheepId: s.market[0]! }))).not.toContain("data-treat");
     // the number out of 100 only with numbers
     expect(h).not.toMatch(/\d+\/100/);
-    const n = structuredClone(fx("act2").state) as GameState;
+    const n = structuredClone(fx("act3").state) as GameState;
     const nid = n.flock[0]!;
     expect(renderPanel(n, view({ panel: "sheep", sheepId: nid }))).toMatch(/\d+\/100/);
   });
@@ -428,7 +428,7 @@ describe("presentation", () => {
     expect(h).toMatch(/class="persona (shy|calm|curious|bold)"/);
     expect(h).toContain("click to say hello");
     expect(visible(h)).not.toContain("boldness");
-    const late = fx("act2").state;
+    const late = fx("act3").state;
     const lid = late.flock[0]!;
     expect(renderPanel(late, view({ panel: "sheep", sheepId: lid }))).toMatch(/boldness \d+\.\d/);
   });
@@ -448,11 +448,11 @@ describe("presentation", () => {
   });
 
   it("odds meters share one labelled style with scale words", () => {
-    const s = fx("act2").state;
+    const s = fx("act3").state;
     const f = renderPanel(s, view({ panel: "fair" }));
     for (const w of ODDS_SCALE) expect(f).toContain(`>${w}<`);
     expect(f).toContain('role="meter"');
-    const vet = renderPanel(fx("act2").state, view({ panel: "vet" }));
+    const vet = renderPanel(fx("act3").state, view({ panel: "vet" }));
     expect(vet).toContain('class="meter2 learn');
     expect(vet).toContain(">loads<");
     const fore = renderPanel(fx("afterFirst").state, view({ panel: "forecast" }));

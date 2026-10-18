@@ -12,6 +12,7 @@ import { lambChanceBySample, lambOutcomesBySample, posteriors } from "./knowledg
 import { dressWool, targetWords, woolMatches, woolOf, type Band, type ColourTarget } from "./colour.js";
 import { woolColour } from "@blue-sheep/genetics";
 import { clipKg, isShearingSeason } from "./woolstore.js";
+import { rareWoolOf } from "./rare.js";
 import { VILLAGERS } from "./names.js";
 import { addLog, ageOf, canBreed, flockSheep, isAdult, seasonLabel } from "./state.js";
 import { oddsText } from "./words.js";
@@ -399,7 +400,11 @@ export function shearForOrders(state: GameState): { results: OrderResult[]; used
     const total = pool.reduce((t, s) => t + clipKg(s), 0);
     if (total < (o.kg ?? 0)) continue;
     let kg = 0;
-    for (const s of pool) { if (kg >= (o.kg ?? 0)) break; used.add(s.id); o.filledBy.push(s.id); kg += clipKg(s); }
+    for (const s of pool) {
+      if (kg >= (o.kg ?? 0)) break;
+      used.add(s.id); o.filledBy.push(s.id); kg += clipKg(s);
+      if (rareWoolOf(s)) state.stats.firstFantasyFleeceSeason ??= state.season; // shorn, though it never reaches the store
+    }
     results.push(payOrder(state, o));
   }
   return { results, used };
