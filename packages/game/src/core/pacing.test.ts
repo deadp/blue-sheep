@@ -79,7 +79,7 @@ describe("pacing: a calendar, one new concept a season", () => {
     grantUnlock(g, "cards");
     grantUnlock(g, "orders");
     g.season = 3;
-    g.act = 2;
+    g.act = 3;
     expect(nextUnlock(g)).toBe("numbers"); // season 3 is free
     grantUnlock(g, "numbers");
     expect(nextUnlock(g)).toBeNull(); // one a season
@@ -91,7 +91,7 @@ describe("pacing: a calendar, one new concept a season", () => {
     grantUnlock(g, "fair");
     expect(g.fair.nextSeason).toBeGreaterThan(5); // a season's notice before the first fair
     g.season = 6;
-    g.act = 3;
+    g.act = 4;
     expect(nextUnlock(g)).toBe("farm");
     grantUnlock(g, "farm");
     g.season = 7;
@@ -111,9 +111,9 @@ describe("pacing: a calendar, one new concept a season", () => {
   });
 
   it("in play, an early blue lamb's concepts still never share a season with the calendar", () => {
-    // Force act 2 in Year 1 Autumn and act 3 a season later: the act concepts fill the free seasons.
+    // Force chapter 3 in Year 1 Autumn and chapter 4 a season later: the act concepts fill the free seasons.
     const g = newGame(77);
-    const got = run(g, 12, (s) => { if (s.season === 2) enterAct(s, 2); if (s.season === 3) enterAct(s, 3); });
+    const got = run(g, 12, (s) => { if (s.season === 2) enterAct(s, 3); if (s.season === 3) enterAct(s, 4); });
     const seasons = got.map((x) => x.season);
     expect(new Set(seasons).size).toBe(seasons.length);
     for (const [id, season] of Object.entries(CALENDAR)) expect(got.find((x) => x.id === id)?.season, id).toBe(season);
@@ -167,7 +167,7 @@ describe("pacing: a calendar, one new concept a season", () => {
 
   it("the fast-forward grants everything up to the act at once, with no lesson", () => {
     const g = newGame(8);
-    enterAct(g, 3, undefined, { grant: true });
+    enterAct(g, 4, undefined, { grant: true });
     for (const u of ["cards", "orders", "vet", "craft", "farm", "dogs", "cat", "numbers", "fair", "tree", "visitor"]) expect(g.unlocks).toContain(u);
     expect(g.lesson ?? null).toBeNull();
     expect(nextUnlock(g)).toBeNull();

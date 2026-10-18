@@ -379,6 +379,7 @@ export function sellItem(state: GameState, id: number): number {
   lowerDemand(state, key, recipeOf(it.kind)!.step);
   state.money += p.coins;
   state.stats.coinsEarned += p.coins;
+  if (!state.stats.itemTypesSold.includes(it.kind)) state.stats.itemTypesSold.push(it.kind);
   addLog(state, `Sold ${itemName(it.kind).toLowerCase()} for ${p.coins} coins.`);
   return p.coins;
 }

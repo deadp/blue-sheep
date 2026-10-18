@@ -56,7 +56,7 @@ export const CONCEPTS: Concept[] = [
   {
     id: "breed", title: "Your own breed", icon: "rosette",
     text: "A breed is a flock that breeds true: blue lambs from blue parents, fine wool, and enough unrelated lines to stay healthy. You're keeping many families, not just one.",
-    unlocked: (s) => s.act >= 4, hint: "The last chapter.",
+    unlocked: (s) => s.act >= 5, hint: "The last chapter.",
   },
 ];
 
