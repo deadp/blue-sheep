@@ -45,6 +45,7 @@ export function makeLot(state: GameState, s: Sheep, t: number): FleeceLot {
   const w = woolOf(s), type = woolTypeOf(s), greasy = clipKg(s), rare = rareWoolOf(s);
   const n = state.nextLot ?? 1;
   state.nextLot = n + 1;
+  if (rare) state.stats.firstFantasyFleeceSeason ??= t;
   return {
     id: `L${n}`, sheep: s.id, name: s.name, season: t, greasy, clean: Math.round(greasy * (WASH_YIELD[type] ?? 0.7) * 10) / 10,
     type, family: w.family, word: w.word, hex: w.hex, microns: Number(s.phenotype["fineness"]), intensity: w.intensity,
@@ -71,6 +72,7 @@ export function sellLotNow(state: GameState, lot: FleeceLot): number {
   lowerDemand(state, key, lot.greasy * RAW_STEP);
   state.money += p.coins;
   state.stats.coinsEarned += p.coins;
+  state.stats.shearingsSold += 1;
   return p.coins;
 }
 

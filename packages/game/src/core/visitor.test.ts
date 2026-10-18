@@ -4,13 +4,13 @@ import {
 } from "./index.js";
 
 function toSpring(g: ReturnType<typeof newGame>) {
-  enterAct(g, 3, undefined, { grant: true });
+  enterAct(g, 4, undefined, { grant: true });
   g.money = 500;
   while (!g.visitingRam) advanceSeason(g);
 }
 
 describe("visiting ram", () => {
-  it("is offered each spring from act 3 only", () => {
+  it("is offered each spring from chapter 4 only", () => {
     const g = newGame(50);
     for (let i = 0; i < 5; i++) advanceSeason(g);
     expect(g.visitingRam).toBeNull();

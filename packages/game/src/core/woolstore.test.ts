@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceSeason, autoSellOn, clipKg, demandLevel, deserialize, flockSheep, forecastSale, isAdult, isShearingSeason, newGame, rawKey, sellLot, serialize,
-  storeCap, storeOf, woolPricePerKg, woolOf, finenessMultiplier, fondWoolMultiplier, fondnessOf, type GameState,
+  plantRareSheep, storeCap, storeOf, woolPricePerKg, woolOf, finenessMultiplier, fondWoolMultiplier, fondnessOf, type GameState,
 } from "./index.js";
 import { STORE_CAP } from "./config.js";
 
@@ -77,6 +77,35 @@ describe("shearing and the wool store", () => {
     expect(demandLevel(g, rawKey(type))).toBeCloseTo(f.after[type]!);
     expect(storeOf(g)).toHaveLength(lots.length - 3);
     expect(() => sellLot(g, ids[0]!)).toThrow();
+  });
+
+  it("counts each fleece lot sold toward the chapter 1 shearings, whether sold by hand or automatically", () => {
+    const held = newGame(15); held.autoSell = false;
+    advanceSeason(held);
+    expect(held.stats.shearingsSold).toBe(0); // held in the store, not sold
+    const lots = storeOf(held);
+    sellLot(held, lots[0]!.id);
+    sellLot(held, lots[1]!.id);
+    expect(held.stats.shearingsSold).toBe(2);
+    const auto = newGame(15);
+    const r = advanceSeason(auto);
+    expect(r.shearing!.autoSold).toBeGreaterThan(0);
+    expect(auto.stats.shearingsSold).toBe(r.shearing!.autoSold);
+  });
+
+  it("records the season of the first fantasy fleece shorn, and keeps it", () => {
+    const g = newGame(15); g.autoSell = false;
+    expect(g.stats.firstFantasyFleeceSeason).toBeNull();
+    advanceSeason(g); // spring shearing: plain wool
+    expect(g.stats.firstFantasyFleeceSeason).toBeNull();
+    const steel = plantRareSheep(g, "steel");
+    while (!(isShearingSeason(g.season) && isAdult(steel, g.season))) advanceSeason(g);
+    const t = g.season;
+    advanceSeason(g);
+    expect(g.stats.firstFantasyFleeceSeason).toBe(t);
+    while (!isShearingSeason(g.season)) advanceSeason(g);
+    advanceSeason(g);
+    expect(g.stats.firstFantasyFleeceSeason).toBe(t);
   });
 
   it("a second lot of the same type pays less than it would have sold first", () => {

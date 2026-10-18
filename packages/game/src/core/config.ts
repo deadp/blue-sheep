@@ -254,19 +254,19 @@ export const ACTS: ActDef[] = [
   {
     act: 1, title: "Hidden colours", line: "White on top, colour underneath!",
     goalText: "Breed a lamb with a visible colour, and sell three shearings.",
-    unlocks: ["cards", "orders", "vet", "craft", "farm", "dogs", "cat"], flockCap: 10,
+    unlocks: ["cards", "orders", "vet", "farm", "dogs", "cat"], flockCap: 10,
   },
   {
     act: 2, title: "The woolshed", line: "Wool's worth more with a bit of mahi in it.",
-    goalText: "Sell five different kinds of item, and fill two orders.", unlocks: ["numbers", "fair"], flockCap: 12,
+    goalText: "Sell five different kinds of item, and fill two orders.", unlocks: ["craft"], flockCap: 12,
   },
   {
     act: 3, title: "True blue", line: "Now, a blue one. That'd turn heads at the show.",
-    goalText: "Breed a true blue sheep, and win a ribbon (first to third) at the A&P show.", unlocks: ["tree", "visitor"], flockCap: 16,
+    goalText: "Breed a true blue sheep, and win a ribbon (first to third) at the A&P show.", unlocks: ["numbers", "fair"], flockCap: 16,
   },
   {
     act: 4, title: "Fresh blood and rare wool", line: "Reckon you'll never beat my Romneys.",
-    goalText: "Shear your first fantasy fleece, and win first in any show class.", unlocks: [], flockCap: 24,
+    goalText: "Shear your first fantasy fleece, and win first in any show class.", unlocks: ["tree", "visitor"], flockCap: 24,
   },
   {
     act: 5, title: "The Golden Fleece", line: "A letter from the show committee: the Golden Fleece is open.",
@@ -277,7 +277,6 @@ export const ACTS: ActDef[] = [
 export const REGISTRY_BLUES = 6;
 export const REGISTRY_MICRONS = 28;
 export const REGISTRY_MAX_INBREEDING = 0.125;
-export const ORDERS_FOR_ACT2 = 3;
 /** Orders filled before act 2 that count toward it (at most). */
 export const ORDERS_CARRIED = 2;
 /** How far raw-wool targets swing with the time of year (warm wools up in autumn, fine up in spring). */
