@@ -8,11 +8,13 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 - Branch complete-game is the default and the only branch. No open issues or PRs, no CI workflows.
 - v3 phases 1 to 6 are done: genetics library, pigment colours, breeds and wool types,
   wool store and demand meters, woolshed crafting queue, fantasy wools (15-10-2026).
-- In progress: fleece looks. Four experimental styles behind `?fleece=a|b|c|d`; the user prefers D
-  (shader curls), aiming for an A+D mix, and wants each wool type reworked one by one (steel first).
-- Next in docs/BACKLOG.md after the fleece work: Phase 7, chapters, orders, A&P show, Golden Fleece.
-- Phases 7 to 10 are still to do: chapters and the Golden Fleece, river valley map, native birds,
-  optional Blender model refresh.
+- Fleece looks: style e (felted shell with curl shader, fine wavy staple locks) is the default since 15-10-2026;
+  steel wool has ringlets. The `?fleece=a|b|c|d` styles remain as experiments.
+- Phase 7 is partly built: six chapters, ActNumber 0..5, chapter stats, save key v4 (18-10-2026), and the chapter
+  ladder with goal checks, progress lines, rare gate at chapter 3 and remapped unlocks and pacing (19-10-2026).
+- Still to do in Phase 7 (docs/BACKLOG.md): item orders, A&P show, Golden Fleece, pōhutukawa summer-red rule,
+  and the sim check that the first rare fleece comes by median season 27.
+- Phases 8 to 10 are still to do: river valley map, native birds, optional Blender model refresh.
 - Known follow-ups, not started: forecast paint triangle and rainbow ring, and flock rendering cost at play zoom.
 - Done check is npm test, npm run typecheck and npm run probe (screenshots must be opened and checked).
 
@@ -26,8 +28,11 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 - 05-10-2026: wool sells raw or through a woolshed crafting queue with 12 kiwiana recipes.
 - 15-10-2026: Phase 6 built; first-fantasy-fleece sim target and pōhutukawa summer-red rule move to Phase 7.
 - 15-10-2026: fleece direction: D (shader curls) best so far, aim for an A+D mix; B staples only if much finer.
+- 15-10-2026: style e (A's shell + D's curl shader) made the default fleece look.
+- 18-10-2026: Phase 7 step 1 built: six chapters (DESIGN-v3 10.1), save key v4.
+- 19-10-2026: chapter ladder steps 2+3 built: goal checks, rare gate at chapter 3, unlocks remapped.
 
 ## Next action
-`Rework the wool looks one type at a time (BACKLOG "Fleece look experiment"), then implement v3 Phase 7; finish only when npm test, typecheck and npm run probe pass.`
+`Finish v3 Phase 7 (item orders, A&P show, Golden Fleece, pōhutukawa rule, rare-fleece sim check; see docs/BACKLOG.md); finish only when npm test, typecheck and npm run probe pass.`
 
-Last updated: 15-10-2026
+Last updated: 21-10-2026
