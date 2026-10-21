@@ -9,6 +9,7 @@ import {
   rareCarrierChance, screenOpen, vetScreen, vetTest, wasScreened,
   type GameState, type Sheep,
 } from "../src/core/index.js";
+import { statsBlock } from "../src/simstats.js";
 import { feedReserve, play, summarise, type Brain } from "./policy.js";
 
 /** Expected "+" copies of a pigment channel (0..4) from its class distribution ("hk": h double, k single). */
@@ -71,9 +72,11 @@ export const blind: Brain = {
 };
 
 const MAX = Number(process.env["MAXS"] ?? 60);
-const N = Number(process.env["SEEDS"] ?? 30);
+const argSeeds = process.argv.indexOf("--seeds"); // --seeds n works as SEEDS=n
+const N = Number((argSeeds >= 0 ? process.argv[argSeeds + 1] : undefined) ?? process.env["SEEDS"] ?? 30);
 const FROM = Number(process.env["FROM"] ?? 1); // first seed
 const results = [];
 for (let i = 0; i < N; i++) results.push(await play(FROM + i, blind, MAX));
 if (process.env["OUT"]) (await import("node:fs")).writeFileSync(process.env["OUT"], JSON.stringify(results));
 summarise("blind (knowledge-limited)", results, MAX);
+for (const line of statsBlock(results, MAX)) console.log(line); // the last lines of stdout: a long run returns only the tail
