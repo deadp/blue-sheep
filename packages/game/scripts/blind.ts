@@ -71,12 +71,20 @@ export const blind: Brain = {
   },
 };
 
-const MAX = Number(process.env["MAXS"] ?? 60);
-const argSeeds = process.argv.indexOf("--seeds"); // --seeds n works as SEEDS=n
-const N = Number((argSeeds >= 0 ? process.argv[argSeeds + 1] : undefined) ?? process.env["SEEDS"] ?? 30);
-const FROM = Number(process.env["FROM"] ?? 1); // first seed
-const results = [];
-for (let i = 0; i < N; i++) results.push(await play(FROM + i, blind, MAX));
-if (process.env["OUT"]) (await import("node:fs")).writeFileSync(process.env["OUT"], JSON.stringify(results));
-summarise("blind (knowledge-limited)", results, MAX);
-for (const line of statsBlock(results, MAX)) console.log(line); // the last lines of stdout: a long run returns only the tail
+/** The blind sim: n seeds from `from`; prints the summary, then the stats block (the last lines of stdout: a long run returns only the tail). */
+export async function runBlind(n: number, from: number, max: number): Promise<void> {
+  const results = [];
+  for (let i = 0; i < n; i++) results.push(await play(from + i, blind, max));
+  if (process.env["OUT"]) (await import("node:fs")).writeFileSync(process.env["OUT"], JSON.stringify(results));
+  summarise("blind (knowledge-limited)", results, max);
+  for (const line of statsBlock(results, max)) console.log(line);
+}
+
+if (!process.env["VITEST"]) { // blind.long.test.ts imports this file; it must not run on load
+  const argSeeds = process.argv.indexOf("--seeds"); // --seeds n works as SEEDS=n
+  await runBlind(
+    Number((argSeeds >= 0 ? process.argv[argSeeds + 1] : undefined) ?? process.env["SEEDS"] ?? 30),
+    Number(process.env["FROM"] ?? 1), // first seed
+    Number(process.env["MAXS"] ?? 60),
+  );
+}
