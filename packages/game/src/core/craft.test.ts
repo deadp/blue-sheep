@@ -89,12 +89,12 @@ describe("craft: routes and the timeline", () => {
     for (const type of ["fine", "lopi", "carpet"] as const) {
       const g = shed();
       const lot = g.store![0]!;
-      lot.type = type;
       const j = queueJob(g, { item: "socks", source: "lot:" + lot.id });
+      j.mat.type = type;
       cancelJob(g, j.id);
       const back = g.store![g.store!.length - 1]!;
       expect(back.type).toBe(type);
-      expect(back.greasy).toBeCloseTo(back.clean / WASH_YIELD[type]!, 1);
+      expect(back.greasy).toBe(Math.round((back.clean / WASH_YIELD[type]!) * 100) / 100);
       expect(back.clean).toBeLessThanOrEqual(back.greasy);
     }
   });
