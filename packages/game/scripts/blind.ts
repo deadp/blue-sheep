@@ -30,9 +30,10 @@ const wCopies = (g: GameState, s: Sheep): number => {
  * visiting ram "from down south" first (a one-in-four chance he carries one). Never screens a sheep it can't breed from.
  */
 function rareScreens(g: GameState): void {
-  if (process.env["NORARE"] || !screenOpen(g) || g.money < RARE_SCREEN_FEE + 60 + feedReserve(g)) return;
+  if (process.env["NORARE"] || !screenOpen(g) || g.money < RARE_SCREEN_FEE + (g.act >= 4 && g.stats.firstFantasyFleeceSeason === null ? 30 : 60) + feedReserve(g)) return;
   const pool = flockSheep(g).filter((s) => canBreed(s, g.season) && !wasScreened(s));
-  const v = g.visitingRam?.season === g.season && g.hiredRam === g.visitingRam.id ? g.sheep[g.visitingRam.id] : undefined;
+  // The screen works on a visiting ram before the hire: that is how the farmer decides whether he is worth the fee.
+  const v = g.visitingRam?.season === g.season ? g.sheep[g.visitingRam.id] : undefined;
   if (v && !wasScreened(v)) pool.push(v);
   let best: { id: string; v: number } | null = null;
   for (const s of pool) {
