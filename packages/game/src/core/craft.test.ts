@@ -1,7 +1,7 @@
 import { createRng } from "@blue-sheep/genetics";
 import { describe, expect, it } from "vitest";
 import { enterAct } from "./acts.js";
-import { BENCH_CAP, RECIPES } from "./config.js";
+import { BENCH_CAP, RECIPES, WASH_YIELD } from "./config.js";
 import {
   benchCapacity, cancelJob, craftSeason, evenFactor, forecastJob, giftFleece, handsLevel, itemPrice, itemsOf, jobsOf, patternHint, projectFinish,
   qualityBase, qualityFactors, queueJob, recipeOf, routeFor, sellItem, sigmaAt, starsOf, updatePatterns,
@@ -75,6 +75,28 @@ describe("craft: routes and the timeline", () => {
     const k = queueJob(g, { item: "socks", source: "lot:" + g.store![0]!.id });
     advanceSeason(g);
     expect(() => cancelJob(g, k.id)).toThrow(/started/);
+  });
+
+  it("Old Tom's gift fleece has clean <= greasy at the medium wash yield", () => {
+    const g = newGame(31);
+    giftFleece(g);
+    const lot = g.store![0]!;
+    expect(lot.clean).toBeLessThanOrEqual(lot.greasy);
+    expect(lot.greasy).toBeCloseTo(lot.clean / WASH_YIELD.medium!, 1);
+  });
+
+  it("a cancelled lot job returns a lot at its own type's wash yield", () => {
+    for (const type of ["fine", "lopi", "carpet"] as const) {
+      const g = shed();
+      const lot = g.store![0]!;
+      lot.type = type;
+      const j = queueJob(g, { item: "socks", source: "lot:" + lot.id });
+      cancelJob(g, j.id);
+      const back = g.store![g.store!.length - 1]!;
+      expect(back.type).toBe(type);
+      expect(back.greasy).toBeCloseTo(back.clean / WASH_YIELD[type]!, 1);
+      expect(back.clean).toBeLessThanOrEqual(back.greasy);
+    }
   });
 });
 
