@@ -177,7 +177,7 @@ async function buyUpgradeViaMarket(g, st, season) {
   const where = `S${season}: upgrade "${pick.id}"`;
   if (!(after.upgrades ?? []).includes(pick.id)) throw new ProbeError(`${where}: clicking Buy did not record it in state.upgrades`);
   if (before - after.money !== pick.price) throw new ProbeError(`${where}: money went ${before} -> ${after.money}, expected -${pick.price}`);
-  const saved = await g.page.evaluate(() => JSON.parse(localStorage.getItem("blue-sheep-save-v3") ?? "{}").upgrades ?? []);
+  const saved = await g.page.evaluate(() => JSON.parse(localStorage.getItem("blue-sheep-save-v4") ?? "{}").upgrades ?? []);
   if (!saved.includes(pick.id)) throw new ProbeError(`${where}: not in the saved game`);
   const again = await g.act({ type: "upgrade", id: pick.id });
   if (again.ok) throw new ProbeError(`${where}: could be bought twice`);
