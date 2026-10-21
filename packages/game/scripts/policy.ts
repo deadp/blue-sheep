@@ -314,7 +314,7 @@ function planAll(g: GameState, b: Brain, cache: Map<string, CrossDist>): void {
 
 export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<RunResult> {
   const g = newGame(seed);
-  const actSeason = [0, -1, -1, -1, -1];
+  const actSeason = [0, -1, -1, -1, -1, -1];
   const money: number[] = [];
   let endSeason: number | null = null;
   let firstTrueBlue: number | null = null;
@@ -374,7 +374,7 @@ export async function play(seed: number, b: Brain, maxSeasons = 60): Promise<Run
 export function summarise(label: string, results: RunResult[], maxSeasons: number): void {
   const med = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)]! : NaN; };
   console.log(`\n== ${label}: ${results.length} seeds, max ${maxSeasons} seasons ==`);
-  for (let act = 1; act <= 4; act++) {
+  for (let act = 1; act <= 5; act++) {
     const reached = results.filter((r) => r.actSeason[act]! >= 0);
     const inAct = reached.map((r) => r.actSeason[act]! - r.actSeason[act - 1]!);
     console.log(`act ${act - 1}→${act}: reached ${reached.length}/${results.length}, median arrival season ${med(reached.map((r) => r.actSeason[act]!))}, median seasons spent in act ${act - 1}: ${med(inAct)}`);
