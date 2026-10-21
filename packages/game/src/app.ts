@@ -507,7 +507,7 @@ export class App {
   private greet(id: string): void {
     if (greetAnimal(this.state, id) > 0) {
       this.loveQueue.set(id, Math.max(this.loveQueue.get(id) ?? 0, 3));
-      this.persist = true;
+      // A preview boot (?seed, ?act, ?tutorial) has persist off, so save() leaves the real save alone.
       this.save();
     }
   }

@@ -15,7 +15,7 @@
  */
 import type { Rng } from "@blue-sheep/genetics";
 import {
-  BENCH_CAP, BENCH_SIGMA, BENCH_UPGRADES, GIFT_FLEECE, HANDS_AT, HANDS_TRIM, MAX_JOBS, RECIPES, STOCK_KG,
+  BENCH_CAP, BENCH_SIGMA, BENCH_UPGRADES, GIFT_FLEECE, HANDS_AT, HANDS_TRIM, MAX_JOBS, RECIPES, STOCK_KG, WASH_YIELD,
   type BenchName, type Recipe,
 } from "./config.js";
 import { demandLevel, demandMult, itemKey, lowerDemand, projectDemand, sellRun } from "./demand.js";
@@ -225,7 +225,7 @@ export function giftFleece(state: GameState): void {
   const n = state.nextLot ?? 1;
   state.nextLot = n + 1;
   (state.store ??= []).push({
-    id: `L${n}`, sheep: "tom", name: "Old Tom", season: state.season, greasy: 1.4, clean: GIFT_FLEECE.kg, type: "medium", family: "white",
+    id: `L${n}`, sheep: "tom", name: "Old Tom", season: state.season, greasy: Math.round((GIFT_FLEECE.kg / WASH_YIELD.medium!) * 100) / 100, clean: GIFT_FLEECE.kg, type: "medium", family: "white",
     word: "snow-white", hex: "#f3efe6", microns: GIFT_FLEECE.microns, intensity: 0, rate: 5, fond: 1, staple: GIFT_FLEECE.staple,
   });
 }
@@ -361,7 +361,7 @@ export function cancelJob(state: GameState, id: number): void {
   const m = j.mat;
   if (j.from === "lot") {
     // Nothing has been done to it: the wool goes back to the store as a lot.
-    (state.store ??= []).push({ id: `L${n}`, sheep: "", name: m.name, season: state.season, greasy: Math.round((m.kg / 0.7) * 100) / 100, clean: m.kg, type: m.type, family: m.family, word: m.word, hex: m.hex, microns: m.microns, intensity: m.intensity, rate: m.rate ?? 5, fond: m.fond, staple: m.staple, ...(m.fantasy ? { fantasy: m.fantasy } : {}) });
+    (state.store ??= []).push({ id: `L${n}`, sheep: "", name: m.name, season: state.season, greasy: Math.round((m.kg / (WASH_YIELD[m.type] ?? 0.7)) * 100) / 100, clean: m.kg, type: m.type, family: m.family, word: m.word, hex: m.hex, microns: m.microns, intensity: m.intensity, rate: m.rate ?? 5, fond: m.fond, staple: m.staple, ...(m.fantasy ? { fantasy: m.fantasy } : {}) });
   } else {
     const fid = state.nextFibre ?? 1;
     state.nextFibre = fid + 1;
