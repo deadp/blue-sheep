@@ -4,7 +4,7 @@ import {
 } from "../core/index.js";
 import { lambTile, litterLooks } from "./forecast.js";
 import { flipLine } from "./craft.js";
-import { cap, discoveryText, discoveryTitle, esc, portrait, UNLOCK_ICON, UNLOCK_WORDS } from "./util.js";
+import { cap, discoveryText, discoveryTitle, esc, letterText, portrait, UNLOCK_ICON, UNLOCK_WORDS } from "./util.js";
 import { btn, head, icon, iconize, nm, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 
@@ -76,7 +76,7 @@ function matingRows(state: GameState, view: View, r: SeasonReport): string {
 function latestSummary(state: GameState): string {
   const last = state.log.filter((l) => l.season === state.season).slice(-8);
   return `${head("calendar", esc(seasonLabel(state.season)), 2)}
-    ${last.length ? `<ul class="plain">${last.map((l) => `<li>${iconize(esc(l.text))}</li>`).join("")}</ul>` : `<p>Nothing yet this season. Plan some matings, then press Next season.</p>`}
+    ${last.length ? `<ul class="plain">${last.map((l) => `<li>${iconize(esc(letterText(state, l.text)))}</li>`).join("")}</ul>` : `<p>Nothing yet this season. Plan some matings, then press Next season.</p>`}
     <div class="row">${btn("Carry on", { kind: "primary", icon: "check", data: { close: "" } })}</div>`;
 }
 

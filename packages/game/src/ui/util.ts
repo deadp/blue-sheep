@@ -27,6 +27,11 @@ export function woolSwatch(s: Sheep, extra = ""): string {
   return swatch(woolOf(s).hex, extra);
 }
 
+/** Wool-letter text with its fineness ask in plain words until the numbers unlock. */
+export function letterText(state: GameState, text: string): string {
+  return numbersOn(state) ? text : text.replace(/fleece finer than [\d.]+ µm/g, "fine fleece");
+}
+
 export function numbersOn(state: GameState): boolean {
   return state.unlocks.includes("numbers");
 }

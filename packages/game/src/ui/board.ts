@@ -6,7 +6,7 @@ import {
 import { myAnimalsHtml } from "./pets.js";
 import { litterWords } from "./forecast.js";
 import { crossCached } from "./cache.js";
-import { dueWords, esc, has, hex, pips, prop, stars, swatch } from "./util.js";
+import { dueWords, esc, has, hex, letterText, pips, prop, stars, swatch } from "./util.js";
 import { btn, head, icon, iconBtn, iconize, more, nm, tag, type IconName } from "./felt/index.js";
 import type { View } from "./view.js";
 import { actTrack } from "./track.js";
@@ -59,14 +59,14 @@ export function boardHtml(state: GameState, _view: View): string {
   const orders = accepted.map((o) => {
     let f = { pFill: 0, text: "" };
     try { f = forecastOrderFor(state, o); } catch { /* keep blank */ }
-    return `<li><div class="o-line">${orderIcon(o)}<span>${esc(o.text)}</span></div><div class="meta">${icon("calendar", "inl")} ${esc(dueWords(state, o.deadline))}</div><div class="o-forecast">${pips(state, f.pFill, f.text, true)}</div></li>`;
+    return `<li><div class="o-line">${orderIcon(o)}<span>${esc(letterText(state, o.text))}</span></div><div class="meta">${icon("calendar", "inl")} ${esc(dueWords(state, o.deadline))}</div><div class="o-forecast">${pips(state, f.pFill, f.text, true)}</div></li>`;
   }).join("");
   const news = upcoming(state);
   let lastSeason = -Infinity;
   const diary = state.log.slice(-10).reverse().map((l) => {
     const head = l.season !== lastSeason ? `<li class="day">${esc(seasonLabel(l.season))}</li>` : "";
     lastSeason = l.season;
-    return `${head}<li>${iconize(esc(l.text))}</li>`;
+    return `${head}<li>${iconize(esc(letterText(state, l.text)))}</li>`;
   }).join("");
   const animals = myAnimalsHtml(state);
   return `${head("board", "The shed board", 2)}
@@ -98,7 +98,7 @@ function orderCard(state: GameState, o: Order, mode: "open" | "accepted"): strin
   return `<div class="order ${mode}">
     ${orderIcon(o)}
     <div class="o-body">
-      <div class="o-text">“${esc(o.text)}”</div>
+      <div class="o-text">“${esc(letterText(state, o.text))}”</div>
       <div class="o-tags">${tag(`${o.reward}`, { icon: "coin", tone: "butter", title: "Reward in coins" })}${o.reputation ? tag("★".repeat(o.reputation).replace(/★/g, icon("star", "sm")), { tone: "butter", title: "Reputation" }) : ""}${tag(esc(dueWords(state, o.deadline).replace(/^due by /, "")), { icon: "calendar", tone: "sky", title: "Due by" })}</div>
       <div class="o-forecast"><span class="lbl">Can you fill it?</span>${pips(state, f.pFill, `Chance you can fill it: ${f.text}`, true)}</div>
     </div>
@@ -116,5 +116,5 @@ export function ordersHtml(state: GameState, _view: View): string {
   return `${head("mail", "Letters", 2)}
     ${open.length ? open.map((o) => orderCard(state, o, "open")).join("") : `<p class="meta">No new letters. More arrive with the seasons.</p>`}
     ${accepted.length ? `${head("check", `Promised · ${accepted.length} of ${MAX_ACCEPTED_ORDERS}`)}${accepted.map((o) => orderCard(state, o, "accepted")).join("")}` : ""}
-    ${past.length ? more("orders-past", "Past letters", `<ul class="plain past">${past.map((o) => `<li>${tag(esc(o.status), { tone: o.status === "filled" ? "sage" : "rose", cls: o.status === "filled" ? "ok" : "warn" })} ${esc(o.text)}</li>`).join("")}</ul>`) : ""}`;
+    ${past.length ? more("orders-past", "Past letters", `<ul class="plain past">${past.map((o) => `<li>${tag(esc(o.status), { tone: o.status === "filled" ? "sage" : "rose", cls: o.status === "filled" ? "ok" : "warn" })} ${esc(letterText(state, o.text))}</li>`).join("")}</ul>`) : ""}`;
 }
