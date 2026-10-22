@@ -1,0 +1,44 @@
+# CI for pull requests and the default branch, on the homelab self-hosted runner only
+# (homelab-blue-sheep on LXC 104; Node 22 is installed on the box, no hosted minutes).
+#
+# test: install from the lockfile, typecheck (tsc -b), then the unit suite (npm test).
+#   The blind30 long runs are not collected by npm test (vitest.config.ts).
+# ci-ok: one stable check name that is green only when test is. The queue runner on
+#   LXC 113 reads every check on the PR; "auto" merge needs a passing check.
+# No step puts event text (titles, messages, branch names) into a shell command.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [complete-game]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: [self-hosted, linux, homelab]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+
+  ci-ok:
+    if: always()
+    needs: [test]
+    runs-on: [self-hosted, linux, homelab]
+    timeout-minutes: 2
+    steps:
+      - name: All checks passed
+        run: test "${{ needs.test.result }}" = success
