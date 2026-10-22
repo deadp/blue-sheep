@@ -56,6 +56,12 @@ export interface BreedSpec {
   blurb: string;
 }
 
+/**
+ * Multiplier on every breed's `fantasy` frequencies: market stock, visiting rams and the founder pool all draw from `breedFreqs`.
+ * Was 1 (tables below: steel 0.03, pāua 0.015, glow-worm/cloud/southern 0.02); now 2, so steel runs 6 %.
+ */
+export const RARE_ALLELE_SCALE = 2;
+
 export const BREEDS: Record<BreedId, BreedSpec> = {
   farm: {
     id: "farm", name: "Farm", blurb: "Plain farm sheep, a bit of everything.",
@@ -144,7 +150,7 @@ export function breedFreqs(id: BreedId): FreqOverride {
   f["P"] = [b.hornedFreq, 1 - b.hornedFreq];
   f["DC"] = bi(b.doubleCoat);
   f["N"] = bi(b.hairy);
-  for (const l of FANTASY_LOCI) f[l] = bi(b.fantasy[l] ?? 0);
+  for (const l of FANTASY_LOCI) f[l] = bi((b.fantasy[l] ?? 0) * RARE_ALLELE_SCALE);
   const t = b.targets;
   // Size first (growth QTLs also touch fineness and fleece), then the fleece traits. Twice, so the
   // cross-effects (FW2 on size, fine alleles on crimp) settle.

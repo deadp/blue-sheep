@@ -23,6 +23,7 @@ import {
   sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
   ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF, feedPerHead, isShearingSeason, rareWoolOf,
   allSources, craftOn, demandLevel, forecastJob, itemKey, itemPrice, itemsOf, jobsOf, lotPrice, patternsOf, queueJob, rawKey, sellItem, sellLot, storeCap, storeOf,
+  RARE_SCREEN_FEE, screenOpen, vetScreen, wasScreened,
   type GameState, type Order, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
 
@@ -299,6 +300,9 @@ function manageVisitor(g: GameState, b: Brain, cache: Map<string, CrossDist>): v
   const v = g.visitingRam;
   if (!v || v.season !== g.season || g.hiredRam || g.money < v.fee + 20 + feedReserve(g)) return;
   const vis = g.sheep[v.id]!;
+  // The drover's "down south" ram is public and the screen works before the hire: a rare-chasing farmer (the blind brain) screens him first.
+  if (b.carrier && v.rare && !process.env["NORARE"] && screenOpen(g) && !wasScreened(vis) && g.money >= v.fee + RARE_SCREEN_FEE + 20 + feedReserve(g)) vetScreen(g, vis.id);
+  if (g.money < v.fee + 20 + feedReserve(g)) return;
   const ewes = breedingEwes(g);
   let gain = 0;
   for (const e of ewes) {
