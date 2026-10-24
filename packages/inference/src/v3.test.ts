@@ -141,15 +141,30 @@ function farmPedigree(seed: number, n: number): Individual[] {
 }
 
 describe("performance", () => {
-  it("all 15 v3 traits on 200 sheep in < 600 ms (game settings: 300 samples, 50 burn-in)", () => {
+  // Load-independent: time a fixed CPU-bound calibration loop in the same process and compare, so a busy
+  // CI machine slows both sides alike. Each round times both back to back; the best ratio is kept.
+  // Unloaded the ratio is about 1.6, so 5 allows roughly a 3x slowdown.
+  it("all 15 v3 traits on 200 sheep cost < 5x a calibration loop (game settings: 300 samples, 50 burn-in)", () => {
     const inds = farmPedigree(5, 200);
-    const run = () => {
+    const timed = (f: () => void) => {
       const t = performance.now();
-      for (const trait of S3.DISCRETE_TRAITS) posteriorDiscrete(map, trait, inds, { samples: 300, burnIn: 50, seed: 1 });
+      f();
       return performance.now() - t;
     };
-    run(); // warm up the JIT
-    const best = Math.min(run(), run());
-    expect(best).toBeLessThan(600);
+    const work = () => {
+      for (const trait of S3.DISCRETE_TRAITS) posteriorDiscrete(map, trait, inds, { samples: 300, burnIn: 50, seed: 1 });
+    };
+    const calibrate = () => {
+      let x = 1;
+      for (let i = 0; i < 2e7; i++) x = (x * 1664525 + 1013904223) >>> 0;
+      return x;
+    };
+    work(); // warm up the JIT
+    let best = Infinity;
+    for (let r = 0; r < 4; r++) {
+      const base = timed(calibrate);
+      best = Math.min(best, timed(work) / base);
+    }
+    expect(best).toBeLessThan(5);
   });
 });
