@@ -5,7 +5,7 @@ A cozy, turn-based sheep-breeding game built on realistic genetics (TypeScript, 
 Done: the v3 design is fully built, from pigment colours and breeds to the Golden Fleece ending.
 
 ## Now
-- Branch complete-game is the default and the only branch. No open issues or PRs, no CI workflows.
+- Branch complete-game is the default and the only branch. CI (typecheck and unit tests, homelab runner) runs on PRs since 22-10-2026 (#14).
 - v3 phases 1 to 6 are done: genetics library, pigment colours, breeds and wool types,
   wool store and demand meters, woolshed crafting queue, fantasy wools (15-10-2026).
 - Fleece looks: style e (felted shell with curl shader, fine wavy staple locks) is the default since 15-10-2026;
@@ -13,7 +13,9 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 - Phase 7 is partly built: six chapters, ActNumber 0..5, chapter stats, save key v4 (18-10-2026), and the chapter
   ladder with goal checks, progress lines, rare gate at chapter 3 and remapped unlocks and pacing (19-10-2026).
 - Still to do in Phase 7 (docs/BACKLOG.md): item orders, A&P show, Golden Fleece, pōhutukawa summer-red rule,
-  and the sim check that the first rare fleece comes by median season 27.
+  and the sim check result that the first rare fleece comes by median season 27. The blind sim now prints a
+  chapter/rare-fleece stats block (--seeds n; 21-10-2026), screens a visiting ram before hiring, rare alleles are x2,
+  and seeds are split into blind30a to blind30d long runs (22-10-2026). The long-run results are still to be read.
 - Phases 8 to 10 are still to do: river valley map, native birds, optional Blender model refresh.
 - Known follow-ups, not started: forecast paint triangle and rainbow ring, and flock rendering cost at play zoom.
 - Done check is npm test, npm run typecheck and npm run probe (screenshots must be opened and checked).
@@ -31,8 +33,9 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 - 15-10-2026: style e (A's shell + D's curl shader) made the default fleece look.
 - 18-10-2026: Phase 7 step 1 built: six chapters (DESIGN-v3 10.1), save key v4.
 - 19-10-2026: chapter ladder steps 2+3 built: goal checks, rare gate at chapter 3, unlocks remapped.
+- 22-10-2026: CI added (#14); blind sim stats block and seed split (#8, #16); rare alleles x2 and ram screening (#13); board wool letters say 'fine fleece' until numbers unlock (#15).
 
 ## Next action
-`Finish v3 Phase 7 (item orders, A&P show, Golden Fleece, pōhutukawa rule, rare-fleece sim check; see docs/BACKLOG.md); finish only when npm test, typecheck and npm run probe pass.`
+`Finish v3 Phase 7 (item orders, A&P show, Golden Fleece, pōhutukawa rule, rare-fleece sim long-run check; see docs/BACKLOG.md); finish only when npm test, typecheck and npm run probe pass.`
 
-Last updated: 21-10-2026
+Last updated: 25-10-2026
