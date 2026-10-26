@@ -64,14 +64,14 @@ describe("acts", () => {
     expect(checkActAdvance(g)).toBeNull();
   });
 
-  it("ch2: five item types sold and two orders filled, both needed", () => {
+  it("ch2: three item types sold and two orders filled, both needed", () => {
     const g = newGame(24);
     enterAct(g, 2);
-    g.stats.itemTypesSold = ["a", "b", "c", "d"];
+    g.stats.itemTypesSold = ["a", "b"];
     g.stats.ordersFilled += 2;
-    expect(checkActAdvance(g)).toBeNull(); // four kinds
-    expect(currentAct(g).progressText).toBe("Four of five kinds sold · Two of two orders filled.");
-    g.stats.itemTypesSold.push("e");
+    expect(checkActAdvance(g)).toBeNull(); // two kinds
+    expect(currentAct(g).progressText).toBe("Two of three kinds sold · Two of two orders filled.");
+    g.stats.itemTypesSold.push("c");
     g.stats.ordersFilled = g.actStart.ordersFilled + 1;
     expect(checkActAdvance(g)).toBeNull(); // one order is short
     g.stats.ordersFilled += 1;

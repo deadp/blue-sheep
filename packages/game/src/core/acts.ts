@@ -1,6 +1,6 @@
 /** Story acts: goals, progress, unlocks and the ending. */
 import {
-  ACTS, ORDERS_CARRIED, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
+  ACTS, ITEM_TYPES_FOR_CH2, ORDERS_CARRIED, ORDERS_FOR_CH2, REGISTRY_BLUES, REGISTRY_MAX_INBREEDING, REGISTRY_MICRONS,
 } from "./config.js";
 import { addLog, flockSheep } from "./state.js";
 import { woolOf } from "./colour.js";
@@ -41,9 +41,6 @@ export function act2Orders(state: GameState): number {
 
 /** Shearings that must be sold for chapter 1. */
 const SHEARINGS_FOR_CH1 = 3;
-/** Different item kinds sold, and orders filled, for chapter 2. */
-const ITEM_TYPES_FOR_CH2 = 5;
-const ORDERS_FOR_CH2 = 2;
 /** Intensity at which a lamb's colour counts as visible (DESIGN-v3 §10.1 ch1). */
 const VISIBLE_COLOUR_INTENSITY = 0.3;
 /** Show placings that count as a ribbon. */

@@ -258,7 +258,7 @@ export const ACTS: ActDef[] = [
   },
   {
     act: 2, title: "The woolshed", line: "Wool's worth more with a bit of mahi in it.",
-    goalText: "Sell five different kinds of item, and fill two orders.", unlocks: ["craft"], flockCap: 12,
+    goalText: "Sell three different kinds of item, and fill two orders.", unlocks: ["craft"], flockCap: 12,
   },
   {
     act: 3, title: "True blue", line: "Now, a blue one. That'd turn heads at the show.",
@@ -277,6 +277,9 @@ export const ACTS: ActDef[] = [
 export const REGISTRY_BLUES = 6;
 export const REGISTRY_MICRONS = 28;
 export const REGISTRY_MAX_INBREEDING = 0.125;
+/** Chapter 2 goal: different item kinds sold (DESIGN-v3 §10.1 says 5; 3 so the woolshed, open from season 7, doesn't hold chapter 3 back), and orders filled. */
+export const ITEM_TYPES_FOR_CH2 = 3;
+export const ORDERS_FOR_CH2 = 2;
 /** Orders filled before act 2 that count toward it (at most). */
 export const ORDERS_CARRIED = 2;
 /** How far raw-wool targets swing with the time of year (warm wools up in autumn, fine up in spring). */
