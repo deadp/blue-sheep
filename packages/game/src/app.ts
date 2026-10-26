@@ -11,7 +11,7 @@ import {
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
   sellLot, forecastSale, storeOf, allSources, queueJob, cancelJob, sellItem, itemsOf, itemName, itemPrice, itemKey, demandLevel, seasonLabel,
   type Job,
-  type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
+  type GameState, type Goal, type PetId, type SeasonReport, type Sheep, type UpgradeId,
 } from "./core/index.js";
 import { Hold, WorldView, type AreaId, type Hotspot, type LandInfo, type MoveMode, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
 import {
@@ -277,6 +277,20 @@ export class App {
       const steps = bleatSeries(v).slice(0, 2);
       this.voices.bleat(v, { steps, delay: 0.25 + i * 0.38 + Math.random() * 0.12, gain: 0.55, force: true });
     });
+  }
+
+  /** A soft chime as each lamb's card turns over, and a lower one as its swatch is stamped (timed to the CSS delays). */
+  private lambChimes(report: SeasonReport): void {
+    const rows = Object.keys(report.matings);
+    const seen = new Map<string, number>();
+    for (const l of report.lambs.slice(0, 8)) {
+      const dam = l.dam ?? "";
+      const k = seen.get(dam) ?? 0;
+      seen.set(dam, k + 1);
+      const at = 0.5 + Math.max(0, rows.indexOf(dam)) * 0.6 + k * 0.45;
+      this.voices.chime(660 + k * 110, at + 0.35, 0.3);
+      this.voices.chime(440, at + 1.2, 0.18);
+    }
   }
 
   private onSheepClick(id: string): void {
@@ -878,6 +892,14 @@ export class App {
       else if (d["toggle"] === "motion") this.setReducedMotion(!this.reduced);
       else if (d["detail"] === "auto" || d["detail"] === "full" || d["detail"] === "lite") this.setDetail(d["detail"]);
       else if (d["toggle"] === "move") this.setMove(this.move === "walk" ? "pan" : "walk");
+      else if (d["toggle"] === "lamb-sound") {
+        // Mute from the lambing reveal: patch the button in place so the cards don't flip again.
+        this.voices.setOn(!this.voices.on);
+        this.view.sound = { on: this.voices.on, volume: this.voices.volume };
+        const b = this.overlay.el.querySelector<HTMLElement>("[data-toggle=lamb-sound]");
+        if (b) { b.setAttribute("aria-pressed", this.voices.on ? "false" : "true"); const t = b.querySelector(".b-t"); if (t) t.textContent = this.voices.on ? "Mute lamb sounds" : "Unmute lamb sounds"; }
+        return;
+      }
       else if (d["toggle"] === "sound") { this.voices.setOn(!this.voices.on); this.view.sound = { on: this.voices.on, volume: this.voices.volume }; this.previewSound(); }
       else if (d["export"]) this.exportSave();
       else if (d["import"]) { this.importSave(); return; }
@@ -1014,6 +1036,7 @@ export class App {
       this.view.panel = "report";
       this.view.tab = null;
       this.render();
+      this.lambChimes(report);
       this.lambChorus(report.lambs.map((l) => l.id).filter((id) => this.state.flock.includes(id)));
       const blues = report.lambs.filter((l) => woolOf(l).trueBlue && this.state.flock.includes(l.id));
       const found = new Set(report.discoveries.map((d) => d.sheep));

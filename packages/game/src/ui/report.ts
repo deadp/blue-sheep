@@ -69,6 +69,7 @@ function matingRows(state: GameState, view: View, r: SeasonReport): string {
       <div class="r-fore"><div class="lbl">You expected</div>${ex.html}</div>
       <div class="r-arrow" aria-hidden="true">${icon("arrow")}</div>
       <div class="r-born"><div class="lbl">Born</div>${lambs.length ? lambs.map((l, k) => lambReveal(state, view, l, f, k, ex.inTen[k] ?? true)).join("") : `<span class="meta">${esc(ewe?.name ?? "She")} was too poorly to lamb.</span>`}</div>
+      ${lambs.length ? `<div class="r-stamps" aria-hidden="true">${lambs.map((l, k) => `<span class="lamb-stamp" style="--d:${k};--wool:${esc(woolOf(l).hex)}"></span>`).join("")}</div>` : ""}
     </div>`;
   }).join("");
 }
@@ -120,7 +121,9 @@ export function reportHtml(state: GameState, view: View): string {
   }
   if (r.endingReached) blocks.push(`<div class="act-banner gold">${icon("rosette", "xl")}<div><div class="act">Your breed is registered!</div><div>The whole village is coming to see.</div></div></div>`);
   const matings = matingRows(state, view, r);
-  blocks.push(`${head("sheep", "Lambing")}${matings || `<p class="meta">No matings were planned, so no lambs this time.</p>`}`);
+  const soundOn = view.sound?.on ?? true;
+  const mute = r.lambs.length ? `<button class="ghost lamb-mute" data-toggle="lamb-sound" aria-pressed="${soundOn ? "false" : "true"}">${icon("sound", "inl")}<span class="b-t">${soundOn ? "Mute lamb sounds" : "Unmute lamb sounds"}</span></button>` : "";
+  blocks.push(`${head("sheep", "Lambing")}${mute}${matings || `<p class="meta">No matings were planned, so no lambs this time.</p>`}`);
   if (r.discoveries.length) {
     // A big season can turn up a dozen facts; show the first few and send the rest to the codex.
     const shown = r.discoveries.slice(0, MAX_CARDS);
