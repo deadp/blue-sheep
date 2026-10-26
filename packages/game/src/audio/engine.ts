@@ -306,6 +306,35 @@ export class Voices {
     }
   }
 
+  /**
+   * A soft two-partial chime (a sine and a quiet fifth above it), for a lamb arriving or a swatch settling.
+   * `delay` is seconds from now, `len` how long it rings. Skipped when muted or before the first tap (no context yet). Returns true if it played.
+   */
+  chime(freq = 660, delay = 0, gain = 0.3, len = 0.55): boolean {
+    if (!this.on || this.volume <= 0 || !this.ctx || !this.master || this.ctx.state !== "running") return false;
+    try {
+      const t = this.ctx.currentTime + 0.01 + delay;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain * 0.5, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      g.connect(this.master);
+      for (const [mult, level] of [[1, 1], [1.5, 0.25]] as const) {
+        const o = this.ctx.createOscillator();
+        const og = this.ctx.createGain();
+        og.gain.value = level;
+        o.frequency.value = freq * mult;
+        o.connect(og).connect(g);
+        o.start(t);
+        o.stop(t + len + 0.05);
+      }
+      setTimeout(() => { try { g.disconnect(); } catch { /* gone */ } }, (delay + len + 0.35) * 1000);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private record(r: SoundRecord): SoundRecord {
     this.last = r;
     return r;

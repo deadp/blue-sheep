@@ -40,6 +40,9 @@ export interface View {
   reducedMotion?: boolean;
   /** Settings: sound on/off and volume 0–1 (optional; saved in localStorage by the controller). */
   sound?: { on: boolean; volume: number };
+  /** Lambing ceremony: the remembered "short lambing" setting (localStorage, not the save), and a one-off skip of this report's ceremony. */
+  shortLambing?: boolean;
+  quickLambing?: boolean;
   /** HUD: the bag's tray of farm places is open (optional; closed by default and whenever a panel opens). */
   tray?: boolean;
   /** Title: a save from before v3 was found and set aside: say "A new season at Kōwhai Creek" (once). */

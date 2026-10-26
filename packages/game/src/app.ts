@@ -11,7 +11,7 @@ import {
   greetAnimal, giveTreat, brushAnimal, fondnessOf, isPetId, ownedPets, PET_NAME, forecastUpgrade, upgradeBlocked, upgradeOffered,
   sellLot, forecastSale, storeOf, allSources, queueJob, cancelJob, sellItem, itemsOf, itemName, itemPrice, itemKey, demandLevel, seasonLabel,
   type Job,
-  type GameState, type Goal, type PetId, type Sheep, type UpgradeId,
+  type GameState, type Goal, type PetId, type SeasonReport, type Sheep, type UpgradeId,
 } from "./core/index.js";
 import { Hold, WorldView, type AreaId, type Hotspot, type LandInfo, type MoveMode, type PetKind, type WorldSheep, type WorldSnapshot, type Zone } from "./world3d/index.js";
 import {
@@ -19,6 +19,7 @@ import {
   mentorHtml, tutorialStepMet, tutorialTarget, lessonShown, lessonTarget, lessonMentorHtml,
   type ActionData, type PanelName, type TutorialTarget, type View,
 } from "./ui/index.js";
+import { lambTier } from "./ui/ceremony.js";
 import { fastForward } from "./debug.js";
 import { AUTOLITE_KEY, recallLite, rememberLite } from "./autolite.js";
 import { Voices, bleatSeries, happySeries, petVoiceFor, renderOffline, voiceFor, type Voice, type VoiceInput } from "./audio/index.js";
@@ -32,6 +33,8 @@ const OLD_SAVE_KEYS = ["blue-sheep-save-v2", "blue-sheep-save-v1"];
 /** Set once the title has said "A new season at Kōwhai Creek" to a returning player. */
 const NEW_SEASON_TOLD_KEY = "blue-sheep-v3-hello";
 const MOTION_KEY = "blue-sheep-reduced-motion";
+/** Short lambing: the quick report ceremony — a setting, not game state. */
+const SHORT_LAMBING_KEY = "blue-sheep-short-lambing";
 /** Walk (default) or pan: how the player gets about the farm (a setting, not game state). */
 const MOVE_KEY = "blue-sheep-move-mode";
 /** World detail: auto (default; drops to lite by itself on a slow device), full or lite — a setting, not game state. */
@@ -152,6 +155,7 @@ export class App {
 
     this.view = defaultView((id) => this.portraitOf(id));
     this.view.reducedMotion = this.reduced;
+    try { this.view.shortLambing = localStorage.getItem(SHORT_LAMBING_KEY) === "1"; } catch { /* private mode */ }
     this.view.move = this.move;
     this.view.detail = { pref: this.detail, now: this.detail === "lite" ? "lite" : "full" };
     this.view.lambArt = (l) => this.lambArt(l);
@@ -277,6 +281,60 @@ export class App {
       const steps = bleatSeries(v).slice(0, 2);
       this.voices.bleat(v, { steps, delay: 0.25 + i * 0.38 + Math.random() * 0.12, gain: 0.55, force: true });
     });
+  }
+
+  private chimeTimers: ReturnType<typeof setTimeout>[] = [];
+
+  /** Stop any chimes still waiting to play (the Skip button, or a new report). */
+  private clearChimes(): void {
+    for (const t of this.chimeTimers) clearTimeout(t);
+    this.chimeTimers = [];
+  }
+
+  /**
+   * A soft chime as each lamb's card turns over, and a lower one as its swatch is stamped (timed to the CSS delays).
+   * A first-of-its-kind lamb gets a longer, warmer chord instead. In short lambing only those first moments make a sound.
+   */
+  private lambChimes(report: SeasonReport): void {
+    this.clearChimes();
+    const quick = this.view.quickLambing === true;
+    const rows = Object.keys(report.matings);
+    const seen = new Map<string, number>();
+    for (const l of report.lambs.slice(0, 8)) {
+      const dam = l.dam ?? "";
+      const k = seen.get(dam) ?? 0;
+      seen.set(dam, k + 1);
+      const first = lambTier(report, this.state.stats.bluesBorn, l) === "first";
+      if (quick && !first) continue;
+      const at = quick ? 0.1 : 0.5 + Math.max(0, rows.indexOf(dam)) * 0.6 + k * 0.45;
+      const play = (f: number, d: number, g: number, len?: number): void => {
+        this.chimeTimers.push(setTimeout(() => this.voices.chime(f, 0, g, len), d * 1000));
+      };
+      if (first) {
+        // a warm rising triad, ringing longer than the ordinary chime
+        play(523, at + 0.35, 0.34, 1.6); play(659, at + 0.5, 0.3, 1.6); play(784, at + 0.65, 0.3, 2);
+        if (!quick) play(392, at + 1.2, 0.22, 1.6);
+      } else {
+        play(660 + k * 110, at + 0.35, 0.3);
+        play(440, at + 1.2, 0.18);
+      }
+    }
+  }
+
+  /** Skip: show every card and stamp now and stop the chimes; the Short lambing setting makes this the default. */
+  private skipCeremony(): void {
+    this.clearChimes();
+    this.view.quickLambing = true;
+    this.overlay.el.querySelectorAll(".reveal").forEach((e) => e.classList.add("quick"));
+    this.overlay.el.querySelector("[data-toggle=lamb-skip]")?.setAttribute("hidden", "");
+  }
+
+  private setShortLambing(on: boolean): void {
+    this.view.shortLambing = on;
+    try { localStorage.setItem(SHORT_LAMBING_KEY, on ? "1" : "0"); } catch { /* ignore */ }
+    if (on) this.skipCeremony();
+    const b = this.overlay.el.querySelector<HTMLElement>("[data-toggle=lamb-short]");
+    if (b) { b.setAttribute("aria-pressed", on ? "true" : "false"); b.textContent = on ? "Short lambing: on" : "Short lambing: off"; }
   }
 
   private onSheepClick(id: string): void {
@@ -486,6 +544,7 @@ export class App {
     if (this.view.panel) {
       this.overlay.show(renderPanel(this.state, this.view), panelOptions(this.view.panel));
     } else if (this.overlay.open) {
+      this.clearChimes();
       this.closing = true;
       this.overlay.close();
       this.closing = false;
@@ -757,6 +816,7 @@ export class App {
   private onOverlayClosed(): void {
     const was = this.view.panel;
     this.petShown = null;
+    if (was === "report") this.clearChimes();
     this.view.panel = null;
     this.view.tab = null;
     if (!this.closing && was === "report" && isEnding(this.state)) {
@@ -878,6 +938,16 @@ export class App {
       else if (d["toggle"] === "motion") this.setReducedMotion(!this.reduced);
       else if (d["detail"] === "auto" || d["detail"] === "full" || d["detail"] === "lite") this.setDetail(d["detail"]);
       else if (d["toggle"] === "move") this.setMove(this.move === "walk" ? "pan" : "walk");
+      else if (d["toggle"] === "lamb-skip") { this.skipCeremony(); return; }
+      else if (d["toggle"] === "lamb-short") { this.setShortLambing(!this.view.shortLambing); return; }
+      else if (d["toggle"] === "lamb-sound") {
+        // Mute from the lambing reveal: patch the button in place so the cards don't flip again.
+        this.voices.setOn(!this.voices.on);
+        this.view.sound = { on: this.voices.on, volume: this.voices.volume };
+        const b = this.overlay.el.querySelector<HTMLElement>("[data-toggle=lamb-sound]");
+        if (b) { b.setAttribute("aria-pressed", this.voices.on ? "false" : "true"); const t = b.querySelector(".b-t"); if (t) t.textContent = this.voices.on ? "Mute lamb sounds" : "Unmute lamb sounds"; }
+        return;
+      }
       else if (d["toggle"] === "sound") { this.voices.setOn(!this.voices.on); this.view.sound = { on: this.voices.on, volume: this.voices.volume }; this.previewSound(); }
       else if (d["export"]) this.exportSave();
       else if (d["import"]) { this.importSave(); return; }
@@ -1013,7 +1083,9 @@ export class App {
       await this.world.dawn();
       this.view.panel = "report";
       this.view.tab = null;
+      this.view.quickLambing = this.view.shortLambing === true;
       this.render();
+      this.lambChimes(report);
       this.lambChorus(report.lambs.map((l) => l.id).filter((id) => this.state.flock.includes(id)));
       const blues = report.lambs.filter((l) => woolOf(l).trueBlue && this.state.flock.includes(l.id));
       const found = new Set(report.discoveries.map((d) => d.sheep));
