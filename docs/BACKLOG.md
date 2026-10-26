@@ -7,6 +7,11 @@ time or in parallel, depending on the user's capacity. Items move to "Done" with
 
 Next: v3 Phase 7 (chapters, item orders, A&P show, Golden Fleece; DESIGN-v3 §13).
 
+Measure PR 20 (27-10-2026): PR 20 (chapter 2 goal: sell 3 item kinds) merged 27-10. Baseline: chapter 3 median season 16-17, rare fleece 2 of 30 by season 27.
+Target: chapter 3 about season 11, rare fleece 15 of 30. Run seeds 1-30 as four chunks (each under the 90 minute LONGRUN limit):
+`npx vitest run packages/game/scripts/blind8a.test.ts` (seeds 1-8), `blind8b` (9-16), `blind8c` (17-24), `blind8d` (25-30); each prints one summary block.
+If the 30-seed numbers show no gain, revert PR 20.
+
 Fleece look (15-10-2026): the default is now style `e` (A's moderate lumpy shell + D's curl shader, with fine wavy staple locks in
 the shader for Romney / Icelandic / Drysdale by breed mix); the old look is `?fleece=0` (or `old`). History: four base-fleece styles behind
 `?fleece=a|b|c|d` (world3d/fleece.ts; probe `run.mjs fleece` writes fleece-<s>.png, -world, -night, -lite). The
