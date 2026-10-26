@@ -571,7 +571,7 @@ Blue becomes one milestone, and the long goal is the Golden Fleece.
 |---|---|---|---|---|
 | 0 | The old farm ("The farm's yours, love. Let's see what the flock gives us.") | first lambs | forecast (swatch litter), facts | 1 |
 | 1 | Hidden colours ("White on top, colour underneath!") | a lamb with a visible colour at I ≥ 0.3 **and** 3 shearings sold | cards, vet, orders, the fantail | 5 |
-| 2 | The woolshed (Aunty Mere: "Wool's worth more with a bit of mahi in it.") | sell 5 different item types and fill 2 orders | woolshed, benches, demand meters, patterns, creek flats, bush edge I, tūī | 11 |
+| 2 | The woolshed (Aunty Mere: "Wool's worth more with a bit of mahi in it.") | sell 3 different item types (was 5; see BACKLOG) and fill 2 orders | woolshed, benches, demand meters, patterns, creek flats, bush edge I, tūī | 11 |
 | 3 | True blue (Old Tom: "Now, a *blue* one. That'd turn heads at the show.") | a true-blue sheep (§2.2) and a ribbon (1st–3rd) at the A&P show | numbers, A&P show, Merino/Icelandic/Drysdale, loom, kākā, ruru, rare-gene screen | 18 |
 | 4 | Fresh blood and rare wool (Barry: "Reckon you'll never beat my Romneys.") | shear your first fantasy fleece and win 1st in any show class | family tree, visiting rams (incl. "from down south"), hill paddock, kiwi | 27 |
 | 5 | The Golden Fleece (the show committee's letter) | win the Golden Fleece (§10.2) | signature knit, high country, kea; afterwards endless mode | 36 |
