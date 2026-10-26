@@ -544,6 +544,7 @@ export class App {
     if (this.view.panel) {
       this.overlay.show(renderPanel(this.state, this.view), panelOptions(this.view.panel));
     } else if (this.overlay.open) {
+      this.clearChimes();
       this.closing = true;
       this.overlay.close();
       this.closing = false;
@@ -815,6 +816,7 @@ export class App {
   private onOverlayClosed(): void {
     const was = this.view.panel;
     this.petShown = null;
+    if (was === "report") this.clearChimes();
     this.view.panel = null;
     this.view.tab = null;
     if (!this.closing && was === "report" && isEnding(this.state)) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { woolOf, type SeasonReport, type Sheep } from "../core/index.js";
+import { setColour, woolOf, type SeasonReport, type Sheep } from "../core/index.js";
 import { forecastMark, lambTier } from "./ceremony.js";
 import { renderPanel } from "./index.js";
 import { fixtures } from "./fixtures.js";
@@ -15,6 +15,22 @@ describe("lambing ceremony tiers", () => {
     expect(lambTier({ lambs: [a], rareLambs: [] } as unknown as SeasonReport, 5, a)).toBe("ordinary");
   });
 
+  it("a true blue is first only when every blue ever born is in this report", () => {
+    const ph: Record<string, string | number> = { depth: 1 };
+    setColour(ph, { blue: 4 });
+    const blue = { id: "b1", phenotype: ph, genome: {} } as unknown as Sheep;
+    expect(woolOf(blue).trueBlue).toBe(true);
+    const rep = { lambs: [blue], rareLambs: [] } as unknown as SeasonReport;
+    expect(lambTier(rep, 1, blue)).toBe("first");
+    expect(lambTier(rep, 5, blue)).toBe("ordinary");
+  });
+
+  it("a rare-wool first via rareLambs is first", () => {
+    const a = lamb("a");
+    const r = { lambs: [a], rareLambs: [{ id: "a", wool: "gold", first: true, expected: 0 }] } as unknown as SeasonReport;
+    expect(lambTier(r, 99, a)).toBe("first");
+  });
+
   it("only the first true blue of the farm is a bigger moment", () => {
     const f = fixtures().find((x) => x.name === "afterFirst")!;
     const blues = f.report!.lambs.filter((l) => woolOf(l).trueBlue);
@@ -28,6 +44,22 @@ describe("forecast against result", () => {
     expect(forecastMark(true).mark).toBe("✓");
     expect(forecastMark(false).mark).toBe("~");
     for (const m of [forecastMark(true), forecastMark(false)]) expect(m.words).not.toMatch(/\d/);
+  });
+
+  it("a lamb outside the forecast is marked miss, one inside is marked hit", () => {
+    const f = fixtures().find((x) => x.name === "afterFirst")!;
+    const r = f.report!;
+    const ewe = Object.keys(r.matings)[0]!;
+    const lambs = r.lambs.filter((l) => l.dam === ewe);
+    const fc = r.forecastsSeen[ewe]!;
+    const render = (key: string): string => {
+      const sw = { ...fc.swatches[0]!, key, p: 1 };
+      const rep = { ...r, lambs, matings: { [ewe]: r.matings[ewe]! }, forecastsSeen: { [ewe]: { ...fc, swatches: [sw] } } } as SeasonReport;
+      return renderPanel(f.state, { panel: "report", sheepId: null, mateId: null, goal: "trueblue", tab: null, report: rep, portraits: () => "" });
+    };
+    expect(render("no-such-wool")).toContain('class="fc-mark miss"');
+    expect(render("no-such-wool")).not.toContain('class="fc-mark hit"');
+    expect(render(woolOf(lambs[0]!).key)).toContain('class="fc-mark hit"');
   });
 
   it("the report shows a marker beside each stamped swatch, and the skip and short controls", () => {
