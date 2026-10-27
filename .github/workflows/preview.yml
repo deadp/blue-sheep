@@ -1,0 +1,76 @@
+# Previews for queue branches, served at http://q<id>.preview.home/ (homelab stacks/preview on VM 117).
+#
+# build: on a push to queue/q<id>, build the game bundle as `npm run build` does and force-push it
+#   as public/ on preview/q<id>: one orphan commit of built files only, no source, no history.
+#   preview.home serves preview/q<id> only while queue/q<id> exists.
+# remove: when queue/q<id> is deleted (the runner deletes it on merge), delete preview/q<id>.
+#   Delete events run this file from the default branch, so this half works once merged.
+#
+# Homelab self-hosted runner only, as ci.yml. Pushes made with GITHUB_TOKEN start no workflows,
+# so preview/q* never triggers CI. No step puts event text into a shell command: the branch name
+# reaches the shell through env and must match ^queue/q[A-Za-z0-9_-]+$ before use.
+
+name: Preview
+
+on:
+  push:
+    branches: ["queue/q*"]
+  delete:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview-${{ github.event.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, linux, homelab]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Publish preview branch
+        env:
+          BRANCH: ${{ github.ref_name }}
+          SRC_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          printf '%s' "$BRANCH" | grep -Eqx 'queue/q[A-Za-z0-9_-]+'
+          id="${BRANCH#queue/q}"
+          out="$RUNNER_TEMP/preview"
+          rm -rf "$out" && mkdir -p "$out"
+          cp -R packages/game/dist "$out/public"
+          # Commit $out with the checkout's object store and push auth, but a throwaway index.
+          export GIT_DIR="$GITHUB_WORKSPACE/.git" GIT_WORK_TREE="$out" GIT_INDEX_FILE="$RUNNER_TEMP/preview.index"
+          rm -f "$GIT_INDEX_FILE"
+          cd "$out"
+          git add -A -f .
+          tree=$(git write-tree)
+          commit=$(git -c user.name="blue-sheep preview" -c user.email="actions@users.noreply.github.com" \
+            commit-tree "$tree" -m "Preview build of $BRANCH at $SRC_SHA")
+          git push -f origin "$commit:refs/heads/preview/q$id"
+          echo "Preview: http://q$id.preview.home/ (live within 5 minutes)" >> "$GITHUB_STEP_SUMMARY"
+
+  remove:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch' && startsWith(github.event.ref, 'queue/q')
+    runs-on: [self-hosted, linux, homelab]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          BRANCH: ${{ github.event.ref }}
+        with:
+          script: |
+            const m = /^queue\/q([A-Za-z0-9_-]+)$/.exec(process.env.BRANCH);
+            if (!m) return core.setFailed("unexpected branch name");
+            try {
+              await github.rest.git.deleteRef({ ...context.repo, ref: `heads/preview/q${m[1]}` });
+            } catch (e) {
+              if (e.status !== 422 && e.status !== 404) throw e;  // already gone
+            }
