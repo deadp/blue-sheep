@@ -15,7 +15,12 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 - Still to do in Phase 7 (docs/BACKLOG.md): item orders, A&P show, Golden Fleece, pōhutukawa summer-red rule,
   and the sim check result that the first rare fleece comes by median season 27. The blind sim now prints a
   chapter/rare-fleece stats block (--seeds n; 21-10-2026), screens a visiting ram before hiring, rare alleles are x2,
-  and seeds are split into blind30a to blind30d long runs (22-10-2026). The long-run results are still to be read.
+  and the sim is run as four chunks of at most 8 seeds, blind8a to blind8d (27-10-2026, #24; replaces the blind30a-d long runs).
+  PR 20 (chapter 2 goal: sell 3 item kinds, 27-10-2026) and the sim farmer's woolshed spread (chapter 3 earlier, 28-10-2026, #26)
+  are not yet measured: run blind8a to blind8d after them and read the 30-seed numbers (docs/BACKLOG.md).
+- Lambing ceremony steps 1 and 2 of 3 are built (forecast marks, first tier, skip; #23, 27-10-2026).
+- Preview workflow (#25, 27-10-2026): a push to `queue/q<id>` builds the game and force-pushes it to `preview/q<id>`
+  for preview.home; deleting the queue branch removes the preview (the delete half only works from the default branch).
 - Phases 8 to 10 are still to do: river valley map, native birds, optional Blender model refresh.
 - Known follow-ups, not started: forecast paint triangle and rainbow ring, and flock rendering cost at play zoom.
 - Done check is npm test, npm run typecheck and npm run probe (screenshots must be opened and checked).
@@ -34,8 +39,10 @@ Done: the v3 design is fully built, from pigment colours and breeds to the Golde
 - 18-10-2026: Phase 7 step 1 built: six chapters (DESIGN-v3 10.1), save key v4.
 - 19-10-2026: chapter ladder steps 2+3 built: goal checks, rare gate at chapter 3, unlocks remapped.
 - 22-10-2026: CI added (#14); blind sim stats block and seed split (#8, #16); rare alleles x2 and ram screening (#13); board wool letters say 'fine fleece' until numbers unlock (#15).
+- 27-10-2026: lambing ceremony 2/3 (#23); chapter 2 goal is 3 item kinds, constants in config.ts (#20); blind sim in chunks blind8a-d (#24); preview workflow (#25).
+- 28-10-2026: sim farmer spreads woolshed jobs over item kinds while chapter 2 needs them (#26).
 
 ## Next action
-`Finish v3 Phase 7 (item orders, A&P show, Golden Fleece, pōhutukawa rule, rare-fleece sim long-run check; see docs/BACKLOG.md); finish only when npm test, typecheck and npm run probe pass.`
+`Finish v3 Phase 7 (item orders, A&P show, Golden Fleece, pōhutukawa rule, rare-fleece sim check (blind8a-d); see docs/BACKLOG.md); finish only when npm test, typecheck and npm run probe pass.`
 
-Last updated: 25-10-2026
+Last updated: 29-10-2026
