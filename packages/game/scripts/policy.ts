@@ -23,9 +23,11 @@ import {
   sellSheep, hireVisitingRam, ageOf, buyUpgrade, upgradeBlocked, upgradeDef, greetAnimal, giveTreat, treatBlocked,
   ownedPets, fondnessOf, hasUpgrade, brushAnimal, woolOf, FINE_REF, feedPerHead, isShearingSeason, rareWoolOf,
   allSources, craftOn, demandLevel, forecastJob, itemKey, itemPrice, itemsOf, jobsOf, lotPrice, patternsOf, queueJob, rawKey, sellItem, sellLot, storeCap, storeOf,
-  RARE_SCREEN_FEE, screenOpen, vetScreen, wasScreened,
+  RARE_SCREEN_FEE, screenOpen, vetScreen, wasScreened, ITEM_TYPES_FOR_CH2,
   type GameState, type Order, type Sheep, type UpgradeId,
 } from "../src/core/index.js";
+
+import { kindsStillNeeded } from "../src/simstats.js";
 
 /** Coins to keep back in a non-shearing season: feed is due every season but wool only pays in shearing seasons. */
 export function feedReserve(g: GameState): number {
@@ -258,17 +260,24 @@ function manageCraft(g: GameState, sale: (cat: string, coins: number) => void): 
     const spare = id === "circle" ? 60 : g.act <= 1 ? 100 : 40;
     if (!upgradeBlocked(g, id) && g.money >= upgradeDef(id).price + spare + reserve) { buyUpgrade(g, id); break; }
   }
+  // Chapter 2 wants ITEM_TYPES_FOR_CH2 kinds sold: a kind not sold yet goes to market at once, and the queue below is spread over kinds.
+  const sold = g.stats.itemTypesSold;
+  const chasing = g.act <= 2;
   // Sell finished items: while the meter is healthy, when cash is short, or when they have sat for three seasons.
   for (const it of [...itemsOf(g)].sort((a, b) => b.q - a.q)) {
     const d = demandLevel(g, itemKey(it.kind));
     const stale = g.season - it.season >= 3;
-    if (d >= 0.2 || stale || g.money < reserve + 20) sale(it.kind, sellItem(g, it.id));
+    if (d >= 0.2 || stale || g.money < reserve + 20 || (chasing && !sold.includes(it.kind))) sale(it.kind, sellItem(g, it.id));
   }
   // Queue the best-paying jobs while the benches aren't backed up.
   for (let guard = 0; guard < 12; guard++) {
     if (jobsOf(g).length >= 14) break;
     let best: { key: string; item: string; v: number } | null = null;
+    const inFlight = [...jobsOf(g).map((j) => j.item), ...itemsOf(g).map((i) => i.kind)];
+    // Two jobs keep the benches busy; after that, while kinds are still missing, only a kind not sold or in the shed is queued.
+    const spread = chasing && jobsOf(g).length >= 2 && kindsStillNeeded(sold, inFlight, ITEM_TYPES_FOR_CH2) > 0;
     for (const item of patternsOf(g)) {
+      if (spread && (sold.includes(item) || inFlight.includes(item))) continue;
       for (const src of allSources(g)) {
         const f = forecastJob(g, { item, source: src.key });
         if (!f.ok || f.stock || f.seasons > 5) continue;
