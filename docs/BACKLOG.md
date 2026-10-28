@@ -12,6 +12,11 @@ Target: chapter 3 about season 11, rare fleece 15 of 30. Run seeds 1-30 as four 
 `npx vitest run packages/game/scripts/blind8a.test.ts` (seeds 1-8), `blind8b` (9-16), `blind8c` (17-24), `blind8d` (25-30); each prints one summary block.
 If the 30-seed numbers show no gain, revert PR 20.
 
+Chapter 3 earlier (28-10-2026, proposal 8 follow-up; not yet measured, run the four chunks above after it merges): the sim farmer (`manageCraft`, scripts/policy.ts) queued
+the best-paying job each time, so the bench filled with socks and the 2nd and 3rd item kinds waited behind them. While kinds are missing (chapter 2 or earlier),
+after two jobs only a kind not sold or in the shed is queued, and a new kind is sold the season it is finished. Goals and config untouched. Expect chapter 3
+median a few seasons under 16; if it is still late, next suspects are the 2 orders and the bench-upgrade order (`BENCH_BUY`).
+
 Fleece look (15-10-2026): the default is now style `e` (A's moderate lumpy shell + D's curl shader, with fine wavy staple locks in
 the shader for Romney / Icelandic / Drysdale by breed mix); the old look is `?fleece=0` (or `old`). History: four base-fleece styles behind
 `?fleece=a|b|c|d` (world3d/fleece.ts; probe `run.mjs fleece` writes fleece-<s>.png, -world, -night, -lite). The

@@ -12,6 +12,11 @@ export function shareWithin(xs: (number | null)[], limit: number): number {
   return xs.filter((x) => x !== null && x >= 0 && x <= limit).length / xs.length;
 }
 
+/** How many more item kinds the farmer still has to get sold: `need` less the kinds sold or already being made (each kind once). */
+export function kindsStillNeeded(sold: string[], inFlight: string[], need: number): number {
+  return Math.max(0, need - new Set([...sold, ...inFlight]).size);
+}
+
 export interface Reported {
   /** Season each chapter began (index = chapter, -1 = never). */
   actSeason: number[];

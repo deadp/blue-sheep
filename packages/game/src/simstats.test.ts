@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { median, shareWithin, statsBlock } from "./simstats.js";
+import { kindsStillNeeded, median, shareWithin, statsBlock } from "./simstats.js";
 
 describe("sim stats", () => {
   it("median", () => {
@@ -10,6 +10,11 @@ describe("sim stats", () => {
   it("shareWithin counts nulls and negatives as misses", () => {
     expect(shareWithin([10, 27, 28, null, -1], 27)).toBeCloseTo(0.4);
     expect(shareWithin([], 27)).toBe(0);
+  });
+  it("kindsStillNeeded counts each kind once, sold or in flight", () => {
+    expect(kindsStillNeeded([], [], 3)).toBe(3);
+    expect(kindsStillNeeded(["socks"], ["socks", "socks"], 3)).toBe(2);
+    expect(kindsStillNeeded(["socks"], ["beanie", "mittens", "beanie"], 3)).toBe(0);
   });
   it("statsBlock on fake data", () => {
     const rs = [
