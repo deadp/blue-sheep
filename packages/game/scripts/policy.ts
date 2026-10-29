@@ -108,7 +108,8 @@ function keepValue(g: GameState, b: Brain, s: Sheep): number {
   return v;
 }
 
-function matingScore(g: GameState, b: Brain, ewe: Sheep, ram: Sheep, cache: Map<string, CrossDist>): number {
+/** A mating's worth to the farmer. While hunting a true blue lamb the fineness terms are dropped: only blue counts. */
+export function matingScore(g: GameState, b: Brain, ewe: Sheep, ram: Sheep, cache: Map<string, CrossDist>): number {
   const key = `${ewe.id}|${ram.id}`;
   let c = cache.get(key);
   if (!c) { c = b.cross(g, ewe.id, ram.id); cache.set(key, c); }
@@ -116,7 +117,7 @@ function matingScore(g: GameState, b: Brain, ewe: Sheep, ram: Sheep, cache: Map<
   const F = pedigreeOf(g).offspringInbreeding(ewe.id, ram.id);
   let v = (wantsTrueBlue(g) ? c.trueBlue * 10 : c.blue * 6 + c.trueBlue * 4) + (blueValue(b.doses(g, ewe)) + blueValue(b.doses(g, ram))) / 2 * 0.5;
   if (wantsTrueBlue(g) && c.learnBits) v += Math.min(2, c.learnBits);
-  if (act >= 2) v += act >= 4 ? -coarse((fin(ewe) + fin(ram)) / 2) * 1.5 : (FINE_REF - (fin(ewe) + fin(ram)) / 2) * 0.6;
+  if (act >= 2 && !wantsTrueBlue(g)) v += act >= 4 ? -coarse((fin(ewe) + fin(ram)) / 2) * 1.5 : (FINE_REF - (fin(ewe) + fin(ram)) / 2) * 0.6;
   if (act >= 3) v -= F * (act >= 4 ? 60 : 20);
   if (act >= 3 && !process.env["NORARE"]) v += (c.rare ?? 0) * (wantsFantasy(g) ? 30 : 15);
   for (const id of g.acceptedOrders) {

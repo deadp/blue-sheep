@@ -10,7 +10,7 @@ function toSpring(g: ReturnType<typeof newGame>) {
 }
 
 describe("visiting ram", () => {
-  it("is offered each spring from chapter 4 only", () => {
+  it("is offered each spring from chapter 3 only", () => {
     const g = newGame(50);
     for (let i = 0; i < 5; i++) advanceSeason(g);
     expect(g.visitingRam).toBeNull();
@@ -74,5 +74,20 @@ describe("visiting ram", () => {
     const id = g.visitingRam!.id;
     advanceSeason(g);
     expect(g.sheep[id]).toBeUndefined();
+  });
+
+  it("is unavailable before chapter 3 and offered from it", () => {
+    const early = newGame(53);
+    enterAct(early, 2, undefined, { grant: true });
+    expect(early.unlocks).not.toContain("visitor");
+    for (let i = 0; i < 8; i++) advanceSeason(early);
+    expect(early.visitingRam).toBeNull();
+    expect(() => hireVisitingRam(early)).toThrow(/No visiting rams/);
+
+    const g = newGame(53);
+    enterAct(g, 3, undefined, { grant: true });
+    expect(g.unlocks).toContain("visitor");
+    while (!g.visitingRam) advanceSeason(g);
+    expect(g.sheep[g.visitingRam.id]!.origin).toBe("visitor");
   });
 });
