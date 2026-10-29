@@ -249,7 +249,7 @@ describe("the vet's rare-gene screen", () => {
 
 describe("surprise lambs and the Rare wools record", () => {
   it("a carrier pair soon has a rare lamb: the report names it, the first is flagged, the codex record fills", () => {
-    const g = farm(51);
+    const g = farm(54);
     const steel = plantRareSheep(g, "steel");
     expect(g.rareSeen!["steel"]).toBe(g.season);
     // The steel lamb itself goes away (so the next steel lamb is the farm's first); its parents still carry the gene.

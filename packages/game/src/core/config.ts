@@ -262,11 +262,11 @@ export const ACTS: ActDef[] = [
   },
   {
     act: 3, title: "True blue", line: "Now, a blue one. That'd turn heads at the show.",
-    goalText: "Breed a true blue sheep, and win a ribbon (first to third) at the A&P show.", unlocks: ["numbers", "fair"], flockCap: 16,
+    goalText: "Breed a true blue sheep, and win a ribbon (first to third) at the A&P show.", unlocks: ["numbers", "fair", "visitor"], flockCap: 16,
   },
   {
     act: 4, title: "Fresh blood and rare wool", line: "Reckon you'll never beat my Romneys.",
-    goalText: "Shear your first fantasy fleece, and win first in any show class.", unlocks: ["tree", "visitor"], flockCap: 24,
+    goalText: "Shear your first fantasy fleece, and win first in any show class.", unlocks: ["tree"], flockCap: 24,
   },
   {
     act: 5, title: "The Golden Fleece", line: "A letter from the show committee: the Golden Fleece is open.",

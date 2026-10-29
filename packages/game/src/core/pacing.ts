@@ -15,7 +15,7 @@
  *   numbers  percentages and ranges: from chapter 3 (True blue).
  *   fair     the village fair: chapter 3, after the numbers.
  *   tree     the family tree: chapter 4.
- *   visitor  visiting rams: chapter 4, after the tree.
+ *   visitor  visiting rams: chapter 3, with the rare screen.
  * A dated concept always takes its own season. The others (cards, orders and the act concepts) arrive in the
  * first free season once they are ready: never in a season a dated concept is due, never two at once; when
  * several wait, they go in the order above. Foxes need the dogs concept (core/events.ts), so no fox ever
@@ -78,7 +78,7 @@ export const PACING: readonly PaceStep[] = [
   { id: "numbers", act: 3, intro: "You've a head for this now: forecasts show real percentages and ranges from here on." },
   { id: "fair", act: 3, intro: "The village fair comes round every autumn. Enter your best sheep for a prize — the board says what this year's judges want." },
   { id: "tree", act: 4, intro: "I found the old family book in the attic: open any sheep's family tree to see who's kin to whom." },
-  { id: "visitor", act: 4, intro: "Each spring a ram from over the hills can be hired for a season: fresh blood, but nothing known about him." },
+  { id: "visitor", act: 3, intro: "Each spring a ram from over the hills can be hired for a season: fresh blood, but nothing known about him." },
 ];
 
 export function paceStep(id: Unlock): PaceStep | undefined {
