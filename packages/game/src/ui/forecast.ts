@@ -1,7 +1,7 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
   ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, isAdult, isIll, lambRoom,
-  litterOf, longShotsOf, longShotNames, orList as orWords, NAMED_MIN, LONG_SHOT, oddsLabel, oddsText, pColour, ramLoad, woolOf,
+  CERTAIN, isLongShot, lambChanceText, learnBand, litterOf, longShotsOf, longShotNames, orList as orWords, NAMED_MIN, LONG_SHOT, MENTION_MIN, oddsHint, oddsLabel, percentText, pColour, ramLoad, shareWord, woolOf,
   type CrossForecast, type GameState, type Goal, type LambSwatch, type RareChance, type Sheep,
 } from "../core/index.js";
 import type { QuantForecast } from "@blue-sheep/inference";
@@ -22,6 +22,12 @@ export function tenths(dist: Record<string, number>): { key: string; p: number; 
   return counts.map(({ key, p, n }) => ({ key, p, n }));
 }
 
+/** `n` of `len` places spread evenly, so an icon does not look tied to one colour tile. */
+function spread(n: number, len: number, phase: number): number[] {
+  const k = Math.min(n, len);
+  return Array.from({ length: k }, (_, j) => Math.min(len - 1, Math.floor((j + phase) * len / k)));
+}
+
 /** One forecast lamb: its colour class (words, shade, key), and whether it is horned or spotted. */
 export interface LambLook { key: string; word: string; wool: string; hidden: boolean; trueBlue: boolean; pattern: string; horns: string; longShot?: boolean }
 
@@ -34,9 +40,11 @@ type LitterForecast = Pick<CrossForecast, "swatches" | "horns" | "pattern" | "tr
 export function litterLooks(f: LitterForecast): LambLook[] {
   const ten = litterOf(f.swatches);
   const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
-  let spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
-  const out: LambLook[] = ten.map((w, k) => ({ key: w.key, word: longShotNames(f.swatches).join(", ") || w.word, wool: w.hex, hidden: w.hidden, trueBlue: w.trueBlue, horns: k < hornedN ? "horned" : "polled", pattern: "solid" }));
-  for (let k = out.length - 1; k >= 0 && spottedN > 0; k--) if (!out[k]!.hidden) { out[k]!.pattern = "spotted"; spottedN--; }
+  const spottedN = Math.round((f.pattern["spotted"] ?? 0) * 10 + 1e-6);
+  const out: LambLook[] = ten.map((w) => ({ key: w.key, word: longShotNames(f.swatches).join(", ") || w.word, wool: w.hex, hidden: w.hidden, trueBlue: w.trueBlue, horns: "polled", pattern: "solid" }));
+  for (const k of spread(hornedN, out.length, 0.5)) out[k]!.horns = "horned";
+  const colourful = out.map((_, k) => k).filter((k) => !out[k]!.hidden);
+  for (const k of spread(spottedN, colourful.length, 0.25)) out[colourful[k]!]!.pattern = "spotted";
   return out;
 }
 
@@ -72,13 +80,14 @@ export function litterRow(state: GameState, f: LitterForecast, small = false, vi
   const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
   const spottedN = looks.filter((l) => l.pattern === "spotted").length;
   const extras: string[] = [];
-  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`)}</span>`);
-  if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);
+  const share = (p: number, what: string) => p >= CERTAIN ? `all ${what}` : isLongShot(p) ? `a long shot at ${what}` : `${fractionWords(p)} ${what}`;
+  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(share(f.horns["horned"] ?? 0, "horned"))}</span>`);
+  if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(share(f.pattern["spotted"] ?? 0, "spotted"))}</span>`);
   if (looks.some((l) => l.hidden)) extras.push(`<span class="xkey"><b class="lb q">?</b> white on top</span>`);
   const ls = small ? null : longShotLook(f);
-  const longTile = ls ? `<div class="litter-long">${lambTile(view, ls, 10)}<span class="ll-txt"><b>${icon("sparkle", "inl")} A long shot</b> on top of the ten: ${esc(orWords(longShotNames(f.swatches)))}</span></div>` : "";
+  const longTile = ls ? `<div class="litter-long">${lambTile(view, ls, 10)}<span class="ll-txt"><b>${icon("sparkle", "inl")} A long shot</b> outside the ten: ${esc(orWords(longShotNames(f.swatches)))}</span></div>` : "";
   return `<div class="litter ${small ? "small" : ""}" role="img" aria-label="${esc(litterWords(state, f))}">${tiles}</div>${longTile}
-    ${small ? "" : `<div class="litter-cap"><span class="each">Each lamb = one chance in ten</span>${extras.length ? `<span class="legend extras">${extras.join("")}</span>` : ""}</div>`}`;
+    ${small ? "" : `<div class="litter-cap"><span class="each">Each lamb = one chance in ten${ls ? "; long shots sit outside the ten" : ""}</span>${extras.length ? `<span class="legend extras">${extras.join("")}</span>` : ""}</div>`}`;
 }
 
 /** The colour key for a litter: each colour's share in words ("3 in 10"), or % with numbers, and the rare ones. */
@@ -88,7 +97,7 @@ export function litterKey(state: GameState, f: Pick<CrossForecast, "swatches">, 
   const n = (key: string) => ten.filter((w) => w.key === key).length;
   const longs = longShotsOf(f.swatches);
   const isLong = (key: string) => longs.some((w) => w.key === key);
-  const rare = f.swatches.filter((w) => n(w.key) === 0 && w.p > 0.005 && !isLong(w.key)).slice(0, 3).map((w) => w.word);
+  const rare = f.swatches.filter((w) => n(w.key) === 0 && w.p > MENTION_MIN && !isLong(w.key)).slice(0, 3).map((w) => w.word);
   const keyArt = (w: LambSwatch) => {
     let src = "";
     try { src = view?.lambArt?.({ wool: w.hex, pattern: "solid", horns: "polled" }) ?? ""; } catch { src = ""; }
@@ -97,29 +106,31 @@ export function litterKey(state: GameState, f: Pick<CrossForecast, "swatches">, 
   const shown = f.swatches.filter((w) => !isLong(w.key) && (n(w.key) > 0 || (nums && w.p >= 0.01)));
   const legend = shown.map((w) => {
     const k = n(w.key);
-    return `<span class="key">${keyArt(w)}<span><span class="k-name">${esc(w.hidden ? "white (colour hidden)" : w.word)}</span> <span class="k-n">${nums ? `${w.p < 0.01 ? "<1" : Math.round(w.p * 100)}%` : k === 10 ? "every lamb" : `${k} in 10`}</span></span></span>`;
+    return `<span class="key">${keyArt(w)}<span><span class="k-name">${esc(w.hidden ? "white (colour hidden)" : w.word)}</span> <span class="k-n">${nums ? `${percentText(w.p)}` : k === 10 ? "every lamb" : `${k} in 10`}</span></span></span>`;
   }).join("");
   const lp = longs.reduce((a, w) => a + w.p, 0);
-  const longKey = longs.length ? `<span class="key long"><b class="k-long" style="--wool:${esc(longs[0]!.hex)}" aria-hidden="true">${icon("sparkle")}</b><span><span class="k-name">A long shot</span> <span class="k-n">${esc(orWords(longShotNames(f.swatches)))}${nums ? ` · ${lp < 0.01 ? "<1" : Math.round(lp * 100)}%` : ""}</span></span></span>` : "";
+  const longKey = longs.length ? `<span class="key long"><b class="k-long" style="--wool:${esc(longs[0]!.hex)}" aria-hidden="true">${icon("sparkle")}</b><span><span class="k-name">A long shot</span> <span class="k-n">${esc(orWords(longShotNames(f.swatches)))}${nums ? ` · ${percentText(lp)}` : ""}</span></span></span>` : "";
   const rareNote = rare.length && !nums ? `<div class="meta rare">A ${esc(orWords(rare))} lamb could happen, but rarely.</div>` : "";
   return `<div class="legend">${legend}${longKey}</div>${rareNote}`;
 }
 
 /** "mostly snow-white, about one in ten bright red". Percentages only with numbers. */
 export function litterWords(state: GameState, f: Pick<CrossForecast, "swatches" | "trueBlue">): string {
-  const e = f.swatches.filter((w) => w.p > 0.005);
+  const e = f.swatches.filter((w) => w.p > MENTION_MIN);
   if (!e.length) return "unknown";
   const nums = numbersOn(state);
-  const w = (c: string, p: number) => nums ? `${Math.round(p * 100)}% ${c}` : p >= 0.95 ? `all ${c}` : p < NAMED_MIN ? `a long shot at ${c}` : `${fractionWords(p)} ${c}`;
+  const w = (c: string, p: number) => nums ? `${percentText(p)} ${c}` : p >= CERTAIN ? `all ${c}` : p < NAMED_MIN ? `a long shot at ${c}` : `${fractionWords(p)} ${c}`;
   const named = e.filter((x) => x.p >= NAMED_MIN);
   const [top, ...rest] = named.length ? named : e;
-  const head = top!.p >= 0.95 ? (nums ? w(top!.word, top!.p) : `all ${top!.word}`) : top!.p >= 0.6 ? `mostly ${top!.word}` : w(top!.word, top!.p);
-  const tail = rest.slice(0, 2).map((x) => w(x.word, x.p));
+  const share = shareWord(top!.p, "all");
+  const head = share && !nums ? `${share} ${top!.word}` : w(top!.word, top!.p);
+  const tail = rest.slice(0, 3).map((x) => w(x.word, x.p));
+  if (rest.length > 3) tail.push("a couple of others");
   // Long shots: the same names the hint line and the marker swatch use (core `longShotNames`).
   const longs = longShotNames(f.swatches);
   if (named.length && longs.length) tail.push(`a long shot at ${orWords(longs)}`);
   const tbP = f.swatches.filter((x) => x.trueBlue).reduce((a, x) => a + x.p, 0);
-  if (tbP >= NAMED_MIN && !named.slice(0, 3).some((x) => x.trueBlue)) tail.push(w("true blue", f.trueBlue));
+  if (tbP >= NAMED_MIN && !named.slice(0, 4).some((x) => x.trueBlue)) tail.push(w("true blue", f.trueBlue));
   return [head, ...tail].join(", ");
 }
 
@@ -133,7 +144,7 @@ export function rareWords(state: GameState, r: RareChance): string {
   const lead = r.p >= LONG_SHOT ? `${fractionWords(r.p, "lamb")[0]!.toUpperCase()}${fractionWords(r.p, "lamb").slice(1)} could have ${what}` : `${oddsLabel(r.p)} at ${what}`;
   const wide = r.hi > 0.02 && r.hi - r.lo > Math.max(0.05, r.p);
   const band = wide ? `, but the records leave it open: from ${r.lo < 0.01 ? "none" : fractionWords(r.lo, "lamb")} to ${fractionWords(r.hi, "lamb")}` : "";
-  const n = nums ? ` · ${r.p < 0.01 ? "<1" : Math.round(r.p * 100)}%${wide ? ` (${Math.round(r.lo * 100)}–${Math.round(r.hi * 100)}%)` : ""}` : "";
+  const n = nums ? ` · ${percentText(r.p)}${wide ? ` (${Math.round(r.lo * 100)}–${Math.round(r.hi * 100)}%)` : ""}` : "";
   return `${lead}${band}${n}`;
 }
 
@@ -203,12 +214,15 @@ export function relationText(r: number, F: number): { text: string; warn: string
   return { text: label, warn };
 }
 
-function woolHint(state: GameState, f: CrossForecast): string {
+/** "likely" from about one flock SD away, "may be" for a smaller lean, "likely <average>" inside 0.4 SD. */
+const leanWord = (d: number, average: string, less: string, more: string): string =>
+  Math.abs(d) < 0.4 ? `likely ${average}` : `${Math.abs(d) < 1 ? "may be" : "likely"} ${d < 0 ? less : more}`;
+
+export function woolHint(state: GameState, f: CrossForecast): string {
   const fin = flockStats(state, "fineness"), fw = flockStats(state, "fleeceWeight");
   const dF = (f.fineness.mean - fin.mean) / fin.sd, dW = (f.fleeceWeight.mean - fw.mean) / fw.sd;
-  const finW = dF < -0.4 ? "finer than most of the flock" : dF > 0.4 ? "coarser than most" : "about average";
-  const fwW = dW > 0.4 ? "heavier fleeces" : dW < -0.4 ? "lighter fleeces" : "ordinary fleeces";
-  return `Wool: likely ${finW}, with ${fwW}.`;
+  const rough = Math.min(f.fineness.h2.pairs, f.fleeceWeight.h2.pairs) < 4 ? " (only a rough guess)" : "";
+  return `Wool: ${leanWord(dF, "about average", "finer than most of the flock", "coarser than most")}; fleeces ${leanWord(dW, "ordinary", "lighter", "heavier")}${rough}.`;
 }
 
 /** The chance a goal tab is after, for one forecast. */
@@ -224,15 +238,15 @@ function goalLine(f: CrossForecast, goal: Goal): string {
   if (!c) return goal === "trueblue" ? f.blueText : f.colourText;
   const p = goalChance(f, goal) ?? 0;
   const what = c === "vivid" ? "a vivid colour" : `${c}, bright or better`;
-  return p <= 0 ? `No lambs ${what}, as far as you know. ${f.colourText}` : `${oddsText(p, "lamb").replace(/\.$/, "")} would be ${what}. ${f.colourText}`;
+  return `${lambChanceText(p, what, `a lamb could be ${what}`, `No lambs ${what}, as far as you know.`)} ${f.colourText}`;
 }
 
 export function hintFor(state: GameState, f: CrossForecast, goal: Goal): string {
   const nums = numbersOn(state);
   const p = goalChance(f, goal);
-  if (p !== null) return nums ? `${Math.round(p * 100)}%` : p <= 0 ? "no" : oddsLabel(p).toLowerCase().replace("possible, but don't count on it", "possible").replace("unlikely, but it happens", "unlikely");
+  if (p !== null) return nums ? percentText(p) : oddsHint(p);
   switch (goal) {
-    case "learn": return f.learnBits * 2 > 2 ? "loads" : f.learnBits * 2 > 1 ? "a lot" : f.learnBits > 0.02 ? "a little" : "—";
+    case "learn": return learnBand(f.learnBits).hint;
     case "fine": return nums ? `${f.fineness.mean.toFixed(1)} µm` : "";
     case "heavy": return nums ? `${f.fleeceWeight.mean.toFixed(1)} kg` : "";
     default: return "";

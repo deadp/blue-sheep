@@ -34,7 +34,7 @@ export { enterFair, forecastFair, fairScore, fairOdds, fieldMean } from "./fair.
 export { hireVisitingRam, forecastVisitor } from "./visitor.js";
 export { announceText, eventPool, ownedDogs, predatorRisk, dogGuardChance, foxGuard, type Predator } from "./events.js";
 export {
-  forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, learnText, colourText, colourClasses,
+  forecastCross, candidates, rankCandidates, scoreCross, flockStats, traitRecords, blueText, lambChanceText, learnText, colourText, colourClasses,
   litterOf, longShotsOf, longShotNames, orList, NAMED_MIN, pColour, goalColour, GOALS, forecastRare, type Goal,
 } from "./forecast.js";
 export {
@@ -46,7 +46,7 @@ export { familyTree, type FamilyTree, type TreeNode, type AncestorNode, type Des
 export {
   currentAct, actInfo, isEnding, markEndingShown, registryStatus, enterAct, checkActAdvance, checkEnding, type RegistryStatus,
 } from "./acts.js";
-export { oddsText, oddsLabel, fractionWords, LONG_SHOT, isLongShot } from "./words.js";
+export { oddsText, oddsLabel, oddsHint, percentText, shareWord, learnBand, fractionWords, LONG_SHOT, MENTION_MIN, ALMOST, CERTAIN, isLongShot } from "./words.js";
 export {
   personalityOf, personalityFromBoldness, personalityLine, flavoursOf, PERSONALITY_WORD, PERSONALITY_ICON,
   type Personality, type Flavour,
