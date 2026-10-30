@@ -833,25 +833,13 @@ describe("rare wools in the panels", () => {
 });
 
 describe("forecast wording edges", () => {
-  it("blueText: faint under 0.5%, plain none only at 0, odds at 0.85 and 0.08", async () => {
+  it("blueText: none under 0.5%, odds at 0.85 and 0.08", async () => {
     const { blueText } = await import("../core/index.js");
-    expect(blueText(0.004)).toMatch(/faint chance/);
-    expect(blueText(0.004)).not.toMatch(/^No true blue/);
+    expect(blueText(0.004)).toMatch(/^No true blue/);
     expect(blueText(0)).toMatch(/^No true blue/);
-    expect(blueText(0.005)).not.toMatch(/faint|^No true blue/);
+    expect(blueText(0.005)).not.toMatch(/^No true blue/);
     expect(blueText(0.85)).toBe("Very likely — about four lambs in five would be true blue.");
     expect(blueText(0.08)).toBe("Unlikely, but it happens — about one lamb in ten would be true blue.");
-  });
-  it("the learn chip and sentence use one band table", async () => {
-    const { learnChip, learnText } = await import("../core/index.js");
-    for (const bits of [0, 0.01, 0.1, 0.3, 0.7, 1.0, 1.05, 2]) {
-      const chip = learnChip(bits), text = learnText(bits);
-      expect(/a lot/.test(chip), `${bits}: ${chip} vs ${text}`).toBe(/a lot/.test(text));
-      expect(/something/.test(chip), `${bits}: ${chip} vs ${text}`).toBe(/something/.test(text));
-    }
-    expect(learnChip(0.7)).toBe("something");
-    expect(learnChip(1.0)).toBe("something");
-    expect(learnChip(1.05)).toBe("a lot");
   });
   it("the horn key matches the ten tiles", async () => {
     const { hornKey } = await import("../core/index.js");

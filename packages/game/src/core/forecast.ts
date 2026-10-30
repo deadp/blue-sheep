@@ -14,7 +14,7 @@ import { bandRank, dressWool, type Band } from "./colour.js";
 import { lambOutcomesBySample, posteriors } from "./knowledge.js";
 import { RARE } from "./rare.js";
 import { canBreed, isAdult, pedigreeOf } from "./state.js";
-import { fractionWords, learnSentence, LONG_SHOT, oddsLabel } from "./words.js";
+import { ALMOST, CERTAIN, fractionWords, learnBand, LONG_SHOT, MENTION_MIN, oddsLabel, shareWord } from "./words.js";
 import type { CrossForecast, GameState, LambSwatch, RareChance, Sheep } from "./types.js";
 
 /**
@@ -55,31 +55,43 @@ function knownDepth(state: GameState, s: Sheep, flockMean: number): number {
   return s.phenotype["white"] === "white" ? flockMean : Number(s.phenotype["depth"] ?? flockMean);
 }
 
-export function blueText(p: number): string {
-  if (p <= 0) return "No true blue lambs from this pair, as far as you know.";
-  if (p < 0.005) return "Only a faint chance of a true blue lamb.";
-  if (p < LONG_SHOT) return `${oddsLabel(p)} — a true blue lamb is possible, but rare.`;
-  if (p >= 0.95) return "Every lamb should be true blue.";
-  return `${oddsLabel(p)} — ${fractionWords(p, "lamb")} would be true blue.`;
+/**
+ * One sentence on the chance a lamb is `be` ("true blue", "a vivid colour"). Never surer than the odds: "every" only
+ * from `CERTAIN`, "almost every" from `ALMOST`, nothing at all under `MENTION_MIN`.
+ */
+export function lambChanceText(p: number, be: string, possible: string, none: string): string {
+  if (p < MENTION_MIN) return none;
+  if (p < LONG_SHOT) return `${oddsLabel(p)} — ${possible}, but rare.`;
+  if (p >= CERTAIN) return `Every lamb should be ${be}.`;
+  if (p >= ALMOST) return `Almost every lamb should be ${be}.`;
+  return `${oddsLabel(p)} — ${fractionWords(p, "lamb")} would be ${be}.`;
 }
 
-export const learnText = learnSentence;
+export function blueText(p: number): string {
+  return lambChanceText(p, "true blue", "a true blue lamb is possible", "No true blue lambs from this pair, as far as you know.");
+}
+
+export function learnText(bits: number): string {
+  return learnBand(bits).text;
+}
 
 /**
  * "Most lambs snow-white, about one in ten bright red, a long shot at true blue." Classes at `NAMED_MIN` or better
  * are named with odds (and have a swatch in `litterOf`); rarer ones are only ever "a long shot".
  */
 export function colourText(f: Pick<CrossForecast, "swatches" | "trueBlue">): string {
-  const live = f.swatches.filter((w) => w.p > 0.005);
+  const live = f.swatches.filter((w) => w.p > MENTION_MIN);
   if (!live.length) return "Nobody can say yet what colour the lambs will be.";
-  const named = live.filter((w) => w.p >= NAMED_MIN).slice(0, 3);
-  const w = (s: LambSwatch) => s.p >= 0.95 ? `every lamb ${s.word}` : s.p >= 0.6 ? `most lambs ${s.word}` : `${fractionWords(s.p)} ${s.word}`;
+  const allNamed = live.filter((w) => w.p >= NAMED_MIN);
+  const named = allNamed.slice(0, 4);
+  const w = (s: LambSwatch) => { const share = shareWord(s.p, "lamb"); return share ? `${share} ${s.word}` : `${fractionWords(s.p)} ${s.word}`; };
   const parts = named.map(w);
+  if (allNamed.length > named.length) parts.push("a couple of others");
   // The long shots come from `longShotNames`, the one list the litter's marker swatch uses too.
   const longs = longShotNames(f.swatches);
   const tbP = f.swatches.filter((s) => s.trueBlue).reduce((a, s) => a + s.p, 0);
   // A true blue chance too small for any swatch (under half a percent) is still worth a mention.
-  if (f.trueBlue > 0 && tbP < NAMED_MIN && !longs.includes("true blue") && !named.some((s) => s.trueBlue) && live.some((s) => s.p >= NAMED_MIN)) longs.unshift("true blue");
+  if (f.trueBlue >= MENTION_MIN && tbP < NAMED_MIN && !longs.includes("true blue") && !named.some((s) => s.trueBlue) && live.some((s) => s.p >= NAMED_MIN)) longs.unshift("true blue");
   if (longs.length) parts.push(`a long shot at ${orList(longs)}`);
   else if (!named.length) {
     // A diffuse forecast (nothing reaches NAMED_MIN) keeps all its tiles; name its likeliest class.
@@ -172,7 +184,7 @@ export function litterOf(swatches: LambSwatch[]): LambSwatch[] {
  */
 export function longShotsOf(swatches: LambSwatch[]): LambSwatch[] {
   if (!swatches.some((s) => s.p >= NAMED_MIN)) return [];
-  return swatches.filter((s) => s.p > 0.005 && s.p < NAMED_MIN).sort((a, b) => Number(b.trueBlue) - Number(a.trueBlue) || b.p - a.p);
+  return swatches.filter((s) => s.p > MENTION_MIN && s.p < NAMED_MIN).sort((a, b) => Number(b.trueBlue) - Number(a.trueBlue) || b.p - a.p);
 }
 
 /**
