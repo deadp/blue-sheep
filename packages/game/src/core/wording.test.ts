@@ -44,7 +44,9 @@ describe("forecast wording is tied to its odds range", () => {
     expect(blueText(0.96)).toBe("Almost every lamb should be true blue.");
     expect(blueText(0.994)).toBe("Almost every lamb should be true blue.");
     expect(blueText(0.995)).toBe("Every lamb should be true blue.");
-    expect(blueText(0.0049)).toMatch(/^No true blue/);
+    expect(blueText(0.004)).toMatch(/^A faint chance/);
+    expect(blueText(1e-6)).toMatch(/^A faint chance/);
+    expect(blueText(0)).toMatch(/^No true blue/);
     expect(oddsText(1e-8)).toBe("Next to no chance, as far as you know.");
     for (let p = 0; p < 1; p += 0.0005) expect(oddsLabel(p)).not.toMatch(/very long shot|As good as/);
   });
@@ -83,10 +85,14 @@ describe("forecast wording is tied to its odds range", () => {
     expect(at(0.024)).toEqual(["nothing new", "—", "This lamb would teach you little new."]);
     expect(at(0.025)[0]).toBe("a little");
     expect(at(0.299)[0]).toBe("a little");
-    expect(at(0.3)).toEqual(["a fair bit", "a fair bit", "You would learn something from this lamb."]);
+    expect(at(0.3)).toEqual(["a fair bit", "a fair bit", "You would learn a fair bit from this lamb."]);
     expect(at(0.699)[0]).toBe("a fair bit");
     expect(at(0.7)[0]).toBe("a lot");
-    expect(at(1.049)[2]).toBe("You would learn something from this lamb.");
-    expect(at(1.05)).toEqual(["loads", "loads", "You would learn a lot from this lamb."]);
+    expect(at(1.049)[2]).toBe("You would learn a lot from this lamb.");
+    expect(at(1.05)).toEqual(["loads", "loads", "You would learn loads from this lamb."]);
+  });
+
+  it("learn chip and sentence agree", () => {
+    for (const bits of [0.7, 1.0]) expect(learnText(bits)).toContain(learnBand(bits).hint);
   });
 });

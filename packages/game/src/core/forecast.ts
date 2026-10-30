@@ -68,6 +68,7 @@ export function lambChanceText(p: number, be: string, possible: string, none: st
 }
 
 export function blueText(p: number): string {
+  if (p > 0 && p < MENTION_MIN) return "A faint chance — a true blue lamb is possible, but very rare.";
   return lambChanceText(p, "true blue", "a true blue lamb is possible", "No true blue lambs from this pair, as far as you know.");
 }
 

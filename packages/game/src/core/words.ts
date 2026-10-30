@@ -73,9 +73,9 @@ export function shareWord(p: number, kind: "lamb" | "all"): string | null {
 
 /** The one cut-off table for "how much would this teach you" (bits): the meter word, the hint chip and the sentence. */
 const LEARN_BANDS: { min: number; word: string; hint: string; text: string }[] = [
-  { min: 1.05, word: "loads", hint: "loads", text: "You would learn a lot from this lamb." },
-  { min: 0.7, word: "a lot", hint: "a lot", text: "You would learn something from this lamb." },
-  { min: 0.3, word: "a fair bit", hint: "a fair bit", text: "You would learn something from this lamb." },
+  { min: 1.05, word: "loads", hint: "loads", text: "You would learn loads from this lamb." },
+  { min: 0.7, word: "a lot", hint: "a lot", text: "You would learn a lot from this lamb." },
+  { min: 0.3, word: "a fair bit", hint: "a fair bit", text: "You would learn a fair bit from this lamb." },
   { min: 0.025, word: "a little", hint: "a little", text: "This lamb would teach you little new." },
   { min: -Infinity, word: "nothing new", hint: "—", text: "This lamb would teach you little new." },
 ];

@@ -833,9 +833,9 @@ describe("rare wools in the panels", () => {
 });
 
 describe("forecast wording edges", () => {
-  it("blueText: none under 0.5%, odds at 0.85 and 0.08", async () => {
+  it("blueText: none only at 0, faint under 0.5%, odds at 0.85 and 0.08", async () => {
     const { blueText } = await import("../core/index.js");
-    expect(blueText(0.004)).toMatch(/^No true blue/);
+    expect(blueText(0.004)).toMatch(/^A faint chance/);
     expect(blueText(0)).toMatch(/^No true blue/);
     expect(blueText(0.005)).not.toMatch(/^No true blue/);
     expect(blueText(0.85)).toBe("Very likely — about four lambs in five would be true blue.");
@@ -857,6 +857,11 @@ describe("forecast wording edges", () => {
     const fin = flockStats(g, "fineness");
     const avg = { ...f, fineness: { ...f.fineness, mean: fin.mean + 0.1 * fin.sd } };
     expect(woolHint(g, avg)).toContain("about average");
+    const near = { ...f, fineness: { ...f.fineness, mean: fin.mean + 0.35 * fin.sd } };
+    expect(woolHint(g, near)).toContain("likely about average");
+    const lean = { ...f, fineness: { ...f.fineness, mean: fin.mean + 0.6 * fin.sd } };
+    expect(woolHint(g, lean)).toContain("may be coarser than most");
+    expect(woolHint(g, { ...f, fineness: { ...f.fineness, mean: fin.mean - 0.6 * fin.sd } })).toContain("may be finer than most");
     const q = { ...f.fineness, h2: { ...f.fineness.h2, pairs: 3 } };
     const marks = { ewe: { value: 1, art: "", name: "A" }, ram: { value: 2, art: "", name: "B" }, flock: 1.5 };
     expect(rangeBar(g, "Fineness", "µm", q, 0, 3, marks, ["finer", "coarser"])).toContain("Only a rough guess");
