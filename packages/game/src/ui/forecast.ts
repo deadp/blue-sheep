@@ -1,6 +1,6 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
-  ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, isAdult, isIll, lambRoom,
+  ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, hornKey, learnChip, isAdult, isIll, lambRoom,
   litterOf, longShotsOf, longShotNames, orList as orWords, NAMED_MIN, LONG_SHOT, oddsLabel, oddsText, pColour, ramLoad, woolOf,
   type CrossForecast, type GameState, type Goal, type LambSwatch, type RareChance, type Sheep,
 } from "../core/index.js";
@@ -72,7 +72,7 @@ export function litterRow(state: GameState, f: LitterForecast, small = false, vi
   const hornedN = Math.round((f.horns["horned"] ?? 0) * 10 + 1e-6);
   const spottedN = looks.filter((l) => l.pattern === "spotted").length;
   const extras: string[] = [];
-  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(hornedN >= 10 ? "all horned" : `${fractionWords(f.horns["horned"] ?? 0)} horned`)}</span>`);
+  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(hornKey(f.horns["horned"] ?? 0))}</span>`);
   if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(spottedN >= 10 ? "all spotted" : `${fractionWords(f.pattern["spotted"] ?? 0)} spotted`)}</span>`);
   if (looks.some((l) => l.hidden)) extras.push(`<span class="xkey"><b class="lb q">?</b> white on top</span>`);
   const ls = small ? null : longShotLook(f);
@@ -203,7 +203,7 @@ export function relationText(r: number, F: number): { text: string; warn: string
   return { text: label, warn };
 }
 
-function woolHint(state: GameState, f: CrossForecast): string {
+export function woolHint(state: GameState, f: CrossForecast): string {
   const fin = flockStats(state, "fineness"), fw = flockStats(state, "fleeceWeight");
   const dF = (f.fineness.mean - fin.mean) / fin.sd, dW = (f.fleeceWeight.mean - fw.mean) / fw.sd;
   const finW = dF < -0.4 ? "finer than most of the flock" : dF > 0.4 ? "coarser than most" : "about average";
@@ -219,12 +219,13 @@ function goalChance(f: CrossForecast, goal: Goal): number | null {
 }
 
 /** The goal's hint line in words. */
-function goalLine(f: CrossForecast, goal: Goal): string {
+export function goalLine(f: CrossForecast, goal: Goal): string {
   const c = goalColour(goal);
   if (!c) return goal === "trueblue" ? f.blueText : f.colourText;
   const p = goalChance(f, goal) ?? 0;
   const what = c === "vivid" ? "a vivid colour" : `${c}, bright or better`;
-  return p <= 0 ? `No lambs ${what}, as far as you know. ${f.colourText}` : `${oddsText(p, "lamb").replace(/\.$/, "")} would be ${what}. ${f.colourText}`;
+  if (p >= 0.95) return `Every lamb should be ${what}. ${f.colourText}`;
+  return p <= 0 ? `No lambs ${what}, as far as you know. ${f.colourText}` :`${oddsText(p, "lamb").replace(/\.$/, "")} would be ${what}. ${f.colourText}`;
 }
 
 export function hintFor(state: GameState, f: CrossForecast, goal: Goal): string {
@@ -232,7 +233,7 @@ export function hintFor(state: GameState, f: CrossForecast, goal: Goal): string 
   const p = goalChance(f, goal);
   if (p !== null) return nums ? `${Math.round(p * 100)}%` : p <= 0 ? "no" : oddsLabel(p).toLowerCase().replace("possible, but don't count on it", "possible").replace("unlikely, but it happens", "unlikely");
   switch (goal) {
-    case "learn": return f.learnBits * 2 > 2 ? "loads" : f.learnBits * 2 > 1 ? "a lot" : f.learnBits > 0.02 ? "a little" : "—";
+    case "learn": return learnChip(f.learnBits);
     case "fine": return nums ? `${f.fineness.mean.toFixed(1)} µm` : "";
     case "heavy": return nums ? `${f.fleeceWeight.mean.toFixed(1)} kg` : "";
     default: return "";

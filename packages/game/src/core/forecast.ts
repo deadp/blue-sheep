@@ -14,7 +14,7 @@ import { bandRank, dressWool, type Band } from "./colour.js";
 import { lambOutcomesBySample, posteriors } from "./knowledge.js";
 import { RARE } from "./rare.js";
 import { canBreed, isAdult, pedigreeOf } from "./state.js";
-import { fractionWords, LONG_SHOT, oddsLabel } from "./words.js";
+import { fractionWords, learnSentence, LONG_SHOT, oddsLabel } from "./words.js";
 import type { CrossForecast, GameState, LambSwatch, RareChance, Sheep } from "./types.js";
 
 /**
@@ -57,16 +57,13 @@ function knownDepth(state: GameState, s: Sheep, flockMean: number): number {
 
 export function blueText(p: number): string {
   if (p <= 0) return "No true blue lambs from this pair, as far as you know.";
+  if (p < 0.005) return "Only a faint chance of a true blue lamb.";
   if (p < LONG_SHOT) return `${oddsLabel(p)} — a true blue lamb is possible, but rare.`;
   if (p >= 0.95) return "Every lamb should be true blue.";
   return `${oddsLabel(p)} — ${fractionWords(p, "lamb")} would be true blue.`;
 }
 
-export function learnText(bits: number): string {
-  if (bits > 1) return "You would learn a lot from this lamb.";
-  if (bits > 0.3) return "You would learn something from this lamb.";
-  return "This lamb would teach you little new.";
-}
+export const learnText = learnSentence;
 
 /**
  * "Most lambs snow-white, about one in ten bright red, a long shot at true blue." Classes at `NAMED_MIN` or better

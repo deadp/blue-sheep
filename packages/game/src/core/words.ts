@@ -50,3 +50,21 @@ export function plural(n: number, word: string): string {
 export function numberWord(n: number): string {
   return NUM[n] ?? String(n);
 }
+
+/** Learning bands, one table for the chip word and the sentence so they never disagree. */
+const LEARN_BANDS: { above: number; chip: string; text: string }[] = [
+  { above: 1, chip: "a lot", text: "You would learn a lot from this lamb." },
+  { above: 0.3, chip: "something", text: "You would learn something from this lamb." },
+  { above: 0.02, chip: "a little", text: "This lamb would teach you little new." },
+];
+const LEARN_NONE = { chip: "—", text: "This lamb would teach you little new." };
+const learnBand = (bits: number) => LEARN_BANDS.find((b) => bits > b.above) ?? LEARN_NONE;
+export const learnChip = (bits: number): string => learnBand(bits).chip;
+export const learnSentence = (bits: number): string => learnBand(bits).text;
+
+/** The horned key beside the ten tiles: matches how many tiles are horned (ten from 95%). */
+export function hornKey(p: number): string {
+  if (p >= 0.995) return "all horned";
+  if (p >= 0.95) return "almost all horned";
+  return `${fractionWords(p)} horned`;
+}
