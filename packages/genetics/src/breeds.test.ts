@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BREED_IDS, BREEDS, breedFreqs, expectedTraitMean, sampleBreedFounder, type BreedId } from "./breeds.js";
+import { BREED_IDS, BREEDS, RARE_ALLELE_SCALE, breedFreqs, expectedTraitMean, sampleBreedFounder, type BreedId } from "./breeds.js";
 import { colourInputFromPhenotype, woolColour } from "./colour.js";
 import { mate } from "./meiosis.js";
 import { createRng } from "./rng.js";
@@ -61,6 +61,21 @@ describe("breeds: colour and special genes", () => {
     expect(founders("drysdale").every((p) => p["hair"] === "hairy" && p["horns"] === "horned")).toBe(true);
     expect(founders("icelandic").every((p) => p["coat"] === "double")).toBe(true);
     expect(founders("merino").some((p) => p["hair"] === "hairy" || p["coat"] === "double")).toBe(false);
+  });
+
+  it("rare alleles: the scale is pinned at 4, twice the previous 2", () => {
+    expect(RARE_ALLELE_SCALE).toBe(4);
+    const previousScale = 2;
+    expect(RARE_ALLELE_SCALE).toBe(previousScale * 2);
+  });
+
+  it("every breed's fantasy-locus frequency is exactly twice what the previous scale gave", () => {
+    const previousScale = 2;
+    for (const id of BREED_IDS) {
+      for (const [locus, base] of Object.entries(BREEDS[id].fantasy)) {
+        expect(breedFreqs(id)[locus]![1], `${id} ${locus}`).toBeCloseTo(2 * (base as number) * previousScale, 12);
+      }
+    }
   });
 
   it("pōhutukawa is sport-only: no breed carries it", () => {

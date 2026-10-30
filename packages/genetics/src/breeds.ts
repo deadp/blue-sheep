@@ -58,9 +58,10 @@ export interface BreedSpec {
 
 /**
  * Multiplier on every breed's `fantasy` frequencies: market stock, visiting rams and the founder pool all draw from `breedFreqs`.
- * Was 1 (tables below: steel 0.03, pāua 0.015, glow-worm/cloud/southern 0.02); now 2, so steel runs 6 %.
+ * Was 1 (tables below: steel 0.03, pāua 0.015, glow-worm/cloud/southern 0.02), then 2; now 4, so steel runs 12 %.
+ * To revert, set it back to 2.
  */
-export const RARE_ALLELE_SCALE = 2;
+export const RARE_ALLELE_SCALE = 4;
 
 export const BREEDS: Record<BreedId, BreedSpec> = {
   farm: {
