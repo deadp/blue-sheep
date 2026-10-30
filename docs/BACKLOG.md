@@ -263,3 +263,9 @@ existing saves), then implementation in phases, each probe-verified.
 - Complete game v1 (45dab0f).
 
 - v3 Phase 4 balance pass (separate commit): `RAW_STEP` 0.005 to 0.002; sim policy keeps a feed reserve in non-shearing seasons (wool now pays only in spring and autumn). Oracle 30 seeds: ending 97% (before Phase 4: 93%), median end money 1399 (462). Blind 30 seeds: ending 70% (90%), first true blue 26/30 median season 14 (27/30, 13), median end money 1130 (413), money after season 8 / year 5 78 / 85 (90 / 143). Blind ending dips are act-4 fineness and inbreeding stalls, not money; breed prices untouched. Open: tune blind-brain keep rules for the new market.
+
+## Dependency audit (still to do)
+
+- 2026-10-30: `npm audit`, `npm outdated` and `npm run probe` could not run in the queue worker (refused as needing approval), so no audit results exist, no probe screenshots were checked, and no dependencies were updated. `package.json` and the lockfile are unchanged.
+- To do: run `npm audit` and `npm outdated`, apply safe patch and minor updates in small separate commits (no Vite or Three.js major bump, no added or removed dependencies), then run `npm test`, `npm run typecheck` and `npm run probe` and check the probe screenshots.
+- State at this point: `npm test` 392 passed, `npm run typecheck` clean. `complete-game` matches `origin/complete-game` (9b84498), so no unpushed work on the default branch.
