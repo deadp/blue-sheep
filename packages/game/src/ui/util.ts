@@ -1,6 +1,6 @@
 /** Small shared bits for panel HTML: escaping, swatches, dots, pips, words. No DOM. */
 import {
- RARE, rareDef, rareWoolOf, ageOf, finenessWord, strengthFraction, strengthWord, WOOL_TYPE_BLURB, fleeceWords, breedFractions, breedLine, fondnessHearts, fondnessWord, isAdult, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, woolOf, type GameState, type Sheep, type Unlock,
+ RARE, rareDef, rareWoolOf, ageOf, finenessWord, strengthFraction, strengthWord, WOOL_TYPE_BLURB, fleeceWords, breedFractions, breedLine, fondnessHearts, fondnessWord, isAdult, learnBand, oddsLabel, personalityOf, PERSONALITY_WORD, seasonLabel, woolOf, type GameState, type Sheep, type Unlock,
 } from "../core/index.js";
 import { icon, type IconName } from "./felt/icons.js";
 import { tag } from "./felt/components.js";
@@ -117,7 +117,7 @@ export function learnMeter(v: number, word: string, o: MeterOptions = {}): strin
 
 /** A word for a learn-meter value. */
 export function learnWord(v: number): string {
-  return v <= 0.02 ? "nothing new" : v < 0.25 ? "a little" : v < 0.55 ? "a fair bit" : v < 0.85 ? "a lot" : "loads";
+  return learnBand(v / 0.8).word;
 }
 
 /** Odds meter (kept name): segments always, the percentage only with numbers. */
