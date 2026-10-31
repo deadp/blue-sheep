@@ -46,7 +46,7 @@ export { familyTree, type FamilyTree, type TreeNode, type AncestorNode, type Des
 export {
   currentAct, actInfo, isEnding, markEndingShown, registryStatus, enterAct, checkActAdvance, checkEnding, type RegistryStatus,
 } from "./acts.js";
-export { oddsText, oddsLabel, oddsHint, percentText, shareWord, learnBand, fractionWords, LONG_SHOT, MENTION_MIN, ALMOST, CERTAIN, isLongShot } from "./words.js";
+export { oddsText, oddsLabel, oddsHint, percentText, shareWord, learnBand, fractionWords, hornKey, LONG_SHOT, MENTION_MIN, ALMOST, CERTAIN, isLongShot } from "./words.js";
 export {
   personalityOf, personalityFromBoldness, personalityLine, flavoursOf, PERSONALITY_WORD, PERSONALITY_ICON,
   type Personality, type Flavour,

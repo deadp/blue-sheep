@@ -1,6 +1,6 @@
 /** The forecast panel: goal tabs, ranked candidates, ten lamb icons, range bars, relationship, learn meter, commit. */
 import {
-  ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, isAdult, isIll, lambRoom,
+  ADULT_AGE, GOALS, HUE_NAMES, RAM_CAPACITY, canBreed, seasonLabel, flockStats, forecastVisitor, fractionWords, goalColour, hornKey, isAdult, isIll, lambRoom,
   CERTAIN, isLongShot, lambChanceText, learnBand, litterOf, longShotsOf, longShotNames, orList as orWords, NAMED_MIN, LONG_SHOT, MENTION_MIN, oddsHint, oddsLabel, percentText, pColour, ramLoad, shareWord, woolOf,
   type CrossForecast, type GameState, type Goal, type LambSwatch, type RareChance, type Sheep,
 } from "../core/index.js";
@@ -81,7 +81,7 @@ export function litterRow(state: GameState, f: LitterForecast, small = false, vi
   const spottedN = looks.filter((l) => l.pattern === "spotted").length;
   const extras: string[] = [];
   const share = (p: number, what: string) => p >= CERTAIN ? `all ${what}` : isLongShot(p) ? `a long shot at ${what}` : `${fractionWords(p)} ${what}`;
-  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(share(f.horns["horned"] ?? 0, "horned"))}</span>`);
+  if (hornedN > 0) extras.push(`<span class="xkey"><b class="lb horn">${icon("horn")}</b> ${esc(hornKey(f.horns["horned"] ?? 0))}</span>`);
   if (spottedN > 0) extras.push(`<span class="xkey"><b class="lb spot"></b> ${esc(share(f.pattern["spotted"] ?? 0, "spotted"))}</span>`);
   if (looks.some((l) => l.hidden)) extras.push(`<span class="xkey"><b class="lb q">?</b> white on top</span>`);
   const ls = small ? null : longShotLook(f);
@@ -233,7 +233,7 @@ function goalChance(f: CrossForecast, goal: Goal): number | null {
 }
 
 /** The goal's hint line in words. */
-function goalLine(f: CrossForecast, goal: Goal): string {
+export function goalLine(f: CrossForecast, goal: Goal): string {
   const c = goalColour(goal);
   if (!c) return goal === "trueblue" ? f.blueText : f.colourText;
   const p = goalChance(f, goal) ?? 0;
